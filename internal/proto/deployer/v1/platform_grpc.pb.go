@@ -378,6 +378,7 @@ const (
 	AppService_DeployApp_FullMethodName         = "/deployer.v1.AppService/DeployApp"
 	AppService_ListApps_FullMethodName          = "/deployer.v1.AppService/ListApps"
 	AppService_GetApp_FullMethodName            = "/deployer.v1.AppService/GetApp"
+	AppService_GetAppStatus_FullMethodName      = "/deployer.v1.AppService/GetAppStatus"
 	AppService_GetDeploymentLogs_FullMethodName = "/deployer.v1.AppService/GetDeploymentLogs"
 )
 
@@ -388,6 +389,7 @@ type AppServiceClient interface {
 	DeployApp(ctx context.Context, in *DeployAppRequest, opts ...grpc.CallOption) (*DeployAppResponse, error)
 	ListApps(ctx context.Context, in *ListAppsRequest, opts ...grpc.CallOption) (*ListAppsResponse, error)
 	GetApp(ctx context.Context, in *GetAppRequest, opts ...grpc.CallOption) (*GetAppResponse, error)
+	GetAppStatus(ctx context.Context, in *GetAppStatusRequest, opts ...grpc.CallOption) (*GetAppStatusResponse, error)
 	GetDeploymentLogs(ctx context.Context, in *GetDeploymentLogsRequest, opts ...grpc.CallOption) (*GetDeploymentLogsResponse, error)
 }
 
@@ -429,6 +431,16 @@ func (c *appServiceClient) GetApp(ctx context.Context, in *GetAppRequest, opts .
 	return out, nil
 }
 
+func (c *appServiceClient) GetAppStatus(ctx context.Context, in *GetAppStatusRequest, opts ...grpc.CallOption) (*GetAppStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAppStatusResponse)
+	err := c.cc.Invoke(ctx, AppService_GetAppStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *appServiceClient) GetDeploymentLogs(ctx context.Context, in *GetDeploymentLogsRequest, opts ...grpc.CallOption) (*GetDeploymentLogsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetDeploymentLogsResponse)
@@ -446,6 +458,7 @@ type AppServiceServer interface {
 	DeployApp(context.Context, *DeployAppRequest) (*DeployAppResponse, error)
 	ListApps(context.Context, *ListAppsRequest) (*ListAppsResponse, error)
 	GetApp(context.Context, *GetAppRequest) (*GetAppResponse, error)
+	GetAppStatus(context.Context, *GetAppStatusRequest) (*GetAppStatusResponse, error)
 	GetDeploymentLogs(context.Context, *GetDeploymentLogsRequest) (*GetDeploymentLogsResponse, error)
 	mustEmbedUnimplementedAppServiceServer()
 }
@@ -465,6 +478,9 @@ func (UnimplementedAppServiceServer) ListApps(context.Context, *ListAppsRequest)
 }
 func (UnimplementedAppServiceServer) GetApp(context.Context, *GetAppRequest) (*GetAppResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetApp not implemented")
+}
+func (UnimplementedAppServiceServer) GetAppStatus(context.Context, *GetAppStatusRequest) (*GetAppStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetAppStatus not implemented")
 }
 func (UnimplementedAppServiceServer) GetDeploymentLogs(context.Context, *GetDeploymentLogsRequest) (*GetDeploymentLogsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDeploymentLogs not implemented")
@@ -544,6 +560,24 @@ func _AppService_GetApp_Handler(srv interface{}, ctx context.Context, dec func(i
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AppService_GetAppStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAppStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServiceServer).GetAppStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppService_GetAppStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServiceServer).GetAppStatus(ctx, req.(*GetAppStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AppService_GetDeploymentLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetDeploymentLogsRequest)
 	if err := dec(in); err != nil {
@@ -580,6 +614,10 @@ var AppService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetApp",
 			Handler:    _AppService_GetApp_Handler,
+		},
+		{
+			MethodName: "GetAppStatus",
+			Handler:    _AppService_GetAppStatus_Handler,
 		},
 		{
 			MethodName: "GetDeploymentLogs",

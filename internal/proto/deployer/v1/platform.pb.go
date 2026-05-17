@@ -1253,6 +1253,110 @@ func (x *GetAppResponse) GetRoutes() []*Route {
 	return nil
 }
 
+type GetAppStatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetAppStatusRequest) Reset() {
+	*x = GetAppStatusRequest{}
+	mi := &file_deployer_v1_platform_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAppStatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAppStatusRequest) ProtoMessage() {}
+
+func (x *GetAppStatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_deployer_v1_platform_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAppStatusRequest.ProtoReflect.Descriptor instead.
+func (*GetAppStatusRequest) Descriptor() ([]byte, []int) {
+	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *GetAppStatusRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+type GetAppStatusResponse struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	App              *App                   `protobuf:"bytes,1,opt,name=app,proto3" json:"app,omitempty"`
+	LatestDeployment *Deployment            `protobuf:"bytes,2,opt,name=latest_deployment,json=latestDeployment,proto3" json:"latest_deployment,omitempty"`
+	Routes           []*Route               `protobuf:"bytes,3,rep,name=routes,proto3" json:"routes,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *GetAppStatusResponse) Reset() {
+	*x = GetAppStatusResponse{}
+	mi := &file_deployer_v1_platform_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetAppStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetAppStatusResponse) ProtoMessage() {}
+
+func (x *GetAppStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_deployer_v1_platform_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetAppStatusResponse.ProtoReflect.Descriptor instead.
+func (*GetAppStatusResponse) Descriptor() ([]byte, []int) {
+	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *GetAppStatusResponse) GetApp() *App {
+	if x != nil {
+		return x.App
+	}
+	return nil
+}
+
+func (x *GetAppStatusResponse) GetLatestDeployment() *Deployment {
+	if x != nil {
+		return x.LatestDeployment
+	}
+	return nil
+}
+
+func (x *GetAppStatusResponse) GetRoutes() []*Route {
+	if x != nil {
+		return x.Routes
+	}
+	return nil
+}
+
 type GetDeploymentLogsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AppName       string                 `protobuf:"bytes,1,opt,name=app_name,json=appName,proto3" json:"app_name,omitempty"`
@@ -1264,7 +1368,7 @@ type GetDeploymentLogsRequest struct {
 
 func (x *GetDeploymentLogsRequest) Reset() {
 	*x = GetDeploymentLogsRequest{}
-	mi := &file_deployer_v1_platform_proto_msgTypes[22]
+	mi := &file_deployer_v1_platform_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1276,7 +1380,7 @@ func (x *GetDeploymentLogsRequest) String() string {
 func (*GetDeploymentLogsRequest) ProtoMessage() {}
 
 func (x *GetDeploymentLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_platform_proto_msgTypes[22]
+	mi := &file_deployer_v1_platform_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1289,7 +1393,7 @@ func (x *GetDeploymentLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeploymentLogsRequest.ProtoReflect.Descriptor instead.
 func (*GetDeploymentLogsRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{22}
+	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *GetDeploymentLogsRequest) GetAppName() string {
@@ -1322,7 +1426,7 @@ type GetDeploymentLogsResponse struct {
 
 func (x *GetDeploymentLogsResponse) Reset() {
 	*x = GetDeploymentLogsResponse{}
-	mi := &file_deployer_v1_platform_proto_msgTypes[23]
+	mi := &file_deployer_v1_platform_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1334,7 +1438,7 @@ func (x *GetDeploymentLogsResponse) String() string {
 func (*GetDeploymentLogsResponse) ProtoMessage() {}
 
 func (x *GetDeploymentLogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_platform_proto_msgTypes[23]
+	mi := &file_deployer_v1_platform_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1347,7 +1451,7 @@ func (x *GetDeploymentLogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeploymentLogsResponse.ProtoReflect.Descriptor instead.
 func (*GetDeploymentLogsResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{23}
+	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetDeploymentLogsResponse) GetLines() []string {
@@ -1368,7 +1472,7 @@ type SetSecretRequest struct {
 
 func (x *SetSecretRequest) Reset() {
 	*x = SetSecretRequest{}
-	mi := &file_deployer_v1_platform_proto_msgTypes[24]
+	mi := &file_deployer_v1_platform_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1380,7 +1484,7 @@ func (x *SetSecretRequest) String() string {
 func (*SetSecretRequest) ProtoMessage() {}
 
 func (x *SetSecretRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_platform_proto_msgTypes[24]
+	mi := &file_deployer_v1_platform_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1393,7 +1497,7 @@ func (x *SetSecretRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSecretRequest.ProtoReflect.Descriptor instead.
 func (*SetSecretRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{24}
+	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *SetSecretRequest) GetAppName() string {
@@ -1425,7 +1529,7 @@ type SetSecretResponse struct {
 
 func (x *SetSecretResponse) Reset() {
 	*x = SetSecretResponse{}
-	mi := &file_deployer_v1_platform_proto_msgTypes[25]
+	mi := &file_deployer_v1_platform_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1437,7 +1541,7 @@ func (x *SetSecretResponse) String() string {
 func (*SetSecretResponse) ProtoMessage() {}
 
 func (x *SetSecretResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_platform_proto_msgTypes[25]
+	mi := &file_deployer_v1_platform_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1450,7 +1554,7 @@ func (x *SetSecretResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSecretResponse.ProtoReflect.Descriptor instead.
 func (*SetSecretResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{25}
+	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{27}
 }
 
 type ListSecretsRequest struct {
@@ -1462,7 +1566,7 @@ type ListSecretsRequest struct {
 
 func (x *ListSecretsRequest) Reset() {
 	*x = ListSecretsRequest{}
-	mi := &file_deployer_v1_platform_proto_msgTypes[26]
+	mi := &file_deployer_v1_platform_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1474,7 +1578,7 @@ func (x *ListSecretsRequest) String() string {
 func (*ListSecretsRequest) ProtoMessage() {}
 
 func (x *ListSecretsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_platform_proto_msgTypes[26]
+	mi := &file_deployer_v1_platform_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1487,7 +1591,7 @@ func (x *ListSecretsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSecretsRequest.ProtoReflect.Descriptor instead.
 func (*ListSecretsRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{26}
+	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ListSecretsRequest) GetAppName() string {
@@ -1506,7 +1610,7 @@ type ListSecretsResponse struct {
 
 func (x *ListSecretsResponse) Reset() {
 	*x = ListSecretsResponse{}
-	mi := &file_deployer_v1_platform_proto_msgTypes[27]
+	mi := &file_deployer_v1_platform_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1518,7 +1622,7 @@ func (x *ListSecretsResponse) String() string {
 func (*ListSecretsResponse) ProtoMessage() {}
 
 func (x *ListSecretsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_platform_proto_msgTypes[27]
+	mi := &file_deployer_v1_platform_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1531,7 +1635,7 @@ func (x *ListSecretsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSecretsResponse.ProtoReflect.Descriptor instead.
 func (*ListSecretsResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{27}
+	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ListSecretsResponse) GetNames() []string {
@@ -1551,7 +1655,7 @@ type DeleteSecretRequest struct {
 
 func (x *DeleteSecretRequest) Reset() {
 	*x = DeleteSecretRequest{}
-	mi := &file_deployer_v1_platform_proto_msgTypes[28]
+	mi := &file_deployer_v1_platform_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1563,7 +1667,7 @@ func (x *DeleteSecretRequest) String() string {
 func (*DeleteSecretRequest) ProtoMessage() {}
 
 func (x *DeleteSecretRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_platform_proto_msgTypes[28]
+	mi := &file_deployer_v1_platform_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1576,7 +1680,7 @@ func (x *DeleteSecretRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSecretRequest.ProtoReflect.Descriptor instead.
 func (*DeleteSecretRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{28}
+	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *DeleteSecretRequest) GetAppName() string {
@@ -1601,7 +1705,7 @@ type DeleteSecretResponse struct {
 
 func (x *DeleteSecretResponse) Reset() {
 	*x = DeleteSecretResponse{}
-	mi := &file_deployer_v1_platform_proto_msgTypes[29]
+	mi := &file_deployer_v1_platform_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1613,7 +1717,7 @@ func (x *DeleteSecretResponse) String() string {
 func (*DeleteSecretResponse) ProtoMessage() {}
 
 func (x *DeleteSecretResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_platform_proto_msgTypes[29]
+	mi := &file_deployer_v1_platform_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1626,7 +1730,7 @@ func (x *DeleteSecretResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteSecretResponse.ProtoReflect.Descriptor instead.
 func (*DeleteSecretResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{29}
+	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{31}
 }
 
 type ErrorDetail struct {
@@ -1639,7 +1743,7 @@ type ErrorDetail struct {
 
 func (x *ErrorDetail) Reset() {
 	*x = ErrorDetail{}
-	mi := &file_deployer_v1_platform_proto_msgTypes[30]
+	mi := &file_deployer_v1_platform_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1651,7 +1755,7 @@ func (x *ErrorDetail) String() string {
 func (*ErrorDetail) ProtoMessage() {}
 
 func (x *ErrorDetail) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_platform_proto_msgTypes[30]
+	mi := &file_deployer_v1_platform_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1664,7 +1768,7 @@ func (x *ErrorDetail) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ErrorDetail.ProtoReflect.Descriptor instead.
 func (*ErrorDetail) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{30}
+	return file_deployer_v1_platform_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ErrorDetail) GetCode() string {
@@ -1785,6 +1889,12 @@ const file_deployer_v1_platform_proto_rawDesc = "" +
 	"\x0eGetAppResponse\x12\"\n" +
 	"\x03app\x18\x01 \x01(\v2\x10.deployer.v1.AppR\x03app\x129\n" +
 	"\vdeployments\x18\x02 \x03(\v2\x17.deployer.v1.DeploymentR\vdeployments\x12*\n" +
+	"\x06routes\x18\x03 \x03(\v2\x12.deployer.v1.RouteR\x06routes\")\n" +
+	"\x13GetAppStatusRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xac\x01\n" +
+	"\x14GetAppStatusResponse\x12\"\n" +
+	"\x03app\x18\x01 \x01(\v2\x10.deployer.v1.AppR\x03app\x12D\n" +
+	"\x11latest_deployment\x18\x02 \x01(\v2\x17.deployer.v1.DeploymentR\x10latestDeployment\x12*\n" +
 	"\x06routes\x18\x03 \x03(\v2\x12.deployer.v1.RouteR\x06routes\"y\n" +
 	"\x18GetDeploymentLogsRequest\x12\x19\n" +
 	"\bapp_name\x18\x01 \x01(\tR\aappName\x12#\n" +
@@ -1817,12 +1927,13 @@ const file_deployer_v1_platform_proto_rawDesc = "" +
 	"\bJoinNode\x12\x1c.deployer.v1.JoinNodeRequest\x1a\x1d.deployer.v1.JoinNodeResponse\x12J\n" +
 	"\tListNodes\x12\x1d.deployer.v1.ListNodesRequest\x1a\x1e.deployer.v1.ListNodesResponse\x12D\n" +
 	"\aGetNode\x12\x1b.deployer.v1.GetNodeRequest\x1a\x1c.deployer.v1.GetNodeResponse\x12V\n" +
-	"\rHeartbeatNode\x12!.deployer.v1.HeartbeatNodeRequest\x1a\".deployer.v1.HeartbeatNodeResponse2\xc8\x02\n" +
+	"\rHeartbeatNode\x12!.deployer.v1.HeartbeatNodeRequest\x1a\".deployer.v1.HeartbeatNodeResponse2\x9d\x03\n" +
 	"\n" +
 	"AppService\x12J\n" +
 	"\tDeployApp\x12\x1d.deployer.v1.DeployAppRequest\x1a\x1e.deployer.v1.DeployAppResponse\x12G\n" +
 	"\bListApps\x12\x1c.deployer.v1.ListAppsRequest\x1a\x1d.deployer.v1.ListAppsResponse\x12A\n" +
-	"\x06GetApp\x12\x1a.deployer.v1.GetAppRequest\x1a\x1b.deployer.v1.GetAppResponse\x12b\n" +
+	"\x06GetApp\x12\x1a.deployer.v1.GetAppRequest\x1a\x1b.deployer.v1.GetAppResponse\x12S\n" +
+	"\fGetAppStatus\x12 .deployer.v1.GetAppStatusRequest\x1a!.deployer.v1.GetAppStatusResponse\x12b\n" +
 	"\x11GetDeploymentLogs\x12%.deployer.v1.GetDeploymentLogsRequest\x1a&.deployer.v1.GetDeploymentLogsResponse2\x82\x02\n" +
 	"\rSecretService\x12J\n" +
 	"\tSetSecret\x12\x1d.deployer.v1.SetSecretRequest\x1a\x1e.deployer.v1.SetSecretResponse\x12P\n" +
@@ -1841,7 +1952,7 @@ func file_deployer_v1_platform_proto_rawDescGZIP() []byte {
 	return file_deployer_v1_platform_proto_rawDescData
 }
 
-var file_deployer_v1_platform_proto_msgTypes = make([]protoimpl.MessageInfo, 33)
+var file_deployer_v1_platform_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_deployer_v1_platform_proto_goTypes = []any{
 	(*GetVersionRequest)(nil),         // 0: deployer.v1.GetVersionRequest
 	(*GetVersionResponse)(nil),        // 1: deployer.v1.GetVersionResponse
@@ -1865,21 +1976,23 @@ var file_deployer_v1_platform_proto_goTypes = []any{
 	(*ListAppsResponse)(nil),          // 19: deployer.v1.ListAppsResponse
 	(*GetAppRequest)(nil),             // 20: deployer.v1.GetAppRequest
 	(*GetAppResponse)(nil),            // 21: deployer.v1.GetAppResponse
-	(*GetDeploymentLogsRequest)(nil),  // 22: deployer.v1.GetDeploymentLogsRequest
-	(*GetDeploymentLogsResponse)(nil), // 23: deployer.v1.GetDeploymentLogsResponse
-	(*SetSecretRequest)(nil),          // 24: deployer.v1.SetSecretRequest
-	(*SetSecretResponse)(nil),         // 25: deployer.v1.SetSecretResponse
-	(*ListSecretsRequest)(nil),        // 26: deployer.v1.ListSecretsRequest
-	(*ListSecretsResponse)(nil),       // 27: deployer.v1.ListSecretsResponse
-	(*DeleteSecretRequest)(nil),       // 28: deployer.v1.DeleteSecretRequest
-	(*DeleteSecretResponse)(nil),      // 29: deployer.v1.DeleteSecretResponse
-	(*ErrorDetail)(nil),               // 30: deployer.v1.ErrorDetail
-	nil,                               // 31: deployer.v1.Node.LabelsEntry
-	nil,                               // 32: deployer.v1.JoinNodeRequest.LabelsEntry
+	(*GetAppStatusRequest)(nil),       // 22: deployer.v1.GetAppStatusRequest
+	(*GetAppStatusResponse)(nil),      // 23: deployer.v1.GetAppStatusResponse
+	(*GetDeploymentLogsRequest)(nil),  // 24: deployer.v1.GetDeploymentLogsRequest
+	(*GetDeploymentLogsResponse)(nil), // 25: deployer.v1.GetDeploymentLogsResponse
+	(*SetSecretRequest)(nil),          // 26: deployer.v1.SetSecretRequest
+	(*SetSecretResponse)(nil),         // 27: deployer.v1.SetSecretResponse
+	(*ListSecretsRequest)(nil),        // 28: deployer.v1.ListSecretsRequest
+	(*ListSecretsResponse)(nil),       // 29: deployer.v1.ListSecretsResponse
+	(*DeleteSecretRequest)(nil),       // 30: deployer.v1.DeleteSecretRequest
+	(*DeleteSecretResponse)(nil),      // 31: deployer.v1.DeleteSecretResponse
+	(*ErrorDetail)(nil),               // 32: deployer.v1.ErrorDetail
+	nil,                               // 33: deployer.v1.Node.LabelsEntry
+	nil,                               // 34: deployer.v1.JoinNodeRequest.LabelsEntry
 }
 var file_deployer_v1_platform_proto_depIdxs = []int32{
-	31, // 0: deployer.v1.Node.labels:type_name -> deployer.v1.Node.LabelsEntry
-	32, // 1: deployer.v1.JoinNodeRequest.labels:type_name -> deployer.v1.JoinNodeRequest.LabelsEntry
+	33, // 0: deployer.v1.Node.labels:type_name -> deployer.v1.Node.LabelsEntry
+	34, // 1: deployer.v1.JoinNodeRequest.labels:type_name -> deployer.v1.JoinNodeRequest.LabelsEntry
 	4,  // 2: deployer.v1.ListNodesResponse.nodes:type_name -> deployer.v1.Node
 	4,  // 3: deployer.v1.GetNodeResponse.node:type_name -> deployer.v1.Node
 	13, // 4: deployer.v1.DeployAppResponse.app:type_name -> deployer.v1.App
@@ -1888,37 +2001,42 @@ var file_deployer_v1_platform_proto_depIdxs = []int32{
 	13, // 7: deployer.v1.GetAppResponse.app:type_name -> deployer.v1.App
 	14, // 8: deployer.v1.GetAppResponse.deployments:type_name -> deployer.v1.Deployment
 	15, // 9: deployer.v1.GetAppResponse.routes:type_name -> deployer.v1.Route
-	0,  // 10: deployer.v1.PlatformService.GetVersion:input_type -> deployer.v1.GetVersionRequest
-	2,  // 11: deployer.v1.PlatformService.GetStatus:input_type -> deployer.v1.GetStatusRequest
-	5,  // 12: deployer.v1.NodeService.JoinNode:input_type -> deployer.v1.JoinNodeRequest
-	7,  // 13: deployer.v1.NodeService.ListNodes:input_type -> deployer.v1.ListNodesRequest
-	9,  // 14: deployer.v1.NodeService.GetNode:input_type -> deployer.v1.GetNodeRequest
-	11, // 15: deployer.v1.NodeService.HeartbeatNode:input_type -> deployer.v1.HeartbeatNodeRequest
-	16, // 16: deployer.v1.AppService.DeployApp:input_type -> deployer.v1.DeployAppRequest
-	18, // 17: deployer.v1.AppService.ListApps:input_type -> deployer.v1.ListAppsRequest
-	20, // 18: deployer.v1.AppService.GetApp:input_type -> deployer.v1.GetAppRequest
-	22, // 19: deployer.v1.AppService.GetDeploymentLogs:input_type -> deployer.v1.GetDeploymentLogsRequest
-	24, // 20: deployer.v1.SecretService.SetSecret:input_type -> deployer.v1.SetSecretRequest
-	26, // 21: deployer.v1.SecretService.ListSecrets:input_type -> deployer.v1.ListSecretsRequest
-	28, // 22: deployer.v1.SecretService.DeleteSecret:input_type -> deployer.v1.DeleteSecretRequest
-	1,  // 23: deployer.v1.PlatformService.GetVersion:output_type -> deployer.v1.GetVersionResponse
-	3,  // 24: deployer.v1.PlatformService.GetStatus:output_type -> deployer.v1.GetStatusResponse
-	6,  // 25: deployer.v1.NodeService.JoinNode:output_type -> deployer.v1.JoinNodeResponse
-	8,  // 26: deployer.v1.NodeService.ListNodes:output_type -> deployer.v1.ListNodesResponse
-	10, // 27: deployer.v1.NodeService.GetNode:output_type -> deployer.v1.GetNodeResponse
-	12, // 28: deployer.v1.NodeService.HeartbeatNode:output_type -> deployer.v1.HeartbeatNodeResponse
-	17, // 29: deployer.v1.AppService.DeployApp:output_type -> deployer.v1.DeployAppResponse
-	19, // 30: deployer.v1.AppService.ListApps:output_type -> deployer.v1.ListAppsResponse
-	21, // 31: deployer.v1.AppService.GetApp:output_type -> deployer.v1.GetAppResponse
-	23, // 32: deployer.v1.AppService.GetDeploymentLogs:output_type -> deployer.v1.GetDeploymentLogsResponse
-	25, // 33: deployer.v1.SecretService.SetSecret:output_type -> deployer.v1.SetSecretResponse
-	27, // 34: deployer.v1.SecretService.ListSecrets:output_type -> deployer.v1.ListSecretsResponse
-	29, // 35: deployer.v1.SecretService.DeleteSecret:output_type -> deployer.v1.DeleteSecretResponse
-	23, // [23:36] is the sub-list for method output_type
-	10, // [10:23] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	13, // 10: deployer.v1.GetAppStatusResponse.app:type_name -> deployer.v1.App
+	14, // 11: deployer.v1.GetAppStatusResponse.latest_deployment:type_name -> deployer.v1.Deployment
+	15, // 12: deployer.v1.GetAppStatusResponse.routes:type_name -> deployer.v1.Route
+	0,  // 13: deployer.v1.PlatformService.GetVersion:input_type -> deployer.v1.GetVersionRequest
+	2,  // 14: deployer.v1.PlatformService.GetStatus:input_type -> deployer.v1.GetStatusRequest
+	5,  // 15: deployer.v1.NodeService.JoinNode:input_type -> deployer.v1.JoinNodeRequest
+	7,  // 16: deployer.v1.NodeService.ListNodes:input_type -> deployer.v1.ListNodesRequest
+	9,  // 17: deployer.v1.NodeService.GetNode:input_type -> deployer.v1.GetNodeRequest
+	11, // 18: deployer.v1.NodeService.HeartbeatNode:input_type -> deployer.v1.HeartbeatNodeRequest
+	16, // 19: deployer.v1.AppService.DeployApp:input_type -> deployer.v1.DeployAppRequest
+	18, // 20: deployer.v1.AppService.ListApps:input_type -> deployer.v1.ListAppsRequest
+	20, // 21: deployer.v1.AppService.GetApp:input_type -> deployer.v1.GetAppRequest
+	22, // 22: deployer.v1.AppService.GetAppStatus:input_type -> deployer.v1.GetAppStatusRequest
+	24, // 23: deployer.v1.AppService.GetDeploymentLogs:input_type -> deployer.v1.GetDeploymentLogsRequest
+	26, // 24: deployer.v1.SecretService.SetSecret:input_type -> deployer.v1.SetSecretRequest
+	28, // 25: deployer.v1.SecretService.ListSecrets:input_type -> deployer.v1.ListSecretsRequest
+	30, // 26: deployer.v1.SecretService.DeleteSecret:input_type -> deployer.v1.DeleteSecretRequest
+	1,  // 27: deployer.v1.PlatformService.GetVersion:output_type -> deployer.v1.GetVersionResponse
+	3,  // 28: deployer.v1.PlatformService.GetStatus:output_type -> deployer.v1.GetStatusResponse
+	6,  // 29: deployer.v1.NodeService.JoinNode:output_type -> deployer.v1.JoinNodeResponse
+	8,  // 30: deployer.v1.NodeService.ListNodes:output_type -> deployer.v1.ListNodesResponse
+	10, // 31: deployer.v1.NodeService.GetNode:output_type -> deployer.v1.GetNodeResponse
+	12, // 32: deployer.v1.NodeService.HeartbeatNode:output_type -> deployer.v1.HeartbeatNodeResponse
+	17, // 33: deployer.v1.AppService.DeployApp:output_type -> deployer.v1.DeployAppResponse
+	19, // 34: deployer.v1.AppService.ListApps:output_type -> deployer.v1.ListAppsResponse
+	21, // 35: deployer.v1.AppService.GetApp:output_type -> deployer.v1.GetAppResponse
+	23, // 36: deployer.v1.AppService.GetAppStatus:output_type -> deployer.v1.GetAppStatusResponse
+	25, // 37: deployer.v1.AppService.GetDeploymentLogs:output_type -> deployer.v1.GetDeploymentLogsResponse
+	27, // 38: deployer.v1.SecretService.SetSecret:output_type -> deployer.v1.SetSecretResponse
+	29, // 39: deployer.v1.SecretService.ListSecrets:output_type -> deployer.v1.ListSecretsResponse
+	31, // 40: deployer.v1.SecretService.DeleteSecret:output_type -> deployer.v1.DeleteSecretResponse
+	27, // [27:41] is the sub-list for method output_type
+	13, // [13:27] is the sub-list for method input_type
+	13, // [13:13] is the sub-list for extension type_name
+	13, // [13:13] is the sub-list for extension extendee
+	0,  // [0:13] is the sub-list for field type_name
 }
 
 func init() { file_deployer_v1_platform_proto_init() }
@@ -1932,7 +2050,7 @@ func file_deployer_v1_platform_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_deployer_v1_platform_proto_rawDesc), len(file_deployer_v1_platform_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   33,
+			NumMessages:   35,
 			NumExtensions: 0,
 			NumServices:   4,
 		},

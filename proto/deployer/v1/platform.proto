@@ -20,6 +20,7 @@ service AppService {
   rpc DeployApp(DeployAppRequest) returns (DeployAppResponse);
   rpc ListApps(ListAppsRequest) returns (ListAppsResponse);
   rpc GetApp(GetAppRequest) returns (GetAppResponse);
+  rpc GetAppStatus(GetAppStatusRequest) returns (GetAppStatusResponse);
   rpc GetDeploymentLogs(GetDeploymentLogsRequest) returns (GetDeploymentLogsResponse);
 }
 
@@ -145,6 +146,16 @@ message GetAppRequest {
 message GetAppResponse {
   App app = 1;
   repeated Deployment deployments = 2;
+  repeated Route routes = 3;
+}
+
+message GetAppStatusRequest {
+  string name = 1;
+}
+
+message GetAppStatusResponse {
+  App app = 1;
+  Deployment latest_deployment = 2;
   repeated Route routes = 3;
 }
 

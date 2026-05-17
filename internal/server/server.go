@@ -40,10 +40,15 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	defer httpListener.Close()
 
 	auth := NewAuthenticator(repo, cfg.TokenHashKey)
-	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(
-		UnaryLoggingInterceptor(logger),
-		auth.UnaryInterceptor(),
-	))
+	grpcServer := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			UnaryLoggingInterceptor(logger),
+			auth.UnaryInterceptor(),
+		),
+		grpc.ChainStreamInterceptor(
+			StreamLoggingInterceptor(logger),
+		),
+	)
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
