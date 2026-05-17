@@ -1,4 +1,4 @@
-package repository
+package sqlite
 
 import (
 	"context"
@@ -6,19 +6,21 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/0xivanov/self-hosted-deployer/internal/repository"
 )
 
 func TestSQLiteRepositoryPersistsAdminTokens(t *testing.T) {
 	ctx := context.Background()
 	dsn := "file:" + filepath.Join(t.TempDir(), "deployer.db")
 
-	repo, err := OpenSQLite(ctx, dsn)
+	repo, err := Open(ctx, dsn)
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
 
 	createdAt := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
-	if err := repo.CreateAdminToken(ctx, AdminToken{
+	if err := repo.CreateAdminToken(ctx, repository.AdminToken{
 		TokenHash: "hash",
 		Name:      "bootstrap",
 		CreatedAt: createdAt,
@@ -29,7 +31,7 @@ func TestSQLiteRepositoryPersistsAdminTokens(t *testing.T) {
 		t.Fatalf("close sqlite: %v", err)
 	}
 
-	reopened, err := OpenSQLite(ctx, dsn)
+	reopened, err := Open(ctx, dsn)
 	if err != nil {
 		t.Fatalf("reopen sqlite: %v", err)
 	}
@@ -60,7 +62,7 @@ func TestSQLiteRepositoryPersistsAdminTokens(t *testing.T) {
 }
 
 func TestSQLiteRepositoryRecordsMigrationVersion(t *testing.T) {
-	repo, err := OpenSQLite(context.Background(), "file:"+filepath.Join(t.TempDir(), "deployer.db"))
+	repo, err := Open(context.Background(), "file:"+filepath.Join(t.TempDir(), "deployer.db"))
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
@@ -78,14 +80,14 @@ func TestSQLiteRepositoryRecordsMigrationVersion(t *testing.T) {
 }
 
 func TestSQLiteRepositoryMapsMissingRowsToNotFound(t *testing.T) {
-	repo, err := OpenSQLite(context.Background(), "file:"+filepath.Join(t.TempDir(), "deployer.db"))
+	repo, err := Open(context.Background(), "file:"+filepath.Join(t.TempDir(), "deployer.db"))
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	defer repo.Close()
 
 	_, err = repo.FindAgentTokenByHash(context.Background(), "missing")
-	if !errors.Is(err, ErrNotFound) {
+	if !errors.Is(err, repository.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }

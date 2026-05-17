@@ -12,13 +12,14 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/config"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"github.com/0xivanov/self-hosted-deployer/internal/repository"
+	"github.com/0xivanov/self-hosted-deployer/internal/repository/sqlite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func Run(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger) error {
-	repo, err := repository.OpenSQLite(ctx, cfg.DatabaseURL)
+	repo, err := sqlite.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}

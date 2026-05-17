@@ -11,7 +11,7 @@ import (
 
 	"github.com/0xivanov/self-hosted-deployer/internal/config"
 	"github.com/0xivanov/self-hosted-deployer/internal/logging"
-	"github.com/0xivanov/self-hosted-deployer/internal/repository"
+	"github.com/0xivanov/self-hosted-deployer/internal/repository/sqlite"
 	"github.com/0xivanov/self-hosted-deployer/internal/server"
 	"github.com/0xivanov/self-hosted-deployer/internal/version"
 	"github.com/joho/godotenv"
@@ -109,7 +109,7 @@ func bootstrap() int {
 	}
 
 	ctx := context.Background()
-	repo, err := repository.OpenSQLite(ctx, cfg.DatabaseURL)
+	repo, err := sqlite.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1

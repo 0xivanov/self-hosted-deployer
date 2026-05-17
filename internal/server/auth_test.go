@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/repository"
+	"github.com/0xivanov/self-hosted-deployer/internal/repository/memory"
 	"github.com/0xivanov/self-hosted-deployer/internal/security"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -14,7 +15,7 @@ import (
 )
 
 func TestAuthenticatorRejectsMissingToken(t *testing.T) {
-	auth := NewAuthenticator(repository.NewMemory(), "hash-key")
+	auth := NewAuthenticator(memory.New(), "hash-key")
 	_, err := auth.UnaryInterceptor()(context.Background(), nil, &grpc.UnaryServerInfo{
 		FullMethod: "/deployer.v1.PlatformService/GetStatus",
 	}, func(ctx context.Context, req any) (any, error) {
@@ -28,7 +29,7 @@ func TestAuthenticatorRejectsMissingToken(t *testing.T) {
 
 func TestAuthenticatorAcceptsAdminTokenAndAttachesCaller(t *testing.T) {
 	ctx := context.Background()
-	repo := repository.NewMemory()
+	repo := memory.New()
 	rawToken, tokenHash := createToken(t, security.AdminTokenPrefix, "hash-key")
 	if err := repo.CreateAdminToken(ctx, repository.AdminToken{
 		TokenHash: tokenHash,
@@ -66,7 +67,7 @@ func TestAuthenticatorAcceptsAdminTokenAndAttachesCaller(t *testing.T) {
 
 func TestAuthenticatorRejectsAgentTokenForAdminRPC(t *testing.T) {
 	ctx := context.Background()
-	repo := repository.NewMemory()
+	repo := memory.New()
 	rawToken, tokenHash := createToken(t, security.AgentTokenPrefix, "hash-key")
 	if err := repo.CreateAgentToken(ctx, repository.AgentToken{
 		TokenHash: tokenHash,
@@ -89,7 +90,7 @@ func TestAuthenticatorRejectsAgentTokenForAdminRPC(t *testing.T) {
 
 func TestAuthenticatorAllowsAgentTokenForHeartbeatAndAttachesNode(t *testing.T) {
 	ctx := context.Background()
-	repo := repository.NewMemory()
+	repo := memory.New()
 	rawToken, tokenHash := createToken(t, security.AgentTokenPrefix, "hash-key")
 	if err := repo.CreateAgentToken(ctx, repository.AgentToken{
 		TokenHash: tokenHash,
@@ -122,7 +123,7 @@ func TestAuthenticatorAllowsAgentTokenForHeartbeatAndAttachesNode(t *testing.T) 
 
 func TestAuthenticatorAllowsActiveJoinTokenOnlyForJoinRPC(t *testing.T) {
 	ctx := context.Background()
-	repo := repository.NewMemory()
+	repo := memory.New()
 	rawToken, tokenHash := createToken(t, security.JoinTokenPrefix, "hash-key")
 	if err := repo.CreateJoinToken(ctx, repository.JoinToken{
 		TokenHash:        tokenHash,
