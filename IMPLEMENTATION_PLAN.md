@@ -18,14 +18,15 @@ The preferred order is:
 4. Build the CLI against the control plane.
 5. Add agent registration and heartbeats.
 6. Add app desired-state storage.
-7. Add Kubernetes manifest generation and apply.
-8. Add WireGuard automation.
-9. Add ingress/routing.
-10. Add secrets.
-11. Add platform events and diagnostics.
-12. Add resilience/offline behavior.
-13. Package and harden.
-14. Add GitHub Releases and automated platform updates.
+7. Add WireGuard automation.
+8. Bootstrap the k3s server and join worker nodes.
+9. Add Kubernetes manifest generation and apply.
+10. Add ingress/routing.
+11. Add secrets.
+12. Add platform events and diagnostics.
+13. Add resilience/offline behavior.
+14. Package and harden.
+15. Add GitHub Releases and automated platform updates.
 
 ## Phase Index
 

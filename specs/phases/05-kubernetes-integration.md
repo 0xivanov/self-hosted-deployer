@@ -1,8 +1,228 @@
-# Phase 05: Kubernetes Integration
+# Phase 05: Kubernetes Bootstrap And Integration
 
-Goal: map app desired state to k3s/Kubernetes objects.
+Goal: bootstrap the MVP k3s cluster, join worker nodes over WireGuard, then map app desired state to Kubernetes objects.
 
-## 05.01 Add Kubernetes Client Configuration
+Execution order note: the bootstrap and worker-join tasks in this phase depend on WireGuard connectivity from Phase 06. Even though this file remains Phase 05 to avoid renumbering the plan, implement WireGuard before running the k3s worker-join tasks.
+
+## 05.01 Define k3s Cluster Bootstrap Strategy
+
+Goal: document how the platform creates and manages the single MVP k3s cluster.
+
+Inputs:
+
+- VPS control-plane architecture.
+- WireGuard private network.
+- ARM64-first worker-node requirement.
+
+Implementation Notes:
+
+- MVP topology:
+  - VPS runs k3s server/control-plane.
+  - Home/relative nodes run k3s agents/workers.
+- k3s API should be reachable by workers over WireGuard.
+- Prefer binding/advertising the k3s server on the VPS WireGuard IP.
+- Define whether the deployer installs k3s directly or invokes the official k3s installer.
+- Define where k3s server config is written.
+- Define how the deployer detects an existing k3s install.
+
+Acceptance Criteria:
+
+- Bootstrap strategy is documented in this phase.
+- Required k3s server flags/config are listed.
+- Existing-install detection behavior is specified.
+
+Dependencies:
+
+- `06.06`
+
+Out Of Scope:
+
+- Highly available k3s control plane.
+- Multi-cluster support.
+
+## 05.02 Bootstrap k3s Server On VPS
+
+Goal: install and start the k3s server/control-plane on the VPS.
+
+Inputs:
+
+- Server binary and config.
+- WireGuard hub configuration.
+
+Implementation Notes:
+
+- Extend `deployer-server bootstrap` or add a dedicated subcommand:
+  - `deployer-server bootstrap k3s`
+- Validate prerequisites:
+  - Linux host
+  - root privileges or clear sudo requirement
+  - WireGuard hub IP is configured
+  - required ports are available
+- Install/start k3s server.
+- Configure k3s to advertise the VPS WireGuard IP to workers.
+- Store/read kubeconfig for control-plane use.
+- Do not overwrite an existing k3s installation without explicit confirmation.
+
+Acceptance Criteria:
+
+- Fresh VPS can bootstrap a single-node k3s server.
+- k3s API is reachable locally.
+- k3s API is reachable on the WireGuard IP.
+- Kubeconfig path is recorded in server config.
+- Re-running bootstrap is idempotent or fails safely with clear guidance.
+
+Dependencies:
+
+- `06.04`
+- `01.01`
+- `00.05`
+
+Out Of Scope:
+
+- Installing Kubernetes distributions other than k3s.
+
+## 05.03 Manage k3s Worker Join Token
+
+Goal: make the k3s worker join token available to authorized agents without exposing it broadly.
+
+Inputs:
+
+- k3s server bootstrap.
+- Agent authentication model.
+
+Implementation Notes:
+
+- Read the k3s node-token from the VPS k3s server.
+- Store it encrypted or read it on demand from the k3s server filesystem.
+- Expose it only to authenticated agents that are approved to join the cluster.
+- Never display the k3s token in normal CLI output.
+- Never log the k3s token.
+- Track when a node has requested or used worker join material.
+
+Acceptance Criteria:
+
+- Control plane can obtain k3s worker join material.
+- Agent can request join material only after node enrollment.
+- Admin token is required for any operator-facing token inspection or rotation.
+- k3s token is redacted in logs and events.
+
+Dependencies:
+
+- `05.02`
+- `03.04`
+- `08.02`
+
+Out Of Scope:
+
+- Automatic k3s token rotation.
+
+## 05.04 Add Agent k3s Worker Join Command
+
+Goal: let an enrolled node join the k3s cluster as a worker after WireGuard is connected.
+
+Inputs:
+
+- Agent identity.
+- WireGuard interface.
+- k3s worker join material.
+
+Implementation Notes:
+
+- Add agent command or run-loop step:
+  - `deployer-agent join-k3s`
+- Ensure WireGuard connectivity is healthy before joining.
+- Use the VPS WireGuard IP as `K3S_URL`.
+- Use k3s worker token from the control plane.
+- Install/start k3s agent on the node.
+- Set a stable Kubernetes node name that maps to the deployer node name.
+- Make the operation idempotent.
+
+Acceptance Criteria:
+
+- Fresh ARM64 Linux worker can join the VPS k3s server.
+- Joined node appears in Kubernetes as Ready.
+- Re-running join does not create duplicate nodes.
+- Join fails clearly when WireGuard is disconnected.
+
+Dependencies:
+
+- `03.07`
+- `05.03`
+- `06.07`
+
+Out Of Scope:
+
+- Joining Windows or non-Linux nodes.
+
+## 05.05 Label And Taint Kubernetes Nodes
+
+Goal: make Kubernetes scheduling aware of deployer node metadata.
+
+Inputs:
+
+- Deployer node labels.
+- Kubernetes client.
+
+Implementation Notes:
+
+- Apply labels such as:
+  - `deployer.io/node-id`
+  - `deployer.io/location`
+  - `deployer.io/role`
+  - `kubernetes.io/arch`
+- Apply taints for drained or restricted nodes later.
+- Keep Kubernetes node labels in sync when deployer node metadata changes.
+
+Acceptance Criteria:
+
+- Worker nodes have deployer labels after join.
+- ARM64 worker nodes are labeled for architecture-aware scheduling.
+- Label sync is idempotent.
+
+Dependencies:
+
+- `05.04`
+- `03.01`
+
+Out Of Scope:
+
+- Complex placement policy language.
+
+## 05.06 Verify Cluster Worker Readiness
+
+Goal: block app scheduling until the cluster has healthy worker capacity.
+
+Inputs:
+
+- Kubernetes client.
+- Node status model.
+
+Implementation Notes:
+
+- Check that expected worker nodes exist in Kubernetes.
+- Check `Ready` condition.
+- Check architecture labels.
+- Report readiness in:
+  - `deployer nodes inspect`
+  - `deployer doctor`
+  - server readiness diagnostics
+
+Acceptance Criteria:
+
+- Platform can distinguish enrolled-but-not-joined nodes from Kubernetes-ready workers.
+- App deploy can fail early when no schedulable workers exist.
+- Node inspect shows k3s join/readiness state.
+
+Dependencies:
+
+- `05.05`
+- `03.08`
+
+Out Of Scope:
+
+- Capacity planning beyond basic readiness.
+
+## 05.07 Add Kubernetes Client Configuration
 
 Goal: let the control plane talk to the local k3s API.
 
@@ -25,14 +245,15 @@ Acceptance Criteria:
 
 Dependencies:
 
-- `01.01`
+- `05.02`
+- `05.06`
 - `00.05`
 
 Out Of Scope:
 
 - Agent-side Kubernetes apply.
 
-## 05.02 Add Kubernetes Namespace Strategy
+## 05.08 Add Kubernetes Namespace Strategy
 
 Goal: decide where app resources live.
 
@@ -52,13 +273,13 @@ Acceptance Criteria:
 
 Dependencies:
 
-- `05.01`
+- `05.07`
 
 Out Of Scope:
 
 - Per-app namespaces.
 
-## 05.03 Generate Deployment Manifest
+## 05.09 Generate Deployment Manifest
 
 Goal: convert app desired state into a Kubernetes Deployment.
 
@@ -89,12 +310,13 @@ Acceptance Criteria:
 Dependencies:
 
 - `04.01`
+- `05.06`
 
 Out Of Scope:
 
 - StatefulSets.
 
-## 05.04 Generate Service Manifest
+## 05.10 Generate Service Manifest
 
 Goal: expose pods inside the cluster.
 
@@ -115,13 +337,13 @@ Acceptance Criteria:
 
 Dependencies:
 
-- `05.03`
+- `05.09`
 
 Out Of Scope:
 
 - LoadBalancer services.
 
-## 05.05 Apply App Resources
+## 05.11 Apply App Resources
 
 Goal: apply generated Deployment and Service to Kubernetes.
 
@@ -144,16 +366,16 @@ Acceptance Criteria:
 
 Dependencies:
 
-- `05.01`
-- `05.02`
-- `05.03`
-- `05.04`
+- `05.07`
+- `05.08`
+- `05.09`
+- `05.10`
 
 Out Of Scope:
 
 - Ingress.
 
-## 05.06 Wire Deploy API To Kubernetes Apply
+## 05.12 Wire Deploy API To Kubernetes Apply
 
 Goal: make desired state changes create real workloads.
 
@@ -180,13 +402,13 @@ Dependencies:
 
 - `04.04`
 - `04.07`
-- `05.05`
+- `05.11`
 
 Out Of Scope:
 
 - Streaming rollout status.
 
-## 05.07 Add Rollout Status Reader
+## 05.13 Add Rollout Status Reader
 
 Goal: report whether app replicas are healthy.
 
@@ -212,13 +434,13 @@ Acceptance Criteria:
 
 Dependencies:
 
-- `05.06`
+- `05.12`
 
 Out Of Scope:
 
 - Watch-based streaming.
 
-## 05.08 Add Logs Command Via Kubernetes
+## 05.14 Add Logs Command Via Kubernetes
 
 Goal: let operators view app pod logs.
 
@@ -245,7 +467,7 @@ Acceptance Criteria:
 
 Dependencies:
 
-- `05.07`
+- `05.13`
 - `02.04`
 
 Out Of Scope:
