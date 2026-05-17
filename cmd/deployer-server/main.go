@@ -14,6 +14,7 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/repository"
 	"github.com/0xivanov/self-hosted-deployer/internal/server"
 	"github.com/0xivanov/self-hosted-deployer/internal/version"
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -21,6 +22,11 @@ func main() {
 }
 
 func run(args []string) int {
+	if err := loadDotEnv(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+
 	flags := flag.NewFlagSet("deployer-server", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	showVersion := flags.Bool("version", false, "print version information")
@@ -72,6 +78,14 @@ func run(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+func loadDotEnv() error {
+	err := godotenv.Load()
+	if err == nil || errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return fmt.Errorf("load .env: %w", err)
 }
 
 func usage() {

@@ -3,6 +3,7 @@ module github.com/0xivanov/self-hosted-deployer
 go 1.26
 
 require (
+	github.com/joho/godotenv v1.5.1
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/pressly/goose/v3 v3.24.3
 	google.golang.org/grpc v1.71.0
