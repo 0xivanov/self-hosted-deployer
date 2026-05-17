@@ -6,6 +6,27 @@ option go_package = "github.com/0xivanov/self-hosted-deployer/internal/proto/dep
 
 service PlatformService {
   rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+}
+
+service NodeService {
+  rpc JoinNode(JoinNodeRequest) returns (JoinNodeResponse);
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+  rpc HeartbeatNode(HeartbeatNodeRequest) returns (HeartbeatNodeResponse);
+}
+
+service AppService {
+  rpc DeployApp(DeployAppRequest) returns (DeployAppResponse);
+  rpc ListApps(ListAppsRequest) returns (ListAppsResponse);
+  rpc GetApp(GetAppRequest) returns (GetAppResponse);
+  rpc GetDeploymentLogs(GetDeploymentLogsRequest) returns (GetDeploymentLogsResponse);
+}
+
+service SecretService {
+  rpc SetSecret(SetSecretRequest) returns (SetSecretResponse);
+  rpc ListSecrets(ListSecretsRequest) returns (ListSecretsResponse);
+  rpc DeleteSecret(DeleteSecretRequest) returns (DeleteSecretResponse);
 }
 
 message GetVersionRequest {}
@@ -14,4 +35,153 @@ message GetVersionResponse {
   string version = 1;
   string commit = 2;
   string build_date = 3;
+}
+
+message GetStatusRequest {}
+
+message GetStatusResponse {
+  string version = 1;
+  string commit = 2;
+  string build_date = 3;
+  bool ready = 4;
+}
+
+message Node {
+  string id = 1;
+  string name = 2;
+  string status = 3;
+  map<string, string> labels = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message JoinNodeRequest {
+  string join_token = 1;
+  string node_name = 2;
+  map<string, string> labels = 3;
+}
+
+message JoinNodeResponse {
+  string node_id = 1;
+  string agent_token = 2;
+}
+
+message ListNodesRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListNodesResponse {
+  repeated Node nodes = 1;
+  string next_page_token = 2;
+}
+
+message GetNodeRequest {
+  string node_id = 1;
+}
+
+message GetNodeResponse {
+  Node node = 1;
+}
+
+message HeartbeatNodeRequest {
+  string node_id = 1;
+  string status = 2;
+}
+
+message HeartbeatNodeResponse {
+  string accepted_at = 1;
+}
+
+message App {
+  string id = 1;
+  string name = 2;
+  string image = 3;
+  int32 replicas = 4;
+  string desired_state = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}
+
+message Deployment {
+  string id = 1;
+  string app_id = 2;
+  string status = 3;
+  string failure_reason = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message Route {
+  string id = 1;
+  string app_id = 2;
+  string domain = 3;
+  int32 target_port = 4;
+}
+
+message DeployAppRequest {
+  string deployer_yaml = 1;
+}
+
+message DeployAppResponse {
+  App app = 1;
+  Deployment deployment = 2;
+}
+
+message ListAppsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListAppsResponse {
+  repeated App apps = 1;
+  string next_page_token = 2;
+}
+
+message GetAppRequest {
+  string name = 1;
+}
+
+message GetAppResponse {
+  App app = 1;
+  repeated Deployment deployments = 2;
+  repeated Route routes = 3;
+}
+
+message GetDeploymentLogsRequest {
+  string app_name = 1;
+  string deployment_id = 2;
+  int32 tail_lines = 3;
+}
+
+message GetDeploymentLogsResponse {
+  repeated string lines = 1;
+}
+
+message SetSecretRequest {
+  string app_name = 1;
+  string name = 2;
+  string value = 3;
+}
+
+message SetSecretResponse {}
+
+message ListSecretsRequest {
+  string app_name = 1;
+}
+
+message ListSecretsResponse {
+  repeated string names = 1;
+}
+
+message DeleteSecretRequest {
+  string app_name = 1;
+  string name = 2;
+}
+
+message DeleteSecretResponse {}
+
+message ErrorDetail {
+  string code = 1;
+  string message = 2;
 }

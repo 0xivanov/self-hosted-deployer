@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	PlatformService_GetVersion_FullMethodName = "/deployer.v1.PlatformService/GetVersion"
+	PlatformService_GetStatus_FullMethodName  = "/deployer.v1.PlatformService/GetStatus"
 )
 
 // PlatformServiceClient is the client API for PlatformService service.
@@ -27,6 +28,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type PlatformServiceClient interface {
 	GetVersion(ctx context.Context, in *GetVersionRequest, opts ...grpc.CallOption) (*GetVersionResponse, error)
+	GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*GetStatusResponse, error)
 }
 
 type platformServiceClient struct {
@@ -47,11 +49,22 @@ func (c *platformServiceClient) GetVersion(ctx context.Context, in *GetVersionRe
 	return out, nil
 }
 
+func (c *platformServiceClient) GetStatus(ctx context.Context, in *GetStatusRequest, opts ...grpc.CallOption) (*GetStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetStatusResponse)
+	err := c.cc.Invoke(ctx, PlatformService_GetStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PlatformServiceServer is the server API for PlatformService service.
 // All implementations must embed UnimplementedPlatformServiceServer
 // for forward compatibility.
 type PlatformServiceServer interface {
 	GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error)
+	GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error)
 	mustEmbedUnimplementedPlatformServiceServer()
 }
 
@@ -64,6 +77,9 @@ type UnimplementedPlatformServiceServer struct{}
 
 func (UnimplementedPlatformServiceServer) GetVersion(context.Context, *GetVersionRequest) (*GetVersionResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetVersion not implemented")
+}
+func (UnimplementedPlatformServiceServer) GetStatus(context.Context, *GetStatusRequest) (*GetStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetStatus not implemented")
 }
 func (UnimplementedPlatformServiceServer) mustEmbedUnimplementedPlatformServiceServer() {}
 func (UnimplementedPlatformServiceServer) testEmbeddedByValue()                         {}
@@ -104,6 +120,24 @@ func _PlatformService_GetVersion_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PlatformService_GetStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PlatformServiceServer).GetStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PlatformService_GetStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PlatformServiceServer).GetStatus(ctx, req.(*GetStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PlatformService_ServiceDesc is the grpc.ServiceDesc for PlatformService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -114,6 +148,620 @@ var PlatformService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetVersion",
 			Handler:    _PlatformService_GetVersion_Handler,
+		},
+		{
+			MethodName: "GetStatus",
+			Handler:    _PlatformService_GetStatus_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "deployer/v1/platform.proto",
+}
+
+const (
+	NodeService_JoinNode_FullMethodName      = "/deployer.v1.NodeService/JoinNode"
+	NodeService_ListNodes_FullMethodName     = "/deployer.v1.NodeService/ListNodes"
+	NodeService_GetNode_FullMethodName       = "/deployer.v1.NodeService/GetNode"
+	NodeService_HeartbeatNode_FullMethodName = "/deployer.v1.NodeService/HeartbeatNode"
+)
+
+// NodeServiceClient is the client API for NodeService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type NodeServiceClient interface {
+	JoinNode(ctx context.Context, in *JoinNodeRequest, opts ...grpc.CallOption) (*JoinNodeResponse, error)
+	ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error)
+	GetNode(ctx context.Context, in *GetNodeRequest, opts ...grpc.CallOption) (*GetNodeResponse, error)
+	HeartbeatNode(ctx context.Context, in *HeartbeatNodeRequest, opts ...grpc.CallOption) (*HeartbeatNodeResponse, error)
+}
+
+type nodeServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewNodeServiceClient(cc grpc.ClientConnInterface) NodeServiceClient {
+	return &nodeServiceClient{cc}
+}
+
+func (c *nodeServiceClient) JoinNode(ctx context.Context, in *JoinNodeRequest, opts ...grpc.CallOption) (*JoinNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(JoinNodeResponse)
+	err := c.cc.Invoke(ctx, NodeService_JoinNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeServiceClient) ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListNodesResponse)
+	err := c.cc.Invoke(ctx, NodeService_ListNodes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeServiceClient) GetNode(ctx context.Context, in *GetNodeRequest, opts ...grpc.CallOption) (*GetNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetNodeResponse)
+	err := c.cc.Invoke(ctx, NodeService_GetNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeServiceClient) HeartbeatNode(ctx context.Context, in *HeartbeatNodeRequest, opts ...grpc.CallOption) (*HeartbeatNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HeartbeatNodeResponse)
+	err := c.cc.Invoke(ctx, NodeService_HeartbeatNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// NodeServiceServer is the server API for NodeService service.
+// All implementations must embed UnimplementedNodeServiceServer
+// for forward compatibility.
+type NodeServiceServer interface {
+	JoinNode(context.Context, *JoinNodeRequest) (*JoinNodeResponse, error)
+	ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error)
+	GetNode(context.Context, *GetNodeRequest) (*GetNodeResponse, error)
+	HeartbeatNode(context.Context, *HeartbeatNodeRequest) (*HeartbeatNodeResponse, error)
+	mustEmbedUnimplementedNodeServiceServer()
+}
+
+// UnimplementedNodeServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedNodeServiceServer struct{}
+
+func (UnimplementedNodeServiceServer) JoinNode(context.Context, *JoinNodeRequest) (*JoinNodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method JoinNode not implemented")
+}
+func (UnimplementedNodeServiceServer) ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListNodes not implemented")
+}
+func (UnimplementedNodeServiceServer) GetNode(context.Context, *GetNodeRequest) (*GetNodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetNode not implemented")
+}
+func (UnimplementedNodeServiceServer) HeartbeatNode(context.Context, *HeartbeatNodeRequest) (*HeartbeatNodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method HeartbeatNode not implemented")
+}
+func (UnimplementedNodeServiceServer) mustEmbedUnimplementedNodeServiceServer() {}
+func (UnimplementedNodeServiceServer) testEmbeddedByValue()                     {}
+
+// UnsafeNodeServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to NodeServiceServer will
+// result in compilation errors.
+type UnsafeNodeServiceServer interface {
+	mustEmbedUnimplementedNodeServiceServer()
+}
+
+func RegisterNodeServiceServer(s grpc.ServiceRegistrar, srv NodeServiceServer) {
+	// If the following call panics, it indicates UnimplementedNodeServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&NodeService_ServiceDesc, srv)
+}
+
+func _NodeService_JoinNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(JoinNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).JoinNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_JoinNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).JoinNode(ctx, req.(*JoinNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodeService_ListNodes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListNodesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).ListNodes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_ListNodes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).ListNodes(ctx, req.(*ListNodesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodeService_GetNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).GetNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_GetNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).GetNode(ctx, req.(*GetNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodeService_HeartbeatNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HeartbeatNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).HeartbeatNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_HeartbeatNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).HeartbeatNode(ctx, req.(*HeartbeatNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// NodeService_ServiceDesc is the grpc.ServiceDesc for NodeService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var NodeService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "deployer.v1.NodeService",
+	HandlerType: (*NodeServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "JoinNode",
+			Handler:    _NodeService_JoinNode_Handler,
+		},
+		{
+			MethodName: "ListNodes",
+			Handler:    _NodeService_ListNodes_Handler,
+		},
+		{
+			MethodName: "GetNode",
+			Handler:    _NodeService_GetNode_Handler,
+		},
+		{
+			MethodName: "HeartbeatNode",
+			Handler:    _NodeService_HeartbeatNode_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "deployer/v1/platform.proto",
+}
+
+const (
+	AppService_DeployApp_FullMethodName         = "/deployer.v1.AppService/DeployApp"
+	AppService_ListApps_FullMethodName          = "/deployer.v1.AppService/ListApps"
+	AppService_GetApp_FullMethodName            = "/deployer.v1.AppService/GetApp"
+	AppService_GetDeploymentLogs_FullMethodName = "/deployer.v1.AppService/GetDeploymentLogs"
+)
+
+// AppServiceClient is the client API for AppService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type AppServiceClient interface {
+	DeployApp(ctx context.Context, in *DeployAppRequest, opts ...grpc.CallOption) (*DeployAppResponse, error)
+	ListApps(ctx context.Context, in *ListAppsRequest, opts ...grpc.CallOption) (*ListAppsResponse, error)
+	GetApp(ctx context.Context, in *GetAppRequest, opts ...grpc.CallOption) (*GetAppResponse, error)
+	GetDeploymentLogs(ctx context.Context, in *GetDeploymentLogsRequest, opts ...grpc.CallOption) (*GetDeploymentLogsResponse, error)
+}
+
+type appServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewAppServiceClient(cc grpc.ClientConnInterface) AppServiceClient {
+	return &appServiceClient{cc}
+}
+
+func (c *appServiceClient) DeployApp(ctx context.Context, in *DeployAppRequest, opts ...grpc.CallOption) (*DeployAppResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeployAppResponse)
+	err := c.cc.Invoke(ctx, AppService_DeployApp_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *appServiceClient) ListApps(ctx context.Context, in *ListAppsRequest, opts ...grpc.CallOption) (*ListAppsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAppsResponse)
+	err := c.cc.Invoke(ctx, AppService_ListApps_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *appServiceClient) GetApp(ctx context.Context, in *GetAppRequest, opts ...grpc.CallOption) (*GetAppResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetAppResponse)
+	err := c.cc.Invoke(ctx, AppService_GetApp_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *appServiceClient) GetDeploymentLogs(ctx context.Context, in *GetDeploymentLogsRequest, opts ...grpc.CallOption) (*GetDeploymentLogsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDeploymentLogsResponse)
+	err := c.cc.Invoke(ctx, AppService_GetDeploymentLogs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AppServiceServer is the server API for AppService service.
+// All implementations must embed UnimplementedAppServiceServer
+// for forward compatibility.
+type AppServiceServer interface {
+	DeployApp(context.Context, *DeployAppRequest) (*DeployAppResponse, error)
+	ListApps(context.Context, *ListAppsRequest) (*ListAppsResponse, error)
+	GetApp(context.Context, *GetAppRequest) (*GetAppResponse, error)
+	GetDeploymentLogs(context.Context, *GetDeploymentLogsRequest) (*GetDeploymentLogsResponse, error)
+	mustEmbedUnimplementedAppServiceServer()
+}
+
+// UnimplementedAppServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedAppServiceServer struct{}
+
+func (UnimplementedAppServiceServer) DeployApp(context.Context, *DeployAppRequest) (*DeployAppResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeployApp not implemented")
+}
+func (UnimplementedAppServiceServer) ListApps(context.Context, *ListAppsRequest) (*ListAppsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListApps not implemented")
+}
+func (UnimplementedAppServiceServer) GetApp(context.Context, *GetAppRequest) (*GetAppResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetApp not implemented")
+}
+func (UnimplementedAppServiceServer) GetDeploymentLogs(context.Context, *GetDeploymentLogsRequest) (*GetDeploymentLogsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetDeploymentLogs not implemented")
+}
+func (UnimplementedAppServiceServer) mustEmbedUnimplementedAppServiceServer() {}
+func (UnimplementedAppServiceServer) testEmbeddedByValue()                    {}
+
+// UnsafeAppServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AppServiceServer will
+// result in compilation errors.
+type UnsafeAppServiceServer interface {
+	mustEmbedUnimplementedAppServiceServer()
+}
+
+func RegisterAppServiceServer(s grpc.ServiceRegistrar, srv AppServiceServer) {
+	// If the following call panics, it indicates UnimplementedAppServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&AppService_ServiceDesc, srv)
+}
+
+func _AppService_DeployApp_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeployAppRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServiceServer).DeployApp(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppService_DeployApp_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServiceServer).DeployApp(ctx, req.(*DeployAppRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AppService_ListApps_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAppsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServiceServer).ListApps(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppService_ListApps_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServiceServer).ListApps(ctx, req.(*ListAppsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AppService_GetApp_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAppRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServiceServer).GetApp(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppService_GetApp_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServiceServer).GetApp(ctx, req.(*GetAppRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AppService_GetDeploymentLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDeploymentLogsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServiceServer).GetDeploymentLogs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppService_GetDeploymentLogs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServiceServer).GetDeploymentLogs(ctx, req.(*GetDeploymentLogsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// AppService_ServiceDesc is the grpc.ServiceDesc for AppService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var AppService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "deployer.v1.AppService",
+	HandlerType: (*AppServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "DeployApp",
+			Handler:    _AppService_DeployApp_Handler,
+		},
+		{
+			MethodName: "ListApps",
+			Handler:    _AppService_ListApps_Handler,
+		},
+		{
+			MethodName: "GetApp",
+			Handler:    _AppService_GetApp_Handler,
+		},
+		{
+			MethodName: "GetDeploymentLogs",
+			Handler:    _AppService_GetDeploymentLogs_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "deployer/v1/platform.proto",
+}
+
+const (
+	SecretService_SetSecret_FullMethodName    = "/deployer.v1.SecretService/SetSecret"
+	SecretService_ListSecrets_FullMethodName  = "/deployer.v1.SecretService/ListSecrets"
+	SecretService_DeleteSecret_FullMethodName = "/deployer.v1.SecretService/DeleteSecret"
+)
+
+// SecretServiceClient is the client API for SecretService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type SecretServiceClient interface {
+	SetSecret(ctx context.Context, in *SetSecretRequest, opts ...grpc.CallOption) (*SetSecretResponse, error)
+	ListSecrets(ctx context.Context, in *ListSecretsRequest, opts ...grpc.CallOption) (*ListSecretsResponse, error)
+	DeleteSecret(ctx context.Context, in *DeleteSecretRequest, opts ...grpc.CallOption) (*DeleteSecretResponse, error)
+}
+
+type secretServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewSecretServiceClient(cc grpc.ClientConnInterface) SecretServiceClient {
+	return &secretServiceClient{cc}
+}
+
+func (c *secretServiceClient) SetSecret(ctx context.Context, in *SetSecretRequest, opts ...grpc.CallOption) (*SetSecretResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetSecretResponse)
+	err := c.cc.Invoke(ctx, SecretService_SetSecret_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *secretServiceClient) ListSecrets(ctx context.Context, in *ListSecretsRequest, opts ...grpc.CallOption) (*ListSecretsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSecretsResponse)
+	err := c.cc.Invoke(ctx, SecretService_ListSecrets_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *secretServiceClient) DeleteSecret(ctx context.Context, in *DeleteSecretRequest, opts ...grpc.CallOption) (*DeleteSecretResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteSecretResponse)
+	err := c.cc.Invoke(ctx, SecretService_DeleteSecret_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SecretServiceServer is the server API for SecretService service.
+// All implementations must embed UnimplementedSecretServiceServer
+// for forward compatibility.
+type SecretServiceServer interface {
+	SetSecret(context.Context, *SetSecretRequest) (*SetSecretResponse, error)
+	ListSecrets(context.Context, *ListSecretsRequest) (*ListSecretsResponse, error)
+	DeleteSecret(context.Context, *DeleteSecretRequest) (*DeleteSecretResponse, error)
+	mustEmbedUnimplementedSecretServiceServer()
+}
+
+// UnimplementedSecretServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedSecretServiceServer struct{}
+
+func (UnimplementedSecretServiceServer) SetSecret(context.Context, *SetSecretRequest) (*SetSecretResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetSecret not implemented")
+}
+func (UnimplementedSecretServiceServer) ListSecrets(context.Context, *ListSecretsRequest) (*ListSecretsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListSecrets not implemented")
+}
+func (UnimplementedSecretServiceServer) DeleteSecret(context.Context, *DeleteSecretRequest) (*DeleteSecretResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteSecret not implemented")
+}
+func (UnimplementedSecretServiceServer) mustEmbedUnimplementedSecretServiceServer() {}
+func (UnimplementedSecretServiceServer) testEmbeddedByValue()                       {}
+
+// UnsafeSecretServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to SecretServiceServer will
+// result in compilation errors.
+type UnsafeSecretServiceServer interface {
+	mustEmbedUnimplementedSecretServiceServer()
+}
+
+func RegisterSecretServiceServer(s grpc.ServiceRegistrar, srv SecretServiceServer) {
+	// If the following call panics, it indicates UnimplementedSecretServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&SecretService_ServiceDesc, srv)
+}
+
+func _SecretService_SetSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetSecretRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SecretServiceServer).SetSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SecretService_SetSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SecretServiceServer).SetSecret(ctx, req.(*SetSecretRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SecretService_ListSecrets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSecretsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SecretServiceServer).ListSecrets(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SecretService_ListSecrets_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SecretServiceServer).ListSecrets(ctx, req.(*ListSecretsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SecretService_DeleteSecret_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteSecretRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SecretServiceServer).DeleteSecret(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SecretService_DeleteSecret_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SecretServiceServer).DeleteSecret(ctx, req.(*DeleteSecretRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// SecretService_ServiceDesc is the grpc.ServiceDesc for SecretService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var SecretService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "deployer.v1.SecretService",
+	HandlerType: (*SecretServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "SetSecret",
+			Handler:    _SecretService_SetSecret_Handler,
+		},
+		{
+			MethodName: "ListSecrets",
+			Handler:    _SecretService_ListSecrets_Handler,
+		},
+		{
+			MethodName: "DeleteSecret",
+			Handler:    _SecretService_DeleteSecret_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
