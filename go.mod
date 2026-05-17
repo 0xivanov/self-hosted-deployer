@@ -1,6 +1,6 @@
 module github.com/0xivanov/self-hosted-deployer
 
-go 1.21
+go 1.26
 
 require (
 	google.golang.org/grpc v1.67.1
