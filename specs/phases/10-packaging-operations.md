@@ -214,7 +214,47 @@ Out Of Scope:
 
 - Homebrew/Apt repositories.
 
-## 10.07 Add End-To-End MVP Smoke Test Script
+## 10.07 Add Local CLI Install Target
+
+Goal: make the local `deployer` CLI easy to add to the user's `PATH` during development.
+
+Inputs:
+
+- Build tooling.
+- CLI binary.
+
+Implementation Notes:
+
+- Add:
+  - `make install-cli`
+- Default install destination:
+  - `$HOME/.local/bin/deployer`
+- Create `$HOME/.local/bin` when missing.
+- Build `./cmd/deployer` before installing.
+- Print a clear next step if `$HOME/.local/bin` is not on `PATH`.
+- Avoid writing to `/usr/local/bin`, `/opt/homebrew/bin`, or other privileged directories by default.
+- Optional future target:
+  - `make install`
+  - installs `deployer`, `deployer-server`, and `deployer-agent`.
+
+Acceptance Criteria:
+
+- `make install-cli` installs the CLI into `$HOME/.local/bin/deployer`.
+- Running `deployer version` works after `$HOME/.local/bin` is on `PATH`.
+- The command does not require root privileges.
+- The command prints PATH guidance when needed.
+
+Dependencies:
+
+- `00.02`
+
+Out Of Scope:
+
+- Homebrew formula.
+- System package manager installation.
+- Release-channel installer script.
+
+## 10.08 Add End-To-End MVP Smoke Test Script
 
 Goal: document and partially automate the MVP success path.
 

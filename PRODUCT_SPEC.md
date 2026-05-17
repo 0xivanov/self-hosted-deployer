@@ -1240,6 +1240,7 @@ deployer events --watch
 - Basic backup hooks for pinned stateful apps.
 - `deployer doctor` diagnostics.
 - Platform event log.
+- Local developer install target for the CLI, e.g. `make install-cli` into `$HOME/.local/bin`.
 
 ### 18.3 Out Of Scope For MVP
 
