@@ -59,6 +59,24 @@ func TestSQLiteRepositoryPersistsAdminTokens(t *testing.T) {
 	}
 }
 
+func TestSQLiteRepositoryRecordsMigrationVersion(t *testing.T) {
+	repo, err := OpenSQLite(context.Background(), "file:"+filepath.Join(t.TempDir(), "deployer.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	defer repo.Close()
+
+	var versionID int64
+	var isApplied bool
+	err = repo.db.QueryRowContext(context.Background(), `SELECT version_id, is_applied FROM goose_db_version ORDER BY id DESC LIMIT 1`).Scan(&versionID, &isApplied)
+	if err != nil {
+		t.Fatalf("query migration version: %v", err)
+	}
+	if versionID != 1 || !isApplied {
+		t.Fatalf("expected migration version 1 to be applied, got version=%d applied=%v", versionID, isApplied)
+	}
+}
+
 func TestSQLiteRepositoryMapsMissingRowsToNotFound(t *testing.T) {
 	repo, err := OpenSQLite(context.Background(), "file:"+filepath.Join(t.TempDir(), "deployer.db"))
 	if err != nil {

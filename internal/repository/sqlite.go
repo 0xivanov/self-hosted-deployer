@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/0xivanov/self-hosted-deployer/internal/repository/migrations"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/pressly/goose/v3"
 )
 
 type SQLiteRepository struct {
@@ -20,6 +22,10 @@ func OpenSQLite(ctx context.Context, dsn string) (*SQLiteRepository, error) {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
 	repo := &SQLiteRepository{db: db}
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("enable sqlite foreign keys: %w", err)
+	}
 	if err := repo.Migrate(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -36,77 +42,12 @@ func (r *SQLiteRepository) Ping(ctx context.Context) error {
 }
 
 func (r *SQLiteRepository) Migrate(ctx context.Context) error {
-	statements := []string{
-		`PRAGMA foreign_keys = ON`,
-		`CREATE TABLE IF NOT EXISTS admin_tokens (
-			token_hash TEXT PRIMARY KEY,
-			display_name TEXT NOT NULL,
-			created_at TEXT NOT NULL,
-			last_used_at TEXT,
-			revoked_at TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS nodes (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL UNIQUE,
-			status TEXT NOT NULL,
-			labels_json TEXT NOT NULL DEFAULT '{}',
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS node_join_tokens (
-			token_hash TEXT PRIMARY KEY,
-			intended_node_name TEXT,
-			labels_json TEXT NOT NULL DEFAULT '{}',
-			created_at TEXT NOT NULL,
-			expires_at TEXT NOT NULL,
-			used_at TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS agent_tokens (
-			token_hash TEXT PRIMARY KEY,
-			node_id TEXT NOT NULL,
-			created_at TEXT NOT NULL,
-			last_used_at TEXT,
-			revoked_at TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS apps (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL UNIQUE,
-			image TEXT NOT NULL,
-			desired_state_json TEXT NOT NULL,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL,
-			deleted_at TEXT
-		)`,
-		`CREATE TABLE IF NOT EXISTS deployments (
-			id TEXT PRIMARY KEY,
-			app_id TEXT NOT NULL,
-			status TEXT NOT NULL,
-			failure_reason TEXT,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
-		`CREATE TABLE IF NOT EXISTS app_secrets (
-			app_id TEXT NOT NULL,
-			name TEXT NOT NULL,
-			ciphertext TEXT NOT NULL,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL,
-			PRIMARY KEY (app_id, name)
-		)`,
-		`CREATE TABLE IF NOT EXISTS routes (
-			id TEXT PRIMARY KEY,
-			app_id TEXT NOT NULL,
-			domain TEXT NOT NULL UNIQUE,
-			target_port INTEGER NOT NULL,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)`,
+	goose.SetBaseFS(migrations.FS)
+	if err := goose.SetDialect("sqlite3"); err != nil {
+		return fmt.Errorf("set migration dialect: %w", err)
 	}
-
-	for _, statement := range statements {
-		if _, err := r.db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("migrate sqlite: %w", err)
-		}
+	if err := goose.UpContext(ctx, r.db, "."); err != nil {
+		return fmt.Errorf("migrate sqlite: %w", err)
 	}
 	return nil
 }
