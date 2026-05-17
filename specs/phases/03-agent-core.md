@@ -2,13 +2,13 @@
 
 Goal: implement node enrollment, identity, and heartbeat reporting.
 
-## 03.01 Add Node Model Store Methods
+## 03.01 Add Node Model Repository Methods
 
 Goal: persist nodes and their lifecycle state.
 
 Inputs:
 
-- SQLite store.
+- SQLite repository.
 - Node data model.
 
 Implementation Notes:
@@ -22,7 +22,7 @@ Implementation Notes:
 
 Acceptance Criteria:
 
-- Store tests cover create/list/get/update.
+- Repository tests cover create/list/get/update.
 - Node status defaults to pending or online depending creation path.
 
 Dependencies:
@@ -33,13 +33,13 @@ Out Of Scope:
 
 - Kubernetes node synchronization.
 
-## 03.02 Add Join Token Store Methods
+## 03.02 Add Join Token Repository Methods
 
 Goal: create and consume one-time node join tokens.
 
 Inputs:
 
-- SQLite store.
+- SQLite repository.
 
 Implementation Notes:
 
@@ -72,8 +72,8 @@ Goal: allow a new agent to exchange a join token for node identity.
 
 Inputs:
 
-- Node store.
-- Join token store.
+- Node repository.
+- Join token repository.
 
 Implementation Notes:
 

@@ -58,13 +58,13 @@ Out Of Scope:
 
 - Envelope encryption.
 
-## 08.03 Add Secret Store Methods
+## 08.03 Add Secret Repository Methods
 
-Goal: store encrypted app secrets.
+Goal: persist encrypted app secrets.
 
 Inputs:
 
-- SQLite store.
+- SQLite repository.
 - Encryption helper.
 
 Implementation Notes:
@@ -98,7 +98,7 @@ Goal: let CLI manage app secrets.
 
 Inputs:
 
-- Secret store.
+- Secret repository.
 - Admin auth.
 
 Implementation Notes:
@@ -164,7 +164,7 @@ Goal: make app secrets available to pods.
 
 Inputs:
 
-- Secret store.
+- Secret repository.
 - App config secret names.
 
 Implementation Notes:

@@ -555,7 +555,7 @@ topologySpreadConstraints:
 
 Admin authentication and application secret storage are separate concerns.
 
-An identity provider can secure operator login later, but application secrets should be stored in the platform's secret store, not in the login system.
+An identity provider can secure operator login later, but application secrets should be stored in the platform's secret repository, not in the login system.
 
 Application secrets include:
 
@@ -1240,6 +1240,7 @@ deployer events --watch
 - Basic backup hooks for pinned stateful apps.
 - `deployer doctor` diagnostics.
 - Platform event log.
+- Local developer install target for the CLI, e.g. `make install-cli` into `$HOME/.local/bin`.
 
 ### 18.3 Out Of Scope For MVP
 

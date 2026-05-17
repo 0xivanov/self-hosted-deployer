@@ -49,7 +49,7 @@ Inputs:
 
 Implementation Notes:
 
-- Define store interfaces for:
+- Define repository interfaces for:
   - nodes
   - join tokens
   - apps
@@ -61,7 +61,7 @@ Implementation Notes:
 
 Acceptance Criteria:
 
-- Store interfaces compile.
+- Repository interfaces compile.
 - In-memory implementation exists for tests.
 - Basic unit tests cover not-found behavior.
 
@@ -73,7 +73,7 @@ Out Of Scope:
 
 - Real SQL schema.
 
-## 01.03 Add SQLite Store
+## 01.03 Add SQLite Repository
 
 Goal: provide MVP persistence with a single local database file.
 
@@ -100,7 +100,7 @@ Acceptance Criteria:
 
 - Server creates or migrates database on startup.
 - Unit/integration tests can use temp DBs.
-- Store tests pass against SQLite.
+- Repository tests pass against SQLite.
 
 Dependencies:
 

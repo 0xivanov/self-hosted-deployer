@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package deployer.v1;
+
+option go_package = "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1;deployerv1";
+
+service PlatformService {
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+}
+
+message GetVersionRequest {}
+
+message GetVersionResponse {
+  string version = 1;
+  string commit = 2;
+  string build_date = 3;
+}

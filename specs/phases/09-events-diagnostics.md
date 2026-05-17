@@ -57,13 +57,13 @@ Out Of Scope:
 
 - Audit-grade tamper-proof logging.
 
-## EV.02 Add Event Store Methods
+## EV.02 Add Event Repository Methods
 
 Goal: persist and query platform events.
 
 Inputs:
 
-- SQLite store.
+- SQLite repository.
 - Event data model.
 
 Implementation Notes:
@@ -81,7 +81,7 @@ Implementation Notes:
 
 Acceptance Criteria:
 
-- Store can create and list events.
+- Repository can create and list events.
 - Filters work independently and together.
 - Tests cover ordering and filtering.
 
@@ -100,7 +100,7 @@ Goal: provide a single safe way for platform code to emit events.
 
 Inputs:
 
-- Event store.
+- Event repository.
 
 Implementation Notes:
 
@@ -133,7 +133,7 @@ Goal: expose events to CLI and future automation.
 Inputs:
 
 - Protobuf API contracts.
-- Event store.
+- Event repository.
 
 Implementation Notes:
 
@@ -351,7 +351,7 @@ Goal: prevent unbounded event table growth.
 
 Inputs:
 
-- Event store.
+- Event repository.
 
 Implementation Notes:
 
