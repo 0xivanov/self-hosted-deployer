@@ -21,7 +21,7 @@ Implementation Notes:
   - `cmd/deployer-server`
   - `cmd/deployer-agent`
 - Use shared internal packages:
-  - `internal/api`
+  - `internal/apperrors`
   - `internal/proto`
   - `internal/config`
   - `internal/logging`
