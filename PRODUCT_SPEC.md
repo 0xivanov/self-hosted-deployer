@@ -555,7 +555,7 @@ topologySpreadConstraints:
 
 Admin authentication and application secret storage are separate concerns.
 
-An identity provider can secure operator login later, but application secrets should be stored in the platform's secret store, not in the login system.
+An identity provider can secure operator login later, but application secrets should be stored in the platform's secret repository, not in the login system.
 
 Application secrets include:
 

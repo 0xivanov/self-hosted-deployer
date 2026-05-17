@@ -2,9 +2,11 @@ package api
 
 import (
 	"errors"
+
+	"github.com/0xivanov/self-hosted-deployer/internal/repository"
 )
 
-var ErrNotFound = errors.New("not found")
+var ErrNotFound = repository.ErrNotFound
 
 type Code string
 
@@ -41,8 +43,8 @@ func PermissionDenied(message string) error {
 	return Error{Code: CodePermissionDenied, Message: message}
 }
 
-func FromStoreError(err error, resource string) error {
-	if errors.Is(err, ErrNotFound) {
+func FromRepositoryError(err error, resource string) error {
+	if errors.Is(err, repository.ErrNotFound) {
 		return NotFound(resource + " not found")
 	}
 	return Error{Code: CodeInternal, Message: "internal server error"}

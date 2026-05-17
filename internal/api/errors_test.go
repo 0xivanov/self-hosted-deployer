@@ -1,6 +1,10 @@
 package api
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/0xivanov/self-hosted-deployer/internal/repository"
+)
 
 func TestInvalidArgumentUsesCanonicalCode(t *testing.T) {
 	if got := CodeOf(InvalidArgument("bad input")); got != CodeInvalidArgument {
@@ -8,8 +12,8 @@ func TestInvalidArgumentUsesCanonicalCode(t *testing.T) {
 	}
 }
 
-func TestFromStoreErrorMapsNotFound(t *testing.T) {
-	if got := CodeOf(FromStoreError(ErrNotFound, "node")); got != CodeNotFound {
+func TestFromRepositoryErrorMapsNotFound(t *testing.T) {
+	if got := CodeOf(FromRepositoryError(repository.ErrNotFound, "node")); got != CodeNotFound {
 		t.Fatalf("expected NotFound, got %s", got)
 	}
 }

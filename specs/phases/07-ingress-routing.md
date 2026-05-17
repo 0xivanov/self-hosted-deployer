@@ -117,7 +117,7 @@ Out Of Scope:
 
 - Wildcard certificate automation.
 
-## 07.05 Add Route Store And API
+## 07.05 Add Route Repository And API
 
 Goal: track public routes at platform level.
 
@@ -158,7 +158,7 @@ Goal: expose whether routes have healthy backend replicas.
 Inputs:
 
 - Kubernetes rollout status.
-- Route store.
+- Route repository.
 
 Implementation Notes:
 

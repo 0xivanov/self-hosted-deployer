@@ -1,6 +1,6 @@
 # Phase 04: App Desired State
 
-Goal: let operators define apps and store desired deployment state before touching Kubernetes.
+Goal: let operators define apps and persist desired deployment state before touching Kubernetes.
 
 ## 04.01 Define App Config Schema
 
@@ -74,13 +74,13 @@ Out Of Scope:
 
 - Live registry image checks.
 
-## 04.03 Add App Store Methods
+## 04.03 Add App Repository Methods
 
 Goal: persist desired app state.
 
 Inputs:
 
-- SQLite store.
+- SQLite repository.
 - App schema.
 
 Implementation Notes:
@@ -91,7 +91,7 @@ Implementation Notes:
 
 Acceptance Criteria:
 
-- Store can create/update/get/list apps.
+- Repository can create/update/get/list apps.
 - Updating app records `updated_at`.
 - Tests cover duplicate app name behavior.
 
@@ -110,7 +110,7 @@ Goal: expose desired app state management.
 
 Inputs:
 
-- App store methods.
+- App repository methods.
 - Admin auth.
 
 Implementation Notes:
@@ -215,13 +215,13 @@ Out Of Scope:
 
 - Live pod status.
 
-## 04.07 Add Deployment Record Store
+## 04.07 Add Deployment Record Repository
 
 Goal: track deploy attempts separately from app desired state.
 
 Inputs:
 
-- App store.
+- App repository.
 
 Implementation Notes:
 

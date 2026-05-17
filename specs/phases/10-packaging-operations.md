@@ -79,7 +79,7 @@ Goal: simplify VPS setup for the control plane.
 Inputs:
 
 - Server binary.
-- SQLite store.
+- SQLite repository.
 - k3s expected install.
 - WireGuard hub.
 

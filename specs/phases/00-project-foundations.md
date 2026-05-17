@@ -26,7 +26,7 @@ Implementation Notes:
   - `internal/config`
   - `internal/logging`
   - `internal/security`
-  - `internal/store`
+  - `internal/repository`
   - `internal/version`
 
 Acceptance Criteria:

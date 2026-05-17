@@ -53,15 +53,12 @@ func CompareTokenHash(expectedHash, actualHash string) bool {
 }
 
 func Prefix(token string) (string, error) {
-	idx := strings.LastIndex(token, "_")
-	if idx <= 0 {
-		return "", ErrInvalidPrefix
+	for _, prefix := range knownPrefixes() {
+		if strings.HasPrefix(token, prefix+"_") && len(token) > len(prefix)+1 {
+			return prefix, nil
+		}
 	}
-	prefix := token[:idx]
-	if !validPrefix(prefix) {
-		return "", ErrInvalidPrefix
-	}
-	return prefix, nil
+	return "", ErrInvalidPrefix
 }
 
 func RedactToken(token string) string {
@@ -79,10 +76,18 @@ func RedactToken(token string) string {
 }
 
 func validPrefix(prefix string) bool {
-	switch prefix {
-	case AdminTokenPrefix, JoinTokenPrefix, AgentTokenPrefix:
-		return true
-	default:
-		return false
+	for _, knownPrefix := range knownPrefixes() {
+		if prefix == knownPrefix {
+			return true
+		}
+	}
+	return false
+}
+
+func knownPrefixes() []string {
+	return []string{
+		AdminTokenPrefix,
+		JoinTokenPrefix,
+		AgentTokenPrefix,
 	}
 }

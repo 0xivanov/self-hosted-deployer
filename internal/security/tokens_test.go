@@ -56,6 +56,18 @@ func TestHashTokenDiffersForDifferentTokens(t *testing.T) {
 	}
 }
 
+func TestPrefixHandlesUnderscoresInSuffix(t *testing.T) {
+	token := AgentTokenPrefix + "_abc_def"
+
+	prefix, err := Prefix(token)
+	if err != nil {
+		t.Fatalf("prefix: %v", err)
+	}
+	if prefix != AgentTokenPrefix {
+		t.Fatalf("expected %q, got %q", AgentTokenPrefix, prefix)
+	}
+}
+
 func TestRedactTokenDoesNotReturnFullToken(t *testing.T) {
 	token, err := NewToken(JoinTokenPrefix)
 	if err != nil {
@@ -64,6 +76,17 @@ func TestRedactTokenDoesNotReturnFullToken(t *testing.T) {
 	redacted := RedactToken(token)
 	if redacted == token {
 		t.Fatal("redaction returned full token")
+	}
+	if !strings.Contains(redacted, "[REDACTED]") {
+		t.Fatalf("expected redaction marker, got %q", redacted)
+	}
+}
+
+func TestRedactTokenHandlesUnderscoresInSuffix(t *testing.T) {
+	redacted := RedactToken(JoinTokenPrefix + "_abc_def")
+
+	if !strings.HasPrefix(redacted, JoinTokenPrefix+"_") {
+		t.Fatalf("expected join prefix, got %q", redacted)
 	}
 	if !strings.Contains(redacted, "[REDACTED]") {
 		t.Fatalf("expected redaction marker, got %q", redacted)
