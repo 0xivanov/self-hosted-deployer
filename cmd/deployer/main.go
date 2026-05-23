@@ -176,10 +176,16 @@ func (a cliApp) login(args []string, opts cliOptions) int {
 		return 1
 	}
 
+	output, err := resolveLoginOutput(opts)
+	if err != nil {
+		fmt.Fprintln(a.stderr, err)
+		return 1
+	}
+
 	cfg := clicore.Config{
 		ServerURL:  serverURL,
 		AdminToken: token,
-		Output:     opts.output,
+		Output:     output,
 	}
 	if err := clicore.SaveConfig(opts.configPath, cfg); err != nil {
 		fmt.Fprintln(a.stderr, err)
@@ -188,6 +194,21 @@ func (a cliApp) login(args []string, opts cliOptions) int {
 
 	fmt.Fprintf(a.stdout, "logged in to %s\n", serverURL)
 	return 0
+}
+
+func resolveLoginOutput(opts cliOptions) (string, error) {
+	if opts.outputSet {
+		return opts.output, nil
+	}
+
+	cfg, err := clicore.LoadConfig(opts.configPath)
+	if errors.Is(err, clicore.ErrConfigNotFound) {
+		return opts.output, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return cfg.Output, nil
 }
 
 func (a cliApp) server(args []string, opts cliOptions) int {

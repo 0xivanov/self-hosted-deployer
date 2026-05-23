@@ -116,6 +116,41 @@ func TestLoginPromptsForTokenValidatesAndSavesConfig(t *testing.T) {
 	}
 }
 
+func TestLoginPreservesExistingOutputWhenOutputFlagUnset(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := clicore.SaveConfig(configPath, clicore.Config{
+		ServerURL:  "old:7443",
+		AdminToken: "dep_admin_old",
+		Output:     clicore.OutputJSON,
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	factory := &recordingClientFactory{
+		status: clicore.ServerStatus{Version: "dev", Ready: true},
+	}
+	app := newCLIApp(strings.NewReader(""), &stdout, &stderr)
+	app.newPlatformClient = factory.newClient
+
+	code := app.run([]string{"--config", configPath, "--token", "dep_admin_new", "login", "localhost:7443"})
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr: %s", code, stderr.String())
+	}
+
+	cfg, err := clicore.LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("load saved config: %v", err)
+	}
+	if cfg.Output != clicore.OutputJSON {
+		t.Fatalf("expected login to preserve JSON output, got %q", cfg.Output)
+	}
+	if cfg.ServerURL != "localhost:7443" || cfg.AdminToken != "dep_admin_new" {
+		t.Fatalf("unexpected saved config: %#v", cfg)
+	}
+}
+
 func TestServerStatusUsesConfigAndSupportsJSON(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	if err := clicore.SaveConfig(configPath, clicore.Config{
