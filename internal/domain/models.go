@@ -32,6 +32,11 @@ type Node struct {
 	Name       string
 	Status     string
 	LabelsJSON string
+	Hostname   string
+	Arch       string
+	OS         string
+	Kernel     string
+	LastSeenAt *time.Time
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }

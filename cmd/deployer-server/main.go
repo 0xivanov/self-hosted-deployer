@@ -142,6 +142,7 @@ func newRepositories(database *db.Db) server.Repositories {
 		AdminTokens: db.NewAdminTokenRepository(database),
 		AgentTokens: db.NewAgentTokenRepository(database),
 		JoinTokens:  db.NewJoinTokenRepository(database),
+		Nodes:       db.NewNodeRepository(database),
 	}
 }
 

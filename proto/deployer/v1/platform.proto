@@ -10,6 +10,7 @@ service PlatformService {
 }
 
 service NodeService {
+  rpc CreateJoinToken(CreateJoinTokenRequest) returns (CreateJoinTokenResponse);
   rpc JoinNode(JoinNodeRequest) returns (JoinNodeResponse);
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
   rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
@@ -54,17 +55,36 @@ message Node {
   map<string, string> labels = 4;
   string created_at = 5;
   string updated_at = 6;
+  string last_seen_at = 7;
+  string hostname = 8;
+  string arch = 9;
+  string os = 10;
+  string kernel = 11;
+}
+
+message CreateJoinTokenRequest {
+  string node_name = 1;
+  map<string, string> labels = 2;
+  int64 ttl_seconds = 3;
+}
+
+message CreateJoinTokenResponse {
+  string join_token = 1;
+  string expires_at = 2;
+  string node_name = 3;
 }
 
 message JoinNodeRequest {
   string join_token = 1;
-  string node_name = 2;
-  map<string, string> labels = 3;
+  string hostname = 2;
+  string arch = 3;
+  string public_key = 4;
 }
 
 message JoinNodeResponse {
   string node_id = 1;
   string agent_token = 2;
+  string node_name = 3;
 }
 
 message ListNodesRequest {
@@ -78,7 +98,7 @@ message ListNodesResponse {
 }
 
 message GetNodeRequest {
-  string node_id = 1;
+  string node_ref = 1;
 }
 
 message GetNodeResponse {
@@ -86,8 +106,12 @@ message GetNodeResponse {
 }
 
 message HeartbeatNodeRequest {
-  string node_id = 1;
-  string status = 2;
+  string status = 1;
+  string hostname = 2;
+  string arch = 3;
+  string os = 4;
+  string kernel = 5;
+  string resource_summary = 6;
 }
 
 message HeartbeatNodeResponse {

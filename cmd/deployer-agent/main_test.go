@@ -1,0 +1,179 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	clicore "github.com/0xivanov/self-hosted-deployer/internal/cli"
+)
+
+func TestJoinPersistsCredentialWithoutPrintingToken(t *testing.T) {
+	credentialPath := filepath.Join(t.TempDir(), "agent", "token")
+	fake := &fakeAgentClient{
+		joinResult: clicore.JoinResult{
+			NodeID:     "node-1",
+			NodeName:   "pi-kitchen",
+			AgentToken: "dep_agent_secret",
+		},
+	}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	restore := replaceAgentGlobals(&stdout, &stderr, fake)
+	defer restore()
+
+	code := join([]string{
+		"--server", "localhost:7443",
+		"--token", "dep_join_once",
+		"--credential-path", credentialPath,
+	})
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr: %s", code, stderr.String())
+	}
+	if fake.serverURL != "localhost:7443" || fake.clientToken != "" {
+		t.Fatalf("unexpected client setup: server=%q token=%q", fake.serverURL, fake.clientToken)
+	}
+	if fake.joinToken != "dep_join_once" {
+		t.Fatalf("expected join token to be sent, got %q", fake.joinToken)
+	}
+
+	data, err := os.ReadFile(credentialPath)
+	if err != nil {
+		t.Fatalf("read credential: %v", err)
+	}
+	if string(data) != "dep_agent_secret\n" {
+		t.Fatalf("unexpected credential contents: %q", string(data))
+	}
+	info, err := os.Stat(credentialPath)
+	if err != nil {
+		t.Fatalf("stat credential: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected credential mode 0600, got %o", got)
+	}
+	if strings.Contains(stdout.String(), "dep_agent_secret") || strings.Contains(stderr.String(), "dep_agent_secret") {
+		t.Fatalf("agent token should not be printed, stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunOnceSendsHeartbeatWithStoredCredential(t *testing.T) {
+	credentialPath := filepath.Join(t.TempDir(), "agent", "token")
+	if err := writeCredential(credentialPath, "dep_agent_saved"); err != nil {
+		t.Fatalf("write credential: %v", err)
+	}
+
+	fake := &fakeAgentClient{}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	restore := replaceAgentGlobals(&stdout, &stderr, fake)
+	defer restore()
+
+	code := runLoop([]string{
+		"--server", "localhost:7443",
+		"--credential-path", credentialPath,
+		"--once",
+	})
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr: %s", code, stderr.String())
+	}
+	if fake.clientToken != "dep_agent_saved" {
+		t.Fatalf("expected stored credential to be used, got %q", fake.clientToken)
+	}
+	if fake.heartbeat.Status != "online" || fake.heartbeat.Hostname == "" || fake.heartbeat.Arch == "" || fake.heartbeat.OS == "" {
+		t.Fatalf("heartbeat missing required metadata: %#v", fake.heartbeat)
+	}
+	if fake.heartbeat.Kernel == "" {
+		t.Fatal("expected heartbeat kernel metadata")
+	}
+	if !strings.Contains(fake.heartbeat.ResourceSummary, "go_routines") {
+		t.Fatalf("expected resource summary, got %q", fake.heartbeat.ResourceSummary)
+	}
+}
+
+func TestRunStopsClearlyOnBadCredentials(t *testing.T) {
+	credentialPath := filepath.Join(t.TempDir(), "agent", "token")
+	if err := writeCredential(credentialPath, "dep_agent_bad"); err != nil {
+		t.Fatalf("write credential: %v", err)
+	}
+
+	fake := &fakeAgentClient{heartbeatErr: errors.New("authentication failed: invalid bearer token")}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	restore := replaceAgentGlobals(&stdout, &stderr, fake)
+	defer restore()
+
+	code := runLoop([]string{
+		"--server", "localhost:7443",
+		"--credential-path", credentialPath,
+		"--once",
+	})
+	if code != 1 {
+		t.Fatalf("expected exit code 1, got %d", code)
+	}
+	if !strings.Contains(stderr.String(), "authentication failed") {
+		t.Fatalf("expected clear auth error, got %q", stderr.String())
+	}
+}
+
+func TestHeartbeatBackoffSequenceAndReset(t *testing.T) {
+	backoff := newBackoff(time.Second, 5*time.Second)
+	for _, want := range []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 5 * time.Second, 5 * time.Second} {
+		if got := backoff.Next(); got != want {
+			t.Fatalf("got delay %s, want %s", got, want)
+		}
+	}
+	backoff.Reset()
+	if got := backoff.Next(); got != time.Second {
+		t.Fatalf("reset delay got %s, want 1s", got)
+	}
+}
+
+func replaceAgentGlobals(stdout *bytes.Buffer, stderr *bytes.Buffer, fake *fakeAgentClient) func() {
+	oldStdout := agentStdout
+	oldStderr := agentStderr
+	oldClient := newAgentClient
+	agentStdout = stdout
+	agentStderr = stderr
+	newAgentClient = func(serverURL string, token string) (agentClient, func() error, error) {
+		fake.serverURL = serverURL
+		fake.clientToken = token
+		return fake, func() error {
+			fake.closed = true
+			return nil
+		}, nil
+	}
+	return func() {
+		agentStdout = oldStdout
+		agentStderr = oldStderr
+		newAgentClient = oldClient
+	}
+}
+
+type fakeAgentClient struct {
+	serverURL    string
+	clientToken  string
+	closed       bool
+	joinToken    string
+	joinResult   clicore.JoinResult
+	joinErr      error
+	heartbeat    clicore.Heartbeat
+	heartbeatErr error
+}
+
+func (c *fakeAgentClient) JoinNode(_ context.Context, joinToken string, _ string, _ string) (clicore.JoinResult, error) {
+	c.joinToken = joinToken
+	if c.joinErr != nil {
+		return clicore.JoinResult{}, c.joinErr
+	}
+	return c.joinResult, nil
+}
+
+func (c *fakeAgentClient) Heartbeat(_ context.Context, heartbeat clicore.Heartbeat) error {
+	c.heartbeat = heartbeat
+	return c.heartbeatErr
+}
