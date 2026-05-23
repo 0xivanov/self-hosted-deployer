@@ -2,9 +2,12 @@ package server
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/db"
+	"github.com/0xivanov/self-hosted-deployer/internal/domain"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"github.com/0xivanov/self-hosted-deployer/internal/security"
 	"google.golang.org/grpc/codes"
@@ -120,4 +123,119 @@ func TestNodeServiceHeartbeatRequiresAgentCaller(t *testing.T) {
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("expected PermissionDenied, got %v", err)
 	}
+}
+
+func TestNodeServiceCanReissueJoinTokenForPendingNode(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDB(t)
+	service := NewNodeService(NodeServiceConfig{
+		Nodes:        db.NewNodeRepository(database),
+		JoinTokens:   db.NewJoinTokenRepository(database),
+		AgentTokens:  db.NewAgentTokenRepository(database),
+		TokenHashKey: "hash-key",
+	})
+
+	first, err := service.CreateJoinToken(WithCaller(ctx, Caller{Kind: CallerAdmin}), &deployerv1.CreateJoinTokenRequest{
+		NodeName: "pi-kitchen",
+	})
+	if err != nil {
+		t.Fatalf("create first join token: %v", err)
+	}
+
+	second, err := service.CreateJoinToken(WithCaller(ctx, Caller{Kind: CallerAdmin}), &deployerv1.CreateJoinTokenRequest{
+		NodeName: "pi-kitchen",
+	})
+	if err != nil {
+		t.Fatalf("reissue join token for pending node: %v", err)
+	}
+	if second.GetJoinToken() == "" || second.GetJoinToken() == first.GetJoinToken() {
+		t.Fatalf("expected distinct replacement token, got first=%q second=%q", first.GetJoinToken(), second.GetJoinToken())
+	}
+}
+
+func TestNodeServiceDoesNotCreatePendingNodeWhenJoinTokenStoreFails(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	service := NewNodeService(NodeServiceConfig{
+		Nodes:        nodes,
+		JoinTokens:   failingJoinTokenRepository{err: errors.New("write failed")},
+		AgentTokens:  db.NewAgentTokenRepository(database),
+		TokenHashKey: "hash-key",
+	})
+
+	_, err := service.CreateJoinToken(WithCaller(ctx, Caller{Kind: CallerAdmin}), &deployerv1.CreateJoinTokenRequest{
+		NodeName: "pi-kitchen",
+	})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("expected Internal, got %v", err)
+	}
+	if _, err := nodes.FindByName(ctx, "pi-kitchen"); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("pending node should not be created when token storage fails, got %v", err)
+	}
+}
+
+func TestNodeServiceDoesNotConsumeJoinTokenWhenAgentTokenStoreFails(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	joinTokens := db.NewJoinTokenRepository(database)
+	service := NewNodeService(NodeServiceConfig{
+		Nodes:        nodes,
+		JoinTokens:   joinTokens,
+		AgentTokens:  failingAgentTokenRepository{err: errors.New("write failed")},
+		TokenHashKey: "hash-key",
+	})
+
+	createResponse, err := service.CreateJoinToken(WithCaller(ctx, Caller{Kind: CallerAdmin}), &deployerv1.CreateJoinTokenRequest{
+		NodeName: "pi-kitchen",
+	})
+	if err != nil {
+		t.Fatalf("create join token: %v", err)
+	}
+
+	_, err = service.JoinNode(ctx, &deployerv1.JoinNodeRequest{
+		JoinToken: createResponse.GetJoinToken(),
+		Hostname:  "pi-kitchen.local",
+		Arch:      "linux/arm64",
+	})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("expected Internal, got %v", err)
+	}
+
+	tokenHash, err := security.HashToken([]byte("hash-key"), createResponse.GetJoinToken())
+	if err != nil {
+		t.Fatalf("hash join token: %v", err)
+	}
+	stored, err := joinTokens.FindByHash(ctx, tokenHash)
+	if err != nil {
+		t.Fatalf("find join token: %v", err)
+	}
+	if stored.UsedAt != nil {
+		t.Fatalf("join token should remain unused after failed enrollment: %#v", stored)
+	}
+}
+
+type failingJoinTokenRepository struct {
+	err error
+}
+
+func (r failingJoinTokenRepository) Create(context.Context, domain.JoinToken) error {
+	return r.err
+}
+
+func (r failingJoinTokenRepository) FindByHash(context.Context, string) (domain.JoinToken, error) {
+	return domain.JoinToken{}, r.err
+}
+
+func (r failingJoinTokenRepository) Consume(context.Context, string, time.Time) (domain.JoinToken, error) {
+	return domain.JoinToken{}, r.err
+}
+
+type failingAgentTokenRepository struct {
+	err error
+}
+
+func (r failingAgentTokenRepository) Create(context.Context, domain.AgentToken) error {
+	return r.err
 }

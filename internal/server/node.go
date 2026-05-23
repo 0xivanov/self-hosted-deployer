@@ -34,6 +34,7 @@ type NodeRepository interface {
 
 type consumableJoinTokenRepository interface {
 	Create(ctx context.Context, token domain.JoinToken) error
+	FindByHash(ctx context.Context, tokenHash string) (domain.JoinToken, error)
 	Consume(ctx context.Context, tokenHash string, usedAt time.Time) (domain.JoinToken, error)
 }
 
@@ -89,11 +90,14 @@ func (s NodeService) CreateJoinToken(ctx context.Context, req *deployerv1.Create
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	if _, err := s.nodes.FindByName(ctx, nodeName); err == nil {
+	existingNode, err := s.nodes.FindByName(ctx, nodeName)
+	if err == nil && existingNode.Status != nodeStatusPending {
 		return nil, status.Error(codes.AlreadyExists, "node already exists")
-	} else if !errors.Is(err, db.ErrNotFound) {
+	}
+	if err != nil && !errors.Is(err, db.ErrNotFound) {
 		return nil, status.Error(codes.Internal, "find node")
 	}
+	nodeExists := err == nil
 
 	rawToken, err := security.NewToken(security.JoinTokenPrefix)
 	if err != nil {
@@ -104,19 +108,6 @@ func (s NodeService) CreateJoinToken(ctx context.Context, req *deployerv1.Create
 		return nil, status.Error(codes.Internal, "hash join token")
 	}
 
-	node := domain.Node{
-		ID:         newID("node"),
-		Name:       nodeName,
-		Status:     nodeStatusPending,
-		LabelsJSON: labelsJSON,
-		Arch:       req.GetLabels()["arch"],
-		CreatedAt:  now,
-		UpdatedAt:  now,
-	}
-	if err := s.nodes.Create(ctx, node); err != nil {
-		return nil, status.Error(codes.Internal, "create pending node")
-	}
-
 	if err := s.joinTokens.Create(ctx, domain.JoinToken{
 		TokenHash:        tokenHash,
 		IntendedNodeName: nodeName,
@@ -125,6 +116,21 @@ func (s NodeService) CreateJoinToken(ctx context.Context, req *deployerv1.Create
 		ExpiresAt:        expiresAt,
 	}); err != nil {
 		return nil, status.Error(codes.Internal, "store join token")
+	}
+
+	if !nodeExists {
+		node := domain.Node{
+			ID:         newID("node"),
+			Name:       nodeName,
+			Status:     nodeStatusPending,
+			LabelsJSON: labelsJSON,
+			Arch:       req.GetLabels()["arch"],
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}
+		if err := s.nodes.Create(ctx, node); err != nil {
+			return nil, status.Error(codes.Internal, "create pending node")
+		}
 	}
 
 	return &deployerv1.CreateJoinTokenResponse{
@@ -148,20 +154,37 @@ func (s NodeService) JoinNode(ctx context.Context, req *deployerv1.JoinNodeReque
 	}
 
 	now := s.now().UTC()
-	joinToken, err := s.joinTokens.Consume(ctx, tokenHash, now)
+	joinToken, err := s.joinTokens.FindByHash(ctx, tokenHash)
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, status.Error(codes.Unauthenticated, "invalid join token")
 	}
-	if errors.Is(err, db.ErrJoinTokenExpired) {
-		return nil, status.Error(codes.PermissionDenied, "join token expired")
+	if err != nil {
+		return nil, status.Error(codes.Internal, "find join token")
 	}
-	if errors.Is(err, db.ErrJoinTokenUsed) {
+	if joinToken.UsedAt != nil {
 		return nil, status.Error(codes.PermissionDenied, "join token already used")
 	}
+	if !joinToken.ExpiresAt.After(now) {
+		return nil, status.Error(codes.PermissionDenied, "join token expired")
+	}
+
+	joinResponse, err := s.enrollNode(ctx, joinToken, req, now)
 	if err != nil {
+		return nil, err
+	}
+
+	if _, err := s.joinTokens.Consume(ctx, tokenHash, now); errors.Is(err, db.ErrJoinTokenExpired) {
+		return nil, status.Error(codes.PermissionDenied, "join token expired")
+	} else if errors.Is(err, db.ErrJoinTokenUsed) {
+		return nil, status.Error(codes.PermissionDenied, "join token already used")
+	} else if err != nil {
 		return nil, status.Error(codes.Internal, "consume join token")
 	}
 
+	return joinResponse, nil
+}
+
+func (s NodeService) enrollNode(ctx context.Context, joinToken domain.JoinToken, req *deployerv1.JoinNodeRequest, now time.Time) (*deployerv1.JoinNodeResponse, error) {
 	nodeName := strings.TrimSpace(joinToken.IntendedNodeName)
 	if nodeName == "" {
 		nodeName = strings.TrimSpace(req.GetHostname())
