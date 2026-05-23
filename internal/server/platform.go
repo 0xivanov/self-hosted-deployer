@@ -3,18 +3,18 @@ package server
 import (
 	"context"
 
+	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
-	"github.com/0xivanov/self-hosted-deployer/internal/repository"
 	"github.com/0xivanov/self-hosted-deployer/internal/version"
 )
 
 type PlatformService struct {
 	deployerv1.UnimplementedPlatformServiceServer
-	repo repository.HealthChecker
+	health *db.HealthRepository
 }
 
-func NewPlatformService(repo repository.HealthChecker) PlatformService {
-	return PlatformService{repo: repo}
+func NewPlatformService(health *db.HealthRepository) PlatformService {
+	return PlatformService{health: health}
 }
 
 func (s PlatformService) GetVersion(context.Context, *deployerv1.GetVersionRequest) (*deployerv1.GetVersionResponse, error) {
@@ -32,6 +32,6 @@ func (s PlatformService) GetStatus(ctx context.Context, _ *deployerv1.GetStatusR
 		Version:   current.Version,
 		Commit:    current.Commit,
 		BuildDate: current.BuildDate,
-		Ready:     s.repo.Ping(ctx) == nil,
+		Ready:     s.health.Ping(ctx) == nil,
 	}, nil
 }

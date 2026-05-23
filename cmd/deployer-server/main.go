@@ -10,8 +10,8 @@ import (
 	"syscall"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/config"
+	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	"github.com/0xivanov/self-hosted-deployer/internal/logging"
-	"github.com/0xivanov/self-hosted-deployer/internal/repository/sqlite"
 	"github.com/0xivanov/self-hosted-deployer/internal/server"
 	"github.com/0xivanov/self-hosted-deployer/internal/version"
 	"github.com/joho/godotenv"
@@ -73,7 +73,15 @@ func run(args []string) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	if err := server.Run(ctx, cfg, logger); err != nil {
+
+	database, err := db.Open(ctx, cfg.DatabaseURL)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer database.Close()
+
+	if err := server.Serve(ctx, cfg, logger, newRepositories(database)); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
@@ -109,14 +117,15 @@ func bootstrap() int {
 	}
 
 	ctx := context.Background()
-	repo, err := sqlite.Open(ctx, cfg.DatabaseURL)
+	database, err := db.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	defer repo.Close()
+	defer database.Close()
 
-	token, err := server.BootstrapAdminToken(ctx, repo, cfg.TokenHashKey, "bootstrap")
+	adminTokens := db.NewAdminTokenRepository(database)
+	token, err := server.BootstrapAdminToken(ctx, adminTokens, cfg.TokenHashKey, "bootstrap")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
@@ -125,6 +134,20 @@ func bootstrap() int {
 	fmt.Fprintln(os.Stdout, "Admin token:")
 	fmt.Fprintln(os.Stdout, token)
 	return 0
+}
+
+func newRepositories(database *db.Db) server.Repositories {
+	return server.Repositories{
+		Health:      db.NewHealthRepository(database),
+		AdminTokens: db.NewAdminTokenRepository(database),
+		AgentTokens: db.NewAgentTokenRepository(database),
+		JoinTokens:  db.NewJoinTokenRepository(database),
+		Nodes:       db.NewNodeRepository(database),
+		Apps:        db.NewAppRepository(database),
+		Deployments: db.NewDeploymentRepository(database),
+		Secrets:     db.NewSecretRepository(database),
+		Routes:      db.NewRouteRepository(database),
+	}
 }
 
 func validateServeConfig(cfg config.ServerConfig) error {

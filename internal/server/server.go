@@ -10,24 +10,26 @@ import (
 	"time"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/config"
+	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
-	"github.com/0xivanov/self-hosted-deployer/internal/repository"
-	"github.com/0xivanov/self-hosted-deployer/internal/repository/sqlite"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-func Run(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger) error {
-	repo, err := sqlite.Open(ctx, cfg.DatabaseURL)
-	if err != nil {
-		return err
-	}
-	defer repo.Close()
-	return Serve(ctx, cfg, logger, repo)
+type Repositories struct {
+	Health      *db.HealthRepository
+	AdminTokens *db.AdminTokenRepository
+	AgentTokens *db.AgentTokenRepository
+	JoinTokens  *db.JoinTokenRepository
+	Nodes       *db.NodeRepository
+	Apps        *db.AppRepository
+	Deployments *db.DeploymentRepository
+	Secrets     *db.SecretRepository
+	Routes      *db.RouteRepository
 }
 
-func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, repo repository.Repository) error {
+func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, repos Repositories) error {
 	grpcListener, err := net.Listen("tcp", cfg.GRPCListenAddress)
 	if err != nil {
 		return fmt.Errorf("listen grpc: %w", err)
@@ -40,7 +42,11 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	}
 	defer httpListener.Close()
 
-	auth := NewAuthenticator(repo, cfg.TokenHashKey)
+	auth := NewAuthenticator(TokenRepositories{
+		AdminTokens: repos.AdminTokens,
+		AgentTokens: repos.AgentTokens,
+		JoinTokens:  repos.JoinTokens,
+	}, cfg.TokenHashKey)
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
 			UnaryLoggingInterceptor(logger),
@@ -53,7 +59,7 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
-	deployerv1.RegisterPlatformServiceServer(grpcServer, NewPlatformService(repo))
+	deployerv1.RegisterPlatformServiceServer(grpcServer, NewPlatformService(repos.Health))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -61,7 +67,7 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		if err := repo.Ping(r.Context()); err != nil {
+		if err := repos.Health.Ping(r.Context()); err != nil {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}

@@ -3,7 +3,7 @@ package apperrors
 import (
 	"testing"
 
-	"github.com/0xivanov/self-hosted-deployer/internal/repository"
+	"github.com/0xivanov/self-hosted-deployer/internal/db"
 )
 
 func TestInvalidArgumentUsesCanonicalCode(t *testing.T) {
@@ -13,7 +13,7 @@ func TestInvalidArgumentUsesCanonicalCode(t *testing.T) {
 }
 
 func TestFromRepositoryErrorMapsNotFound(t *testing.T) {
-	if got := CodeOf(FromRepositoryError(repository.ErrNotFound, "node")); got != CodeNotFound {
+	if got := CodeOf(FromRepositoryError(db.ErrNotFound, "node")); got != CodeNotFound {
 		t.Fatalf("expected NotFound, got %s", got)
 	}
 }

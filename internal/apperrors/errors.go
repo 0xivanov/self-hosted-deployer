@@ -3,10 +3,10 @@ package apperrors
 import (
 	"errors"
 
-	"github.com/0xivanov/self-hosted-deployer/internal/repository"
+	"github.com/0xivanov/self-hosted-deployer/internal/db"
 )
 
-var ErrNotFound = repository.ErrNotFound
+var ErrNotFound = db.ErrNotFound
 
 type Code string
 
@@ -44,7 +44,7 @@ func PermissionDenied(message string) error {
 }
 
 func FromRepositoryError(err error, resource string) error {
-	if errors.Is(err, repository.ErrNotFound) {
+	if errors.Is(err, db.ErrNotFound) {
 		return NotFound(resource + " not found")
 	}
 	return Error{Code: CodeInternal, Message: "internal server error"}

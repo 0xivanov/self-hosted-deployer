@@ -4,11 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/0xivanov/self-hosted-deployer/internal/repository"
+	"github.com/0xivanov/self-hosted-deployer/internal/db"
+	"github.com/0xivanov/self-hosted-deployer/internal/domain"
 	"github.com/0xivanov/self-hosted-deployer/internal/security"
 )
 
-func BootstrapAdminToken(ctx context.Context, repo repository.Repository, hashKey, name string) (string, error) {
+func BootstrapAdminToken(ctx context.Context, adminTokens *db.AdminTokenRepository, hashKey, name string) (string, error) {
 	rawToken, err := security.NewToken(security.AdminTokenPrefix)
 	if err != nil {
 		return "", err
@@ -20,7 +21,7 @@ func BootstrapAdminToken(ctx context.Context, repo repository.Repository, hashKe
 	if name == "" {
 		name = "bootstrap"
 	}
-	if err := repo.CreateAdminToken(ctx, repository.AdminToken{
+	if err := adminTokens.Create(ctx, domain.AdminToken{
 		TokenHash: tokenHash,
 		Name:      name,
 		CreatedAt: time.Now().UTC(),

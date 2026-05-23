@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/0xivanov/self-hosted-deployer/internal/repository"
+	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	"github.com/0xivanov/self-hosted-deployer/internal/security"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -15,14 +15,20 @@ import (
 )
 
 type Authenticator struct {
-	repo    repository.Repository
+	repos   TokenRepositories
 	hashKey []byte
 	now     func() time.Time
 }
 
-func NewAuthenticator(repo repository.Repository, hashKey string) Authenticator {
+type TokenRepositories struct {
+	AdminTokens *db.AdminTokenRepository
+	AgentTokens *db.AgentTokenRepository
+	JoinTokens  *db.JoinTokenRepository
+}
+
+func NewAuthenticator(repos TokenRepositories, hashKey string) Authenticator {
 	return Authenticator{
-		repo:    repo,
+		repos:   repos,
 		hashKey: []byte(hashKey),
 		now:     time.Now,
 	}
@@ -60,8 +66,8 @@ func (a Authenticator) authenticate(ctx context.Context, fullMethod string) (Cal
 	now := a.now().UTC()
 	switch prefix {
 	case security.AdminTokenPrefix:
-		token, err := a.repo.FindAdminTokenByHash(ctx, tokenHash)
-		if errors.Is(err, repository.ErrNotFound) {
+		token, err := a.repos.AdminTokens.FindByHash(ctx, tokenHash)
+		if errors.Is(err, db.ErrNotFound) {
 			return Caller{}, status.Error(codes.Unauthenticated, "invalid bearer token")
 		}
 		if err != nil {
@@ -70,11 +76,11 @@ func (a Authenticator) authenticate(ctx context.Context, fullMethod string) (Cal
 		if token.RevokedAt != nil {
 			return Caller{}, status.Error(codes.PermissionDenied, "admin token is revoked")
 		}
-		_ = a.repo.MarkAdminTokenUsed(ctx, tokenHash, now)
+		_ = a.repos.AdminTokens.MarkUsed(ctx, tokenHash, now)
 		return Caller{Kind: CallerAdmin}, nil
 	case security.AgentTokenPrefix:
-		token, err := a.repo.FindAgentTokenByHash(ctx, tokenHash)
-		if errors.Is(err, repository.ErrNotFound) {
+		token, err := a.repos.AgentTokens.FindByHash(ctx, tokenHash)
+		if errors.Is(err, db.ErrNotFound) {
 			return Caller{}, status.Error(codes.Unauthenticated, "invalid bearer token")
 		}
 		if err != nil {
@@ -86,14 +92,14 @@ func (a Authenticator) authenticate(ctx context.Context, fullMethod string) (Cal
 		if isAdminOnlyMethod(fullMethod) {
 			return Caller{}, status.Error(codes.PermissionDenied, "agent token cannot call admin RPC")
 		}
-		_ = a.repo.MarkAgentTokenUsed(ctx, tokenHash, now)
+		_ = a.repos.AgentTokens.MarkUsed(ctx, tokenHash, now)
 		return Caller{Kind: CallerAgent, NodeID: token.NodeID}, nil
 	case security.JoinTokenPrefix:
 		if fullMethod != "/deployer.v1.NodeService/JoinNode" {
 			return Caller{}, status.Error(codes.PermissionDenied, "join token cannot call this RPC")
 		}
-		token, err := a.repo.FindJoinTokenByHash(ctx, tokenHash)
-		if errors.Is(err, repository.ErrNotFound) {
+		token, err := a.repos.JoinTokens.FindByHash(ctx, tokenHash)
+		if errors.Is(err, db.ErrNotFound) {
 			return Caller{}, status.Error(codes.Unauthenticated, "invalid bearer token")
 		}
 		if err != nil {
