@@ -1,16 +1,26 @@
 package logging
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"strings"
 )
 
 func New(component string, level string) *slog.Logger {
-	handler := slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+	return slog.New(newHandler(os.Stderr, level)).With("component", component)
+}
+
+func newHandler(w io.Writer, level string) slog.Handler {
+	return slog.NewJSONHandler(w, &slog.HandlerOptions{
 		Level: parseLevel(level),
+		ReplaceAttr: func(groups []string, attr slog.Attr) slog.Attr {
+			if len(groups) == 0 && attr.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return attr
+		},
 	})
-	return slog.New(handler).With("component", component)
 }
 
 func parseLevel(level string) slog.Level {
