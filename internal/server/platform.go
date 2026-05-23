@@ -3,17 +3,20 @@ package server
 import (
 	"context"
 
-	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"github.com/0xivanov/self-hosted-deployer/internal/version"
 )
 
-type PlatformService struct {
-	deployerv1.UnimplementedPlatformServiceServer
-	health *db.HealthRepository
+type HealthRepository interface {
+	Ping(ctx context.Context) error
 }
 
-func NewPlatformService(health *db.HealthRepository) PlatformService {
+type PlatformService struct {
+	deployerv1.UnimplementedPlatformServiceServer
+	health HealthRepository
+}
+
+func NewPlatformService(health HealthRepository) PlatformService {
 	return PlatformService{health: health}
 }
 

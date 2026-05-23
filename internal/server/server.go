@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/config"
-	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
@@ -18,15 +17,10 @@ import (
 )
 
 type Repositories struct {
-	Health      *db.HealthRepository
-	AdminTokens *db.AdminTokenRepository
-	AgentTokens *db.AgentTokenRepository
-	JoinTokens  *db.JoinTokenRepository
-	Nodes       *db.NodeRepository
-	Apps        *db.AppRepository
-	Deployments *db.DeploymentRepository
-	Secrets     *db.SecretRepository
-	Routes      *db.RouteRepository
+	Health      HealthRepository
+	AdminTokens AdminTokenRepository
+	AgentTokens AgentTokenRepository
+	JoinTokens  JoinTokenRepository
 }
 
 func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, repos Repositories) error {

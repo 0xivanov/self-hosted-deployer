@@ -45,7 +45,7 @@ func run(args []string) int {
 
 	if *validateConfig {
 		cfg := config.LoadServer()
-		if err := config.FormatValidationError("server", cfg.Validate()); err != nil {
+		if err := config.FormatValidationError("server", validateServeConfig(cfg)); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 1
 		}
@@ -142,11 +142,6 @@ func newRepositories(database *db.Db) server.Repositories {
 		AdminTokens: db.NewAdminTokenRepository(database),
 		AgentTokens: db.NewAgentTokenRepository(database),
 		JoinTokens:  db.NewJoinTokenRepository(database),
-		Nodes:       db.NewNodeRepository(database),
-		Apps:        db.NewAppRepository(database),
-		Deployments: db.NewDeploymentRepository(database),
-		Secrets:     db.NewSecretRepository(database),
-		Routes:      db.NewRouteRepository(database),
 	}
 }
 
