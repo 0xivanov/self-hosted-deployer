@@ -21,6 +21,7 @@ type Repositories struct {
 	AdminTokens AdminTokenRepository
 	AgentTokens AgentTokenRepository
 	JoinTokens  JoinTokenRepository
+	Nodes       NodeRepository
 }
 
 func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, repos Repositories) error {
@@ -54,6 +55,12 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
 	deployerv1.RegisterPlatformServiceServer(grpcServer, NewPlatformService(repos.Health))
+	deployerv1.RegisterNodeServiceServer(grpcServer, NewNodeService(NodeServiceConfig{
+		Nodes:        repos.Nodes,
+		JoinTokens:   repos.JoinTokens,
+		AgentTokens:  repos.AgentTokens,
+		TokenHashKey: cfg.TokenHashKey,
+	}))
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {

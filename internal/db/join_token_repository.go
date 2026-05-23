@@ -3,8 +3,15 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"time"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/domain"
+)
+
+var (
+	ErrJoinTokenExpired = errors.New("join token expired")
+	ErrJoinTokenUsed    = errors.New("join token already used")
 )
 
 type JoinTokenRepository struct {
@@ -33,5 +40,26 @@ func (r *JoinTokenRepository) FindByHash(ctx context.Context, tokenHash string) 
 	token.CreatedAt = parseStoredTime(createdAt)
 	token.ExpiresAt = parseStoredTime(expiresAt)
 	token.UsedAt = parseOptionalStoredTime(usedAt)
+	return token, nil
+}
+
+func (r *JoinTokenRepository) Consume(ctx context.Context, tokenHash string, usedAt time.Time) (domain.JoinToken, error) {
+	token, err := r.FindByHash(ctx, tokenHash)
+	if err != nil {
+		return domain.JoinToken{}, err
+	}
+	if token.UsedAt != nil {
+		return domain.JoinToken{}, ErrJoinTokenUsed
+	}
+	if !token.ExpiresAt.After(usedAt.UTC()) {
+		return domain.JoinToken{}, ErrJoinTokenExpired
+	}
+	if err := mapRowsAffected(r.db.db.ExecContext(ctx, `UPDATE node_join_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL`, formatTime(usedAt), tokenHash)); err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return domain.JoinToken{}, ErrJoinTokenUsed
+		}
+		return domain.JoinToken{}, err
+	}
+	token.UsedAt = &usedAt
 	return token, nil
 }

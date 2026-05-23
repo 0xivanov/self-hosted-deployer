@@ -33,11 +33,14 @@ type AdminTokenRepository interface {
 }
 
 type AgentTokenRepository interface {
+	Create(ctx context.Context, token domain.AgentToken) error
 	FindByHash(ctx context.Context, tokenHash string) (domain.AgentToken, error)
 	MarkUsed(ctx context.Context, tokenHash string, usedAt time.Time) error
 }
 
 type JoinTokenRepository interface {
+	Create(ctx context.Context, token domain.JoinToken) error
+	Consume(ctx context.Context, tokenHash string, usedAt time.Time) (domain.JoinToken, error)
 	FindByHash(ctx context.Context, tokenHash string) (domain.JoinToken, error)
 }
 
@@ -81,6 +84,9 @@ func (a Authenticator) authenticate(ctx context.Context, fullMethod string) (Cal
 	now := a.now().UTC()
 	switch prefix {
 	case security.AdminTokenPrefix:
+		if isAgentOnlyMethod(fullMethod) {
+			return Caller{}, status.Error(codes.PermissionDenied, "admin token cannot call agent RPC")
+		}
 		token, err := a.repos.AdminTokens.FindByHash(ctx, tokenHash)
 		if errors.Is(err, db.ErrNotFound) {
 			return Caller{}, status.Error(codes.Unauthenticated, "invalid bearer token")
@@ -114,20 +120,7 @@ func (a Authenticator) authenticate(ctx context.Context, fullMethod string) (Cal
 		}
 		return Caller{Kind: CallerAgent, NodeID: token.NodeID}, nil
 	case security.JoinTokenPrefix:
-		if fullMethod != "/deployer.v1.NodeService/JoinNode" {
-			return Caller{}, status.Error(codes.PermissionDenied, "join token cannot call this RPC")
-		}
-		token, err := a.repos.JoinTokens.FindByHash(ctx, tokenHash)
-		if errors.Is(err, db.ErrNotFound) {
-			return Caller{}, status.Error(codes.Unauthenticated, "invalid bearer token")
-		}
-		if err != nil {
-			return Caller{}, status.Error(codes.Internal, "authenticate join token")
-		}
-		if token.UsedAt != nil || !token.ExpiresAt.After(now) {
-			return Caller{}, status.Error(codes.PermissionDenied, "join token is not active")
-		}
-		return Caller{Kind: CallerJoin}, nil
+		return Caller{}, status.Error(codes.PermissionDenied, "join tokens must be sent to JoinNode")
 	default:
 		return Caller{}, status.Error(codes.Unauthenticated, "invalid bearer token")
 	}
@@ -148,9 +141,14 @@ func bearerToken(ctx context.Context) (string, error) {
 
 func isPublicMethod(fullMethod string) bool {
 	return fullMethod == "/deployer.v1.PlatformService/GetVersion" ||
+		fullMethod == "/deployer.v1.NodeService/JoinNode" ||
 		strings.HasPrefix(fullMethod, "/grpc.health.v1.Health/")
 }
 
 func isAdminOnlyMethod(fullMethod string) bool {
 	return !strings.HasPrefix(fullMethod, "/deployer.v1.NodeService/HeartbeatNode")
+}
+
+func isAgentOnlyMethod(fullMethod string) bool {
+	return fullMethod == "/deployer.v1.NodeService/HeartbeatNode"
 }

@@ -159,16 +159,18 @@ var PlatformService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	NodeService_JoinNode_FullMethodName      = "/deployer.v1.NodeService/JoinNode"
-	NodeService_ListNodes_FullMethodName     = "/deployer.v1.NodeService/ListNodes"
-	NodeService_GetNode_FullMethodName       = "/deployer.v1.NodeService/GetNode"
-	NodeService_HeartbeatNode_FullMethodName = "/deployer.v1.NodeService/HeartbeatNode"
+	NodeService_CreateJoinToken_FullMethodName = "/deployer.v1.NodeService/CreateJoinToken"
+	NodeService_JoinNode_FullMethodName        = "/deployer.v1.NodeService/JoinNode"
+	NodeService_ListNodes_FullMethodName       = "/deployer.v1.NodeService/ListNodes"
+	NodeService_GetNode_FullMethodName         = "/deployer.v1.NodeService/GetNode"
+	NodeService_HeartbeatNode_FullMethodName   = "/deployer.v1.NodeService/HeartbeatNode"
 )
 
 // NodeServiceClient is the client API for NodeService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type NodeServiceClient interface {
+	CreateJoinToken(ctx context.Context, in *CreateJoinTokenRequest, opts ...grpc.CallOption) (*CreateJoinTokenResponse, error)
 	JoinNode(ctx context.Context, in *JoinNodeRequest, opts ...grpc.CallOption) (*JoinNodeResponse, error)
 	ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error)
 	GetNode(ctx context.Context, in *GetNodeRequest, opts ...grpc.CallOption) (*GetNodeResponse, error)
@@ -181,6 +183,16 @@ type nodeServiceClient struct {
 
 func NewNodeServiceClient(cc grpc.ClientConnInterface) NodeServiceClient {
 	return &nodeServiceClient{cc}
+}
+
+func (c *nodeServiceClient) CreateJoinToken(ctx context.Context, in *CreateJoinTokenRequest, opts ...grpc.CallOption) (*CreateJoinTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateJoinTokenResponse)
+	err := c.cc.Invoke(ctx, NodeService_CreateJoinToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *nodeServiceClient) JoinNode(ctx context.Context, in *JoinNodeRequest, opts ...grpc.CallOption) (*JoinNodeResponse, error) {
@@ -227,6 +239,7 @@ func (c *nodeServiceClient) HeartbeatNode(ctx context.Context, in *HeartbeatNode
 // All implementations must embed UnimplementedNodeServiceServer
 // for forward compatibility.
 type NodeServiceServer interface {
+	CreateJoinToken(context.Context, *CreateJoinTokenRequest) (*CreateJoinTokenResponse, error)
 	JoinNode(context.Context, *JoinNodeRequest) (*JoinNodeResponse, error)
 	ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error)
 	GetNode(context.Context, *GetNodeRequest) (*GetNodeResponse, error)
@@ -241,6 +254,9 @@ type NodeServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedNodeServiceServer struct{}
 
+func (UnimplementedNodeServiceServer) CreateJoinToken(context.Context, *CreateJoinTokenRequest) (*CreateJoinTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateJoinToken not implemented")
+}
 func (UnimplementedNodeServiceServer) JoinNode(context.Context, *JoinNodeRequest) (*JoinNodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method JoinNode not implemented")
 }
@@ -272,6 +288,24 @@ func RegisterNodeServiceServer(s grpc.ServiceRegistrar, srv NodeServiceServer) {
 		t.testEmbeddedByValue()
 	}
 	s.RegisterService(&NodeService_ServiceDesc, srv)
+}
+
+func _NodeService_CreateJoinToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateJoinTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).CreateJoinToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_CreateJoinToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).CreateJoinToken(ctx, req.(*CreateJoinTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _NodeService_JoinNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -353,6 +387,10 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "deployer.v1.NodeService",
 	HandlerType: (*NodeServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CreateJoinToken",
+			Handler:    _NodeService_CreateJoinToken_Handler,
+		},
 		{
 			MethodName: "JoinNode",
 			Handler:    _NodeService_JoinNode_Handler,

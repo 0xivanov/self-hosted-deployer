@@ -195,7 +195,22 @@ func TestAuthenticatorAllowsAgentTokenForHeartbeatAndAttachesNode(t *testing.T) 
 	}
 }
 
-func TestAuthenticatorAllowsActiveJoinTokenOnlyForJoinRPC(t *testing.T) {
+func TestAuthenticatorTreatsJoinNodeAsPublic(t *testing.T) {
+	auth := NewAuthenticator(newTestTokenRepositories(openTestDB(t)).Auth(), "hash-key")
+	_, err := auth.UnaryInterceptor()(context.Background(), nil, &grpc.UnaryServerInfo{
+		FullMethod: "/deployer.v1.NodeService/JoinNode",
+	}, func(ctx context.Context, req any) (any, error) {
+		if _, ok := CallerFromContext(ctx); ok {
+			t.Fatal("expected public join RPC without caller in context")
+		}
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("expected public join RPC, got %v", err)
+	}
+}
+
+func TestAuthenticatorRejectsJoinTokenForNonJoinRPC(t *testing.T) {
 	ctx := context.Background()
 	database := openTestDB(t)
 	repos := newTestTokenRepositories(database)
@@ -212,22 +227,6 @@ func TestAuthenticatorAllowsActiveJoinTokenOnlyForJoinRPC(t *testing.T) {
 
 	auth := NewAuthenticator(repos.Auth(), "hash-key")
 	_, err := auth.UnaryInterceptor()(withBearer(ctx, rawToken), nil, &grpc.UnaryServerInfo{
-		FullMethod: "/deployer.v1.NodeService/JoinNode",
-	}, func(ctx context.Context, req any) (any, error) {
-		caller, ok := CallerFromContext(ctx)
-		if !ok {
-			t.Fatal("expected caller in context")
-		}
-		if caller.Kind != CallerJoin {
-			t.Fatalf("expected join caller, got %s", caller.Kind)
-		}
-		return nil, nil
-	})
-	if err != nil {
-		t.Fatalf("authenticate join token: %v", err)
-	}
-
-	_, err = auth.UnaryInterceptor()(withBearer(ctx, rawToken), nil, &grpc.UnaryServerInfo{
 		FullMethod: "/deployer.v1.PlatformService/GetStatus",
 	}, func(ctx context.Context, req any) (any, error) {
 		return nil, nil

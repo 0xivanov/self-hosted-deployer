@@ -268,6 +268,18 @@ func (c recordingClient) Status(context.Context) (clicore.ServerStatus, error) {
 	return c.status, nil
 }
 
+func (c recordingClient) CreateJoinToken(context.Context, string, map[string]string) (clicore.JoinTokenResult, error) {
+	return clicore.JoinTokenResult{}, c.err
+}
+
+func (c recordingClient) ListNodes(context.Context) ([]clicore.NodeInfo, error) {
+	return nil, c.err
+}
+
+func (c recordingClient) GetNode(context.Context, string) (clicore.NodeInfo, error) {
+	return clicore.NodeInfo{}, c.err
+}
+
 func TestLoginRejectsInvalidToken(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

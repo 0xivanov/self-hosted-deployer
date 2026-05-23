@@ -7,4 +7,4 @@ This repository uses the `cc-skills-golang` submodule for Go-specific agent skil
 The Go skills are located at:
 
 ```text
-./cc-skills-golang/skills/
+.tools/cc-skills-golang/skills/
