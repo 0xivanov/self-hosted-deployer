@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -243,6 +244,127 @@ func TestServerStatusMissingConfigIsActionable(t *testing.T) {
 	}
 }
 
+func TestDeployDryRunReadsDefaultFileWithoutServerCall(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	if err := os.WriteFile("deployer.yaml", []byte(testDeployYAML("ivan/my-api:1.0.0")), 0o600); err != nil {
+		t.Fatalf("write deployer.yaml: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	app := newCLIApp(strings.NewReader(""), &stdout, &stderr)
+	app.newPlatformClient = func(string, string) (platformClient, func() error, error) {
+		t.Fatal("dry run should not create a platform client")
+		return nil, nil, nil
+	}
+
+	code := app.run([]string{"deploy", "--dry-run"})
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr: %s", code, stderr.String())
+	}
+	for _, want := range []string{"my-api", "ivan/my-api:1.0.0", "api.example.com"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("expected dry run output to contain %q, got %q", want, stdout.String())
+		}
+	}
+}
+
+func TestDeployReadsExplicitFileAndSubmitsDesiredState(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "app.yaml")
+	yaml := testDeployYAML("ivan/my-api:1.0.1")
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatalf("write deploy config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	client := &recordingAppClient{
+		deployResult: clicore.DeployResult{
+			App: clicore.AppInfo{
+				Name:     "my-api",
+				Image:    "ivan/my-api:1.0.1",
+				Replicas: 2,
+				Domain:   "api.example.com",
+			},
+			Deployment: clicore.DeploymentInfo{ID: "deploy-1"},
+		},
+	}
+	app := newCLIApp(strings.NewReader(""), &stdout, &stderr)
+	app.newPlatformClient = func(serverURL string, token string) (platformClient, func() error, error) {
+		if serverURL != "localhost:7443" || token != "dep_admin_test" {
+			t.Fatalf("unexpected credentials server=%q token=%q", serverURL, token)
+		}
+		return client, func() error { return nil }, nil
+	}
+
+	code := app.run([]string{"--server", "localhost:7443", "--token", "dep_admin_test", "deploy", "-f", path})
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr: %s", code, stderr.String())
+	}
+	if client.deployerYAML != yaml {
+		t.Fatalf("expected deploy YAML to be submitted, got %q", client.deployerYAML)
+	}
+	if !strings.Contains(stdout.String(), "deploy-1") {
+		t.Fatalf("expected deployment id in output, got %q", stdout.String())
+	}
+}
+
+func TestAppsListAndInspectUseAppAPI(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := clicore.SaveConfig(configPath, clicore.Config{
+		ServerURL:  "localhost:7443",
+		AdminToken: "dep_admin_saved",
+		Output:     clicore.OutputHuman,
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	client := &recordingAppClient{
+		apps: []clicore.AppInfo{{
+			Name:      "my-api",
+			Image:     "ivan/my-api:1.0.0",
+			Replicas:  2,
+			Domain:    "api.example.com",
+			StateMode: "stateless",
+		}},
+	}
+	app := newCLIApp(strings.NewReader(""), &stdout, &stderr)
+	app.newPlatformClient = func(string, string) (platformClient, func() error, error) {
+		return client, func() error { return nil }, nil
+	}
+
+	code := app.run([]string{"--config", configPath, "apps", "list"})
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "my-api") || !strings.Contains(stdout.String(), "api.example.com") {
+		t.Fatalf("expected app list output, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	client.inspect = clicore.AppInspectResult{
+		App: clicore.AppInfo{
+			Name:      "my-api",
+			Image:     "ivan/my-api:1.0.0",
+			Replicas:  2,
+			Domain:    "api.example.com",
+			StateMode: "stateless",
+		},
+		Deployments: []clicore.DeploymentInfo{{ID: "deploy-1", Status: "pending"}},
+	}
+	code = app.run([]string{"--config", configPath, "apps", "inspect", "my-api"})
+	if code != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "deploy-1") {
+		t.Fatalf("expected deployment history in inspect output, got %q", stdout.String())
+	}
+}
+
 type recordingClientFactory struct {
 	serverURL string
 	token     string
@@ -278,6 +400,74 @@ func (c recordingClient) ListNodes(context.Context) ([]clicore.NodeInfo, error) 
 
 func (c recordingClient) GetNode(context.Context, string) (clicore.NodeInfo, error) {
 	return clicore.NodeInfo{}, c.err
+}
+
+func (c recordingClient) DeployApp(context.Context, string) (clicore.DeployResult, error) {
+	return clicore.DeployResult{}, c.err
+}
+
+func (c recordingClient) ListApps(context.Context) ([]clicore.AppInfo, error) {
+	return nil, c.err
+}
+
+func (c recordingClient) InspectApp(context.Context, string) (clicore.AppInspectResult, error) {
+	return clicore.AppInspectResult{}, c.err
+}
+
+type recordingAppClient struct {
+	deployerYAML string
+	deployResult clicore.DeployResult
+	apps         []clicore.AppInfo
+	inspect      clicore.AppInspectResult
+	err          error
+}
+
+func (c *recordingAppClient) Status(context.Context) (clicore.ServerStatus, error) {
+	return clicore.ServerStatus{}, c.err
+}
+
+func (c *recordingAppClient) CreateJoinToken(context.Context, string, map[string]string) (clicore.JoinTokenResult, error) {
+	return clicore.JoinTokenResult{}, c.err
+}
+
+func (c *recordingAppClient) ListNodes(context.Context) ([]clicore.NodeInfo, error) {
+	return nil, c.err
+}
+
+func (c *recordingAppClient) GetNode(context.Context, string) (clicore.NodeInfo, error) {
+	return clicore.NodeInfo{}, c.err
+}
+
+func (c *recordingAppClient) DeployApp(_ context.Context, deployerYAML string) (clicore.DeployResult, error) {
+	c.deployerYAML = deployerYAML
+	return c.deployResult, c.err
+}
+
+func (c *recordingAppClient) ListApps(context.Context) ([]clicore.AppInfo, error) {
+	return c.apps, c.err
+}
+
+func (c *recordingAppClient) InspectApp(context.Context, string) (clicore.AppInspectResult, error) {
+	return c.inspect, c.err
+}
+
+func testDeployYAML(image string) string {
+	return `name: my-api
+image: ` + image + `
+service:
+  port: 3000
+  health:
+    path: /health
+routing:
+  domain: api.example.com
+deploy:
+  replicas: 2
+placement:
+  arch: linux/arm64
+  spread: true
+state:
+  mode: stateless
+`
 }
 
 func TestLoginRejectsInvalidToken(t *testing.T) {

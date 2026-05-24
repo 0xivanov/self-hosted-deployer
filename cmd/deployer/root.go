@@ -58,6 +58,10 @@ func (a cliApp) dispatch(args []string, opts cliOptions) int {
 		return printVersion(a.stdout, a.stderr, opts.output)
 	case "login":
 		return a.login(args[1:], opts)
+	case "deploy":
+		return a.deploy(args[1:], opts)
+	case "apps":
+		return a.apps(args[1:], opts)
 	case "server":
 		return a.server(args[1:], opts)
 	case "nodes":

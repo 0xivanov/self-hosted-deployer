@@ -22,6 +22,8 @@ type Repositories struct {
 	AgentTokens AgentTokenRepository
 	JoinTokens  JoinTokenRepository
 	Nodes       NodeRepository
+	Apps        AppRepository
+	Deployments DeploymentRepository
 }
 
 func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, repos Repositories) error {
@@ -60,6 +62,10 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		JoinTokens:   repos.JoinTokens,
 		AgentTokens:  repos.AgentTokens,
 		TokenHashKey: cfg.TokenHashKey,
+	}))
+	deployerv1.RegisterAppServiceServer(grpcServer, NewAppService(AppServiceConfig{
+		Apps:        repos.Apps,
+		Deployments: repos.Deployments,
 	}))
 
 	mux := http.NewServeMux()

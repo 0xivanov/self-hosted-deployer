@@ -33,6 +33,9 @@ type platformClient interface {
 	CreateJoinToken(ctx context.Context, nodeName string, labels map[string]string) (clicore.JoinTokenResult, error)
 	ListNodes(ctx context.Context) ([]clicore.NodeInfo, error)
 	GetNode(ctx context.Context, ref string) (clicore.NodeInfo, error)
+	DeployApp(ctx context.Context, deployerYAML string) (clicore.DeployResult, error)
+	ListApps(ctx context.Context) ([]clicore.AppInfo, error)
+	InspectApp(ctx context.Context, name string) (clicore.AppInspectResult, error)
 }
 
 type platformClientFactory func(serverURL string, token string) (platformClient, func() error, error)

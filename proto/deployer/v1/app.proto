@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package deployer.v1;
+
+option go_package = "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1;deployerv1";
+
+service AppService {
+  rpc DeployApp(DeployAppRequest) returns (DeployAppResponse);
+  rpc ListApps(ListAppsRequest) returns (ListAppsResponse);
+  rpc InspectApp(InspectAppRequest) returns (InspectAppResponse);
+  rpc DeleteApp(DeleteAppRequest) returns (DeleteAppResponse);
+  rpc GetApp(GetAppRequest) returns (GetAppResponse);
+  rpc GetAppStatus(GetAppStatusRequest) returns (GetAppStatusResponse);
+  rpc GetDeploymentLogs(GetDeploymentLogsRequest) returns (GetDeploymentLogsResponse);
+}
+
+message App {
+  string id = 1;
+  string name = 2;
+  string image = 3;
+  int32 replicas = 4;
+  string desired_state = 5;
+  string created_at = 6;
+  string updated_at = 7;
+}
+
+message Deployment {
+  string id = 1;
+  string app_id = 2;
+  string status = 3;
+  string failure_reason = 4;
+  string created_at = 5;
+  string updated_at = 6;
+}
+
+message Route {
+  string id = 1;
+  string app_id = 2;
+  string domain = 3;
+  int32 target_port = 4;
+}
+
+message DeployAppRequest {
+  string deployer_yaml = 1;
+}
+
+message DeployAppResponse {
+  App app = 1;
+  Deployment deployment = 2;
+}
+
+message ListAppsRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListAppsResponse {
+  repeated App apps = 1;
+  string next_page_token = 2;
+}
+
+message InspectAppRequest {
+  string name = 1;
+}
+
+message InspectAppResponse {
+  App app = 1;
+  repeated Deployment deployments = 2;
+  repeated Route routes = 3;
+}
+
+message DeleteAppRequest {
+  string name = 1;
+}
+
+message DeleteAppResponse {
+  App app = 1;
+}
+
+message GetAppRequest {
+  string name = 1;
+}
+
+message GetAppResponse {
+  App app = 1;
+  repeated Deployment deployments = 2;
+  repeated Route routes = 3;
+}
+
+message GetAppStatusRequest {
+  string name = 1;
+}
+
+message GetAppStatusResponse {
+  App app = 1;
+  Deployment latest_deployment = 2;
+  repeated Route routes = 3;
+}
+
+message GetDeploymentLogsRequest {
+  string app_name = 1;
+  string deployment_id = 2;
+  int32 tail_lines = 3;
+}
+
+message GetDeploymentLogsResponse {
+  repeated string lines = 1;
+}

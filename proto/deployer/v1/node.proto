@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package deployer.v1;
+
+option go_package = "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1;deployerv1";
+
+service NodeService {
+  rpc CreateJoinToken(CreateJoinTokenRequest) returns (CreateJoinTokenResponse);
+  rpc JoinNode(JoinNodeRequest) returns (JoinNodeResponse);
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+  rpc HeartbeatNode(HeartbeatNodeRequest) returns (HeartbeatNodeResponse);
+}
+
+message Node {
+  string id = 1;
+  string name = 2;
+  string status = 3;
+  map<string, string> labels = 4;
+  string created_at = 5;
+  string updated_at = 6;
+  string last_seen_at = 7;
+  string hostname = 8;
+  string arch = 9;
+  string os = 10;
+  string kernel = 11;
+}
+
+message CreateJoinTokenRequest {
+  string node_name = 1;
+  map<string, string> labels = 2;
+  int64 ttl_seconds = 3;
+}
+
+message CreateJoinTokenResponse {
+  string join_token = 1;
+  string expires_at = 2;
+  string node_name = 3;
+}
+
+message JoinNodeRequest {
+  string join_token = 1;
+  string hostname = 2;
+  string arch = 3;
+  string public_key = 4;
+}
+
+message JoinNodeResponse {
+  string node_id = 1;
+  string agent_token = 2;
+  string node_name = 3;
+}
+
+message ListNodesRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+message ListNodesResponse {
+  repeated Node nodes = 1;
+  string next_page_token = 2;
+}
+
+message GetNodeRequest {
+  string node_ref = 1;
+}
+
+message GetNodeResponse {
+  Node node = 1;
+}
+
+message HeartbeatNodeRequest {
+  string status = 1;
+  string hostname = 2;
+  string arch = 3;
+  string os = 4;
+  string kernel = 5;
+  string resource_summary = 6;
+}
+
+message HeartbeatNodeResponse {
+  string accepted_at = 1;
+}

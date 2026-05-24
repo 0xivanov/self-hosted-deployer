@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -20,6 +21,7 @@ const defaultRequestTimeout = 10 * time.Second
 type PlatformClient struct {
 	platformClient deployerv1.PlatformServiceClient
 	nodeClient     deployerv1.NodeServiceClient
+	appClient      deployerv1.AppServiceClient
 	token          string
 	timeout        time.Duration
 }
@@ -67,6 +69,37 @@ type Heartbeat struct {
 	ResourceSummary string
 }
 
+type AppInfo struct {
+	ID           string           `json:"id"`
+	Name         string           `json:"name"`
+	Image        string           `json:"image"`
+	Replicas     int              `json:"replicas"`
+	Domain       string           `json:"domain"`
+	StateMode    string           `json:"state_mode"`
+	DesiredState appconfig.Config `json:"desired_state"`
+	CreatedAt    string           `json:"created_at"`
+	UpdatedAt    string           `json:"updated_at"`
+}
+
+type DeploymentInfo struct {
+	ID            string `json:"id"`
+	AppID         string `json:"app_id"`
+	Status        string `json:"status"`
+	FailureReason string `json:"failure_reason,omitempty"`
+	CreatedAt     string `json:"created_at"`
+	UpdatedAt     string `json:"updated_at"`
+}
+
+type DeployResult struct {
+	App        AppInfo        `json:"app"`
+	Deployment DeploymentInfo `json:"deployment"`
+}
+
+type AppInspectResult struct {
+	App         AppInfo          `json:"app"`
+	Deployments []DeploymentInfo `json:"deployments"`
+}
+
 func NewPlatformClient(serverURL string, token string) (*PlatformClient, *grpc.ClientConn, error) {
 	target, err := NormalizeServerTarget(serverURL)
 	if err != nil {
@@ -78,17 +111,23 @@ func NewPlatformClient(serverURL string, token string) (*PlatformClient, *grpc.C
 		return nil, nil, fmt.Errorf("create gRPC client for %q: %w", serverURL, err)
 	}
 
-	return NewPlatformClientForServices(deployerv1.NewPlatformServiceClient(conn), deployerv1.NewNodeServiceClient(conn), token), conn, nil
+	return NewPlatformClientForServices(
+		deployerv1.NewPlatformServiceClient(conn),
+		deployerv1.NewNodeServiceClient(conn),
+		deployerv1.NewAppServiceClient(conn),
+		token,
+	), conn, nil
 }
 
 func NewPlatformClientForService(client deployerv1.PlatformServiceClient, token string) *PlatformClient {
-	return NewPlatformClientForServices(client, nil, token)
+	return NewPlatformClientForServices(client, nil, nil, token)
 }
 
-func NewPlatformClientForServices(platformClient deployerv1.PlatformServiceClient, nodeClient deployerv1.NodeServiceClient, token string) *PlatformClient {
+func NewPlatformClientForServices(platformClient deployerv1.PlatformServiceClient, nodeClient deployerv1.NodeServiceClient, appClient deployerv1.AppServiceClient, token string) *PlatformClient {
 	return &PlatformClient{
 		platformClient: platformClient,
 		nodeClient:     nodeClient,
+		appClient:      appClient,
 		token:          token,
 		timeout:        defaultRequestTimeout,
 	}
@@ -197,6 +236,53 @@ func (c *PlatformClient) Heartbeat(ctx context.Context, heartbeat Heartbeat) err
 	return DecodeRPCError(err)
 }
 
+func (c *PlatformClient) DeployApp(ctx context.Context, deployerYAML string) (DeployResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+
+	response, err := c.appClient.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: deployerYAML})
+	if err != nil {
+		return DeployResult{}, DecodeRPCError(err)
+	}
+	return DeployResult{
+		App:        appInfo(response.GetApp()),
+		Deployment: deploymentInfo(response.GetDeployment()),
+	}, nil
+}
+
+func (c *PlatformClient) ListApps(ctx context.Context) ([]AppInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+
+	response, err := c.appClient.ListApps(ctx, &deployerv1.ListAppsRequest{})
+	if err != nil {
+		return nil, DecodeRPCError(err)
+	}
+	apps := make([]AppInfo, 0, len(response.GetApps()))
+	for _, app := range response.GetApps() {
+		apps = append(apps, appInfo(app))
+	}
+	return apps, nil
+}
+
+func (c *PlatformClient) InspectApp(ctx context.Context, name string) (AppInspectResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+
+	response, err := c.appClient.InspectApp(ctx, &deployerv1.InspectAppRequest{Name: name})
+	if err != nil {
+		return AppInspectResult{}, DecodeRPCError(err)
+	}
+	result := AppInspectResult{App: appInfo(response.GetApp())}
+	for _, deployment := range response.GetDeployments() {
+		result.Deployments = append(result.Deployments, deploymentInfo(deployment))
+	}
+	return result, nil
+}
+
 func (c *PlatformClient) withBearer(ctx context.Context) context.Context {
 	if c.token == "" {
 		return ctx
@@ -220,6 +306,38 @@ func nodeInfo(node *deployerv1.Node) NodeInfo {
 		Arch:       node.GetArch(),
 		OS:         node.GetOs(),
 		Kernel:     node.GetKernel(),
+	}
+}
+
+func appInfo(app *deployerv1.App) AppInfo {
+	if app == nil {
+		return AppInfo{}
+	}
+	cfg, _ := appconfig.FromJSON(app.GetDesiredState())
+	return AppInfo{
+		ID:           app.GetId(),
+		Name:         app.GetName(),
+		Image:        app.GetImage(),
+		Replicas:     int(app.GetReplicas()),
+		Domain:       cfg.Routing.Domain,
+		StateMode:    cfg.State.Mode,
+		DesiredState: cfg,
+		CreatedAt:    app.GetCreatedAt(),
+		UpdatedAt:    app.GetUpdatedAt(),
+	}
+}
+
+func deploymentInfo(deployment *deployerv1.Deployment) DeploymentInfo {
+	if deployment == nil {
+		return DeploymentInfo{}
+	}
+	return DeploymentInfo{
+		ID:            deployment.GetId(),
+		AppID:         deployment.GetAppId(),
+		Status:        deployment.GetStatus(),
+		FailureReason: deployment.GetFailureReason(),
+		CreatedAt:     deployment.GetCreatedAt(),
+		UpdatedAt:     deployment.GetUpdatedAt(),
 	}
 }
 
