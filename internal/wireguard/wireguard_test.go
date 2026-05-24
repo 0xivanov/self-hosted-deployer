@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 
@@ -29,6 +30,11 @@ func TestNextPeerIPAllocatesSequentialAddresses(t *testing.T) {
 			existing: []string{"10.8.0.2", "10.8.0.4"},
 			want:     "10.8.0.5",
 		},
+		{
+			name:     "reuses lower address before exhaustion",
+			existing: usedWireGuardIPsExcept("10.8.0.3"),
+			want:     "10.8.0.3",
+		},
 	}
 
 	for _, tt := range tests {
@@ -42,6 +48,18 @@ func TestNextPeerIPAllocatesSequentialAddresses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func usedWireGuardIPsExcept(except string) []string {
+	ips := make([]string, 0, 252)
+	for i := 2; i <= 254; i++ {
+		ip := "10.8.0." + strconv.Itoa(i)
+		if ip == except {
+			continue
+		}
+		ips = append(ips, ip)
+	}
+	return ips
 }
 
 func TestNextPeerIPRejectsAddressesOutsideSubnet(t *testing.T) {

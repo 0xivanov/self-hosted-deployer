@@ -114,6 +114,12 @@ func NextPeerIP(subnet string, reservedIP string, existingIPs []string) (string,
 			return addr.String(), nil
 		}
 	}
+	for current := start; current < next && current <= end; current++ {
+		addr := uint32ToIPv4(current)
+		if !used[addr] {
+			return addr.String(), nil
+		}
+	}
 	return "", fmt.Errorf("no WireGuard addresses available in %s", subnet)
 }
 
