@@ -37,7 +37,11 @@ func join(args []string) int {
 	}
 	defer closeClient()
 
-	hostname, _ := os.Hostname()
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Fprintf(agentStderr, "detect hostname: %v\n", err)
+		return 1
+	}
 	result, err := client.JoinNode(context.Background(), strings.TrimSpace(*joinToken), hostname, runtime.GOOS+"/"+runtime.GOARCH)
 	if err != nil {
 		fmt.Fprintln(agentStderr, err)

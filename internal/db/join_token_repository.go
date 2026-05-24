@@ -37,9 +37,18 @@ func (r *JoinTokenRepository) FindByHash(ctx context.Context, tokenHash string) 
 	if err != nil {
 		return domain.JoinToken{}, mapSQLError(err)
 	}
-	token.CreatedAt = parseStoredTime(createdAt)
-	token.ExpiresAt = parseStoredTime(expiresAt)
-	token.UsedAt = parseOptionalStoredTime(usedAt)
+	token.CreatedAt, err = parseStoredTime("created_at", createdAt)
+	if err != nil {
+		return domain.JoinToken{}, err
+	}
+	token.ExpiresAt, err = parseStoredTime("expires_at", expiresAt)
+	if err != nil {
+		return domain.JoinToken{}, err
+	}
+	token.UsedAt, err = parseOptionalStoredTime("used_at", usedAt)
+	if err != nil {
+		return domain.JoinToken{}, err
+	}
 	return token, nil
 }
 

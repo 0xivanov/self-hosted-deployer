@@ -119,8 +119,12 @@ func (s NodeService) CreateJoinToken(ctx context.Context, req *deployerv1.Create
 	}
 
 	if !nodeExists {
+		nodeID, err := newID("node")
+		if err != nil {
+			return nil, status.Error(codes.Internal, "create node id")
+		}
 		node := domain.Node{
-			ID:         newID("node"),
+			ID:         nodeID,
 			Name:       nodeName,
 			Status:     nodeStatusPending,
 			LabelsJSON: labelsJSON,
@@ -204,8 +208,12 @@ func (s NodeService) enrollNode(ctx context.Context, joinToken domain.JoinToken,
 
 	node, err := s.nodes.FindByName(ctx, nodeName)
 	if errors.Is(err, db.ErrNotFound) {
+		nodeID, err := newID("node")
+		if err != nil {
+			return nil, status.Error(codes.Internal, "create node id")
+		}
 		node = domain.Node{
-			ID:        newID("node"),
+			ID:        nodeID,
 			Name:      nodeName,
 			CreatedAt: now,
 		}
@@ -257,7 +265,9 @@ func (s NodeService) ListNodes(ctx context.Context, _ *deployerv1.ListNodesReque
 	if err != nil {
 		return nil, status.Error(codes.Internal, "list nodes")
 	}
-	response := &deployerv1.ListNodesResponse{}
+	response := &deployerv1.ListNodesResponse{
+		Nodes: make([]*deployerv1.Node, 0, len(nodes)),
+	}
 	for _, node := range nodes {
 		response.Nodes = append(response.Nodes, protoNode(node))
 	}
@@ -382,10 +392,10 @@ func formatOptionalProtoTime(t *time.Time) string {
 	return formatProtoTime(*t)
 }
 
-func newID(prefix string) string {
+func newID(prefix string) (string, error) {
 	var raw [16]byte
 	if _, err := rand.Read(raw[:]); err != nil {
-		return prefix + "_" + time.Now().UTC().Format("20060102150405.000000000")
+		return "", fmt.Errorf("generate %s id: %w", prefix, err)
 	}
-	return prefix + "_" + base64.RawURLEncoding.EncodeToString(raw[:])
+	return prefix + "_" + base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }

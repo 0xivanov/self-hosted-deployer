@@ -13,6 +13,8 @@ type ServerConfig struct {
 	PublicBaseURL     string
 	SecretKey         string
 	TokenHashKey      string
+	TLSCertFile       string
+	TLSKeyFile        string
 }
 
 func LoadServer() ServerConfig {
@@ -23,11 +25,13 @@ func LoadServer() ServerConfig {
 		PublicBaseURL:     os.Getenv("DEPLOYER_PUBLIC_BASE_URL"),
 		SecretKey:         os.Getenv("DEPLOYER_SECRET_KEY"),
 		TokenHashKey:      os.Getenv("DEPLOYER_TOKEN_HASH_KEY"),
+		TLSCertFile:       os.Getenv("DEPLOYER_SERVER_TLS_CERT_FILE"),
+		TLSKeyFile:        os.Getenv("DEPLOYER_SERVER_TLS_KEY_FILE"),
 	}
 }
 
 func (c ServerConfig) Validate() error {
-	var errs []error
+	errs := []error{}
 	if c.GRPCListenAddress == "" {
 		errs = append(errs, errors.New("DEPLOYER_SERVER_GRPC_ADDR is required"))
 	}
@@ -45,6 +49,9 @@ func (c ServerConfig) Validate() error {
 	}
 	if c.TokenHashKey == "" {
 		errs = append(errs, errors.New("DEPLOYER_TOKEN_HASH_KEY is required"))
+	}
+	if err := ValidateTLSFiles(c.TLSCertFile, c.TLSKeyFile); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }
@@ -64,7 +71,7 @@ func LoadAgent() AgentConfig {
 }
 
 func (c AgentConfig) Validate() error {
-	var errs []error
+	errs := []error{}
 	if c.ServerURL == "" {
 		errs = append(errs, errors.New("DEPLOYER_SERVER_URL is required"))
 	}
@@ -89,4 +96,17 @@ func FormatValidationError(component string, err error) error {
 		return nil
 	}
 	return fmt.Errorf("%s config invalid: %w", component, err)
+}
+
+func ValidateTLSFiles(certFile string, keyFile string) error {
+	if certFile == "" && keyFile == "" {
+		return nil
+	}
+	if certFile == "" {
+		return errors.New("DEPLOYER_SERVER_TLS_CERT_FILE is required when DEPLOYER_SERVER_TLS_KEY_FILE is set")
+	}
+	if keyFile == "" {
+		return errors.New("DEPLOYER_SERVER_TLS_KEY_FILE is required when DEPLOYER_SERVER_TLS_CERT_FILE is set")
+	}
+	return nil
 }

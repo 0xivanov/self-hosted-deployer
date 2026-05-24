@@ -36,9 +36,18 @@ func (r *AppRepository) FindByName(ctx context.Context, name string) (domain.App
 	if err != nil {
 		return domain.App{}, mapSQLError(err)
 	}
-	app.CreatedAt = parseStoredTime(createdAt)
-	app.UpdatedAt = parseStoredTime(updatedAt)
-	app.DeletedAt = parseOptionalStoredTime(deletedAt)
+	app.CreatedAt, err = parseStoredTime("created_at", createdAt)
+	if err != nil {
+		return domain.App{}, err
+	}
+	app.UpdatedAt, err = parseStoredTime("updated_at", updatedAt)
+	if err != nil {
+		return domain.App{}, err
+	}
+	app.DeletedAt, err = parseOptionalStoredTime("deleted_at", deletedAt)
+	if err != nil {
+		return domain.App{}, err
+	}
 	return app, nil
 }
 
@@ -60,7 +69,7 @@ func (r *AppRepository) List(ctx context.Context) ([]domain.App, error) {
 	}
 	defer rows.Close()
 
-	var apps []domain.App
+	apps := []domain.App{}
 	for rows.Next() {
 		app, err := scanApp(rows)
 		if err != nil {
@@ -95,8 +104,17 @@ func scanApp(scanner appScanner) (domain.App, error) {
 	if err != nil {
 		return domain.App{}, mapSQLError(err)
 	}
-	app.CreatedAt = parseStoredTime(createdAt)
-	app.UpdatedAt = parseStoredTime(updatedAt)
-	app.DeletedAt = parseOptionalStoredTime(deletedAt)
+	app.CreatedAt, err = parseStoredTime("created_at", createdAt)
+	if err != nil {
+		return domain.App{}, err
+	}
+	app.UpdatedAt, err = parseStoredTime("updated_at", updatedAt)
+	if err != nil {
+		return domain.App{}, err
+	}
+	app.DeletedAt, err = parseOptionalStoredTime("deleted_at", deletedAt)
+	if err != nil {
+		return domain.App{}, err
+	}
 	return app, nil
 }

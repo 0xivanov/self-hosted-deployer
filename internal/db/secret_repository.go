@@ -29,7 +29,13 @@ func (r *SecretRepository) Find(ctx context.Context, appID string, name string) 
 	if err != nil {
 		return domain.Secret{}, mapSQLError(err)
 	}
-	secret.CreatedAt = parseStoredTime(createdAt)
-	secret.UpdatedAt = parseStoredTime(updatedAt)
+	secret.CreatedAt, err = parseStoredTime("created_at", createdAt)
+	if err != nil {
+		return domain.Secret{}, err
+	}
+	secret.UpdatedAt, err = parseStoredTime("updated_at", updatedAt)
+	if err != nil {
+		return domain.Secret{}, err
+	}
 	return secret, nil
 }

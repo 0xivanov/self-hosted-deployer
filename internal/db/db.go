@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/db/migrations"
@@ -21,11 +22,18 @@ func Open(ctx context.Context, dsn string) (*Db, error) {
 	}
 	database := New(sqlDB)
 	if _, err := sqlDB.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
-		_ = sqlDB.Close()
+		if closeErr := sqlDB.Close(); closeErr != nil {
+			return nil, errors.Join(
+				fmt.Errorf("enable sqlite foreign keys: %w", err),
+				fmt.Errorf("close sqlite: %w", closeErr),
+			)
+		}
 		return nil, fmt.Errorf("enable sqlite foreign keys: %w", err)
 	}
 	if err := database.Migrate(ctx); err != nil {
-		_ = sqlDB.Close()
+		if closeErr := sqlDB.Close(); closeErr != nil {
+			return nil, errors.Join(err, fmt.Errorf("close sqlite: %w", closeErr))
+		}
 		return nil, err
 	}
 	return database, nil

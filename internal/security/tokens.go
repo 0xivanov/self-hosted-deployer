@@ -44,7 +44,9 @@ func HashToken(key []byte, token string) (string, error) {
 	}
 
 	mac := hmac.New(sha256.New, key)
-	_, _ = mac.Write([]byte(token))
+	if _, err := mac.Write([]byte(token)); err != nil {
+		return "", fmt.Errorf("hash token: %w", err)
+	}
 	return hex.EncodeToString(mac.Sum(nil)), nil
 }
 

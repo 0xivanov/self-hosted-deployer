@@ -56,7 +56,7 @@ func TestVersionSupportsJSONOutput(t *testing.T) {
 		t.Fatalf("expected exit code 0, got %d", code)
 	}
 
-	var got map[string]string
+	got := map[string]string{}
 	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
 		t.Fatalf("expected JSON version output: %v", err)
 	}

@@ -18,7 +18,7 @@ func loadDotEnv() error {
 }
 
 func validateServeConfig(cfg config.ServerConfig) error {
-	var errs []error
+	errs := []error{}
 	if cfg.GRPCListenAddress == "" {
 		errs = append(errs, errors.New("DEPLOYER_SERVER_GRPC_ADDR is required"))
 	}
@@ -30,6 +30,9 @@ func validateServeConfig(cfg config.ServerConfig) error {
 	}
 	if cfg.TokenHashKey == "" {
 		errs = append(errs, errors.New("DEPLOYER_TOKEN_HASH_KEY is required"))
+	}
+	if err := config.ValidateTLSFiles(cfg.TLSCertFile, cfg.TLSKeyFile); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }

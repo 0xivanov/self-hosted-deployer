@@ -157,7 +157,7 @@ func FromJSON(data string) (Config, error) {
 
 func normalizeStringList(values []string) []string {
 	if len(values) == 0 {
-		return nil
+		return []string{}
 	}
 	out := make([]string, 0, len(values))
 	for _, value := range values {
@@ -168,7 +168,7 @@ func normalizeStringList(values []string) []string {
 
 func normalizePlacementSelectors(selectors []map[string]string) []map[string]string {
 	if len(selectors) == 0 {
-		return nil
+		return []map[string]string{}
 	}
 	normalized := make([]map[string]string, 0, len(selectors))
 	for _, selector := range selectors {

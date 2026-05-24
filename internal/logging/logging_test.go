@@ -24,7 +24,7 @@ func TestHandlerOmitsTimestamp(t *testing.T) {
 
 	logger.Info("hello")
 
-	var fields map[string]any
+	fields := map[string]any{}
 	if err := json.Unmarshal(output.Bytes(), &fields); err != nil {
 		t.Fatalf("parse log output: %v", err)
 	}

@@ -43,7 +43,7 @@ func (r *NodeRepository) List(ctx context.Context) ([]domain.Node, error) {
 	}
 	defer rows.Close()
 
-	var nodes []domain.Node
+	nodes := []domain.Node{}
 	for rows.Next() {
 		node, err := scanNode(rows)
 		if err != nil {
@@ -95,8 +95,17 @@ func scanNode(scanner nodeScanner) (domain.Node, error) {
 	if err != nil {
 		return domain.Node{}, err
 	}
-	node.LastSeenAt = parseOptionalStoredTime(lastSeenAt)
-	node.CreatedAt = parseStoredTime(createdAt)
-	node.UpdatedAt = parseStoredTime(updatedAt)
+	node.LastSeenAt, err = parseOptionalStoredTime("last_seen_at", lastSeenAt)
+	if err != nil {
+		return domain.Node{}, err
+	}
+	node.CreatedAt, err = parseStoredTime("created_at", createdAt)
+	if err != nil {
+		return domain.Node{}, err
+	}
+	node.UpdatedAt, err = parseStoredTime("updated_at", updatedAt)
+	if err != nil {
+		return domain.Node{}, err
+	}
 	return node, nil
 }

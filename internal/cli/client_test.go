@@ -66,6 +66,30 @@ func TestNormalizeServerTarget(t *testing.T) {
 	}
 }
 
+func TestDialTargetAndCredentials(t *testing.T) {
+	tests := map[string]struct {
+		target           string
+		securityProtocol string
+	}{
+		"localhost:7443":          {target: "localhost:7443", securityProtocol: "insecure"},
+		"http://localhost:7443":   {target: "localhost:7443", securityProtocol: "insecure"},
+		"https://example.com:443": {target: "example.com:443", securityProtocol: "tls"},
+	}
+
+	for input, want := range tests {
+		target, transportCredentials, err := dialTargetAndCredentials(input)
+		if err != nil {
+			t.Fatalf("dial target %q: %v", input, err)
+		}
+		if target != want.target {
+			t.Fatalf("dial target %q: got %q want %q", input, target, want.target)
+		}
+		if got := transportCredentials.Info().SecurityProtocol; got != want.securityProtocol {
+			t.Fatalf("security protocol %q: got %q want %q", input, got, want.securityProtocol)
+		}
+	}
+}
+
 type recordingPlatformService struct {
 	status        *deployerv1.GetStatusResponse
 	err           error

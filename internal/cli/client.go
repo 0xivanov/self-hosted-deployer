@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net/url"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -101,12 +103,12 @@ type AppInspectResult struct {
 }
 
 func NewPlatformClient(serverURL string, token string) (*PlatformClient, *grpc.ClientConn, error) {
-	target, err := NormalizeServerTarget(serverURL)
+	target, transportCredentials, err := dialTargetAndCredentials(serverURL)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(transportCredentials))
 	if err != nil {
 		return nil, nil, fmt.Errorf("create gRPC client for %q: %w", serverURL, err)
 	}
@@ -245,8 +247,12 @@ func (c *PlatformClient) DeployApp(ctx context.Context, deployerYAML string) (De
 	if err != nil {
 		return DeployResult{}, DecodeRPCError(err)
 	}
+	app, err := appInfo(response.GetApp())
+	if err != nil {
+		return DeployResult{}, err
+	}
 	return DeployResult{
-		App:        appInfo(response.GetApp()),
+		App:        app,
 		Deployment: deploymentInfo(response.GetDeployment()),
 	}, nil
 }
@@ -262,7 +268,11 @@ func (c *PlatformClient) ListApps(ctx context.Context) ([]AppInfo, error) {
 	}
 	apps := make([]AppInfo, 0, len(response.GetApps()))
 	for _, app := range response.GetApps() {
-		apps = append(apps, appInfo(app))
+		info, err := appInfo(app)
+		if err != nil {
+			return nil, err
+		}
+		apps = append(apps, info)
 	}
 	return apps, nil
 }
@@ -276,7 +286,14 @@ func (c *PlatformClient) InspectApp(ctx context.Context, name string) (AppInspec
 	if err != nil {
 		return AppInspectResult{}, DecodeRPCError(err)
 	}
-	result := AppInspectResult{App: appInfo(response.GetApp())}
+	app, err := appInfo(response.GetApp())
+	if err != nil {
+		return AppInspectResult{}, err
+	}
+	result := AppInspectResult{
+		App:         app,
+		Deployments: make([]DeploymentInfo, 0, len(response.GetDeployments())),
+	}
 	for _, deployment := range response.GetDeployments() {
 		result.Deployments = append(result.Deployments, deploymentInfo(deployment))
 	}
@@ -309,11 +326,14 @@ func nodeInfo(node *deployerv1.Node) NodeInfo {
 	}
 }
 
-func appInfo(app *deployerv1.App) AppInfo {
+func appInfo(app *deployerv1.App) (AppInfo, error) {
 	if app == nil {
-		return AppInfo{}
+		return AppInfo{}, nil
 	}
-	cfg, _ := appconfig.FromJSON(app.GetDesiredState())
+	cfg, err := appconfig.FromJSON(app.GetDesiredState())
+	if err != nil {
+		return AppInfo{}, fmt.Errorf("decode desired state for app %q: %w", app.GetName(), err)
+	}
 	return AppInfo{
 		ID:           app.GetId(),
 		Name:         app.GetName(),
@@ -324,7 +344,7 @@ func appInfo(app *deployerv1.App) AppInfo {
 		DesiredState: cfg,
 		CreatedAt:    app.GetCreatedAt(),
 		UpdatedAt:    app.GetUpdatedAt(),
-	}
+	}, nil
 }
 
 func deploymentInfo(deployment *deployerv1.Deployment) DeploymentInfo {
@@ -342,32 +362,43 @@ func deploymentInfo(deployment *deployerv1.Deployment) DeploymentInfo {
 }
 
 func NormalizeServerTarget(raw string) (string, error) {
+	target, _, err := dialTargetAndCredentials(raw)
+	return target, err
+}
+
+func dialTargetAndCredentials(raw string) (string, credentials.TransportCredentials, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return "", fmt.Errorf("server URL is required; pass --server or run deployer login <server-url>")
+		return "", nil, fmt.Errorf("server URL is required; pass --server or run deployer login <server-url>")
 	}
 	if !strings.Contains(raw, "://") {
 		if strings.Contains(raw, "/") {
-			return "", fmt.Errorf("invalid server URL %q: expected host:port or http(s)://host:port", raw)
+			return "", nil, fmt.Errorf("invalid server URL %q: expected host:port or http(s)://host:port", raw)
 		}
-		return raw, nil
+		return raw, insecure.NewCredentials(), nil
 	}
 
 	parsed, err := url.Parse(raw)
 	if err != nil {
-		return "", fmt.Errorf("invalid server URL %q: %w", raw, err)
+		return "", nil, fmt.Errorf("invalid server URL %q: %w", raw, err)
 	}
 
 	switch parsed.Scheme {
 	case "http", "https":
 	default:
-		return "", fmt.Errorf("invalid server URL %q: expected http or https", raw)
+		return "", nil, fmt.Errorf("invalid server URL %q: expected http or https", raw)
 	}
 
 	if parsed.Host == "" {
-		return "", fmt.Errorf("invalid server URL %q: missing host", raw)
+		return "", nil, fmt.Errorf("invalid server URL %q: missing host", raw)
 	}
-	return parsed.Host, nil
+	if parsed.Scheme == "http" {
+		return parsed.Host, insecure.NewCredentials(), nil
+	}
+	return parsed.Host, credentials.NewTLS(&tls.Config{
+		MinVersion: tls.VersionTLS12,
+		ServerName: parsed.Hostname(),
+	}), nil
 }
 
 func NormalizeServerURL(raw string) (string, error) {

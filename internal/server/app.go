@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -71,8 +72,12 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	now := s.now().UTC()
 	app, err := s.apps.FindByName(ctx, cfg.Name)
 	if errors.Is(err, db.ErrNotFound) {
+		appID, err := newID("app")
+		if err != nil {
+			return nil, status.Error(codes.Internal, "create app id")
+		}
 		app = domain.App{
-			ID:               newID("app"),
+			ID:               appID,
 			Name:             cfg.Name,
 			Image:            cfg.Image,
 			DesiredStateJSON: desiredStateJSON,
@@ -94,8 +99,12 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 		}
 	}
 
+	deploymentID, err := newID("deploy")
+	if err != nil {
+		return nil, status.Error(codes.Internal, "create deployment id")
+	}
 	deployment := domain.Deployment{
-		ID:        newID("deploy"),
+		ID:        deploymentID,
 		AppID:     app.ID,
 		Status:    deploymentStatusPending,
 		CreatedAt: now,
@@ -105,8 +114,12 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 		return nil, status.Error(codes.Internal, "create deployment")
 	}
 
+	appProto, err := protoApp(app)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "decode desired state")
+	}
 	return &deployerv1.DeployAppResponse{
-		App:        protoApp(app),
+		App:        appProto,
 		Deployment: protoDeployment(deployment),
 	}, nil
 }
@@ -119,9 +132,15 @@ func (s AppService) ListApps(ctx context.Context, _ *deployerv1.ListAppsRequest)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "list apps")
 	}
-	response := &deployerv1.ListAppsResponse{}
+	response := &deployerv1.ListAppsResponse{
+		Apps: make([]*deployerv1.App, 0, len(apps)),
+	}
 	for _, app := range apps {
-		response.Apps = append(response.Apps, protoApp(app))
+		appProto, err := protoApp(app)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "decode desired state")
+		}
+		response.Apps = append(response.Apps, appProto)
 	}
 	return response, nil
 }
@@ -131,7 +150,14 @@ func (s AppService) InspectApp(ctx context.Context, req *deployerv1.InspectAppRe
 	if err != nil {
 		return nil, err
 	}
-	response := &deployerv1.InspectAppResponse{App: protoApp(app)}
+	appProto, err := protoApp(app)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "decode desired state")
+	}
+	response := &deployerv1.InspectAppResponse{
+		App:         appProto,
+		Deployments: make([]*deployerv1.Deployment, 0, len(deployments)),
+	}
 	for _, deployment := range deployments {
 		response.Deployments = append(response.Deployments, protoDeployment(deployment))
 	}
@@ -153,7 +179,11 @@ func (s AppService) DeleteApp(ctx context.Context, req *deployerv1.DeleteAppRequ
 	if err != nil {
 		return nil, status.Error(codes.Internal, "delete app")
 	}
-	return &deployerv1.DeleteAppResponse{App: protoApp(app)}, nil
+	appProto, err := protoApp(app)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "decode desired state")
+	}
+	return &deployerv1.DeleteAppResponse{App: appProto}, nil
 }
 
 func (s AppService) GetApp(ctx context.Context, req *deployerv1.GetAppRequest) (*deployerv1.GetAppResponse, error) {
@@ -161,7 +191,14 @@ func (s AppService) GetApp(ctx context.Context, req *deployerv1.GetAppRequest) (
 	if err != nil {
 		return nil, err
 	}
-	response := &deployerv1.GetAppResponse{App: protoApp(app)}
+	appProto, err := protoApp(app)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "decode desired state")
+	}
+	response := &deployerv1.GetAppResponse{
+		App:         appProto,
+		Deployments: make([]*deployerv1.Deployment, 0, len(deployments)),
+	}
 	for _, deployment := range deployments {
 		response.Deployments = append(response.Deployments, protoDeployment(deployment))
 	}
@@ -173,7 +210,11 @@ func (s AppService) GetAppStatus(ctx context.Context, req *deployerv1.GetAppStat
 	if err != nil {
 		return nil, err
 	}
-	response := &deployerv1.GetAppStatusResponse{App: protoApp(app)}
+	appProto, err := protoApp(app)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "decode desired state")
+	}
+	response := &deployerv1.GetAppStatusResponse{App: appProto}
 	if len(deployments) > 0 {
 		response.LatestDeployment = protoDeployment(deployments[0])
 	}
@@ -202,8 +243,11 @@ func (s AppService) inspectApp(ctx context.Context, name string) (domain.App, []
 	return app, deployments, nil
 }
 
-func protoApp(app domain.App) *deployerv1.App {
-	cfg, _ := appconfig.FromJSON(app.DesiredStateJSON)
+func protoApp(app domain.App) (*deployerv1.App, error) {
+	cfg, err := appconfig.FromJSON(app.DesiredStateJSON)
+	if err != nil {
+		return nil, fmt.Errorf("decode desired state for app %q: %w", app.Name, err)
+	}
 	return &deployerv1.App{
 		Id:           app.ID,
 		Name:         app.Name,
@@ -212,7 +256,7 @@ func protoApp(app domain.App) *deployerv1.App {
 		DesiredState: app.DesiredStateJSON,
 		CreatedAt:    formatProtoTime(app.CreatedAt),
 		UpdatedAt:    formatProtoTime(app.UpdatedAt),
-	}
+	}, nil
 }
 
 func protoDeployment(deployment domain.Deployment) *deployerv1.Deployment {

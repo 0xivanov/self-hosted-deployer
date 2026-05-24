@@ -32,8 +32,14 @@ func (r *DeploymentRepository) FindByID(ctx context.Context, deploymentID string
 		return domain.Deployment{}, mapSQLError(err)
 	}
 	deployment.FailureReason = parseOptionalString(failureReason)
-	deployment.CreatedAt = parseStoredTime(createdAt)
-	deployment.UpdatedAt = parseStoredTime(updatedAt)
+	deployment.CreatedAt, err = parseStoredTime("created_at", createdAt)
+	if err != nil {
+		return domain.Deployment{}, err
+	}
+	deployment.UpdatedAt, err = parseStoredTime("updated_at", updatedAt)
+	if err != nil {
+		return domain.Deployment{}, err
+	}
 	return deployment, nil
 }
 
@@ -49,7 +55,7 @@ func (r *DeploymentRepository) ListByApp(ctx context.Context, appID string) ([]d
 	}
 	defer rows.Close()
 
-	var deployments []domain.Deployment
+	deployments := []domain.Deployment{}
 	for rows.Next() {
 		deployment, err := scanDeployment(rows)
 		if err != nil {
@@ -76,7 +82,13 @@ func scanDeployment(scanner deploymentScanner) (domain.Deployment, error) {
 		return domain.Deployment{}, mapSQLError(err)
 	}
 	deployment.FailureReason = parseOptionalString(failureReason)
-	deployment.CreatedAt = parseStoredTime(createdAt)
-	deployment.UpdatedAt = parseStoredTime(updatedAt)
+	deployment.CreatedAt, err = parseStoredTime("created_at", createdAt)
+	if err != nil {
+		return domain.Deployment{}, err
+	}
+	deployment.UpdatedAt, err = parseStoredTime("updated_at", updatedAt)
+	if err != nil {
+		return domain.Deployment{}, err
+	}
 	return deployment, nil
 }

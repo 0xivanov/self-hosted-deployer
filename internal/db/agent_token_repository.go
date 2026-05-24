@@ -31,9 +31,18 @@ func (r *AgentTokenRepository) FindByHash(ctx context.Context, tokenHash string)
 	if err != nil {
 		return domain.AgentToken{}, mapSQLError(err)
 	}
-	token.CreatedAt = parseStoredTime(createdAt)
-	token.LastUsedAt = parseOptionalStoredTime(lastUsedAt)
-	token.RevokedAt = parseOptionalStoredTime(revokedAt)
+	token.CreatedAt, err = parseStoredTime("created_at", createdAt)
+	if err != nil {
+		return domain.AgentToken{}, err
+	}
+	token.LastUsedAt, err = parseOptionalStoredTime("last_used_at", lastUsedAt)
+	if err != nil {
+		return domain.AgentToken{}, err
+	}
+	token.RevokedAt, err = parseOptionalStoredTime("revoked_at", revokedAt)
+	if err != nil {
+		return domain.AgentToken{}, err
+	}
 	return token, nil
 }
 

@@ -1,5 +1,6 @@
 GO ?= go
 BUF ?= buf
+GOLANGCI_LINT ?= golangci-lint
 
 BIN_DIR := bin
 VERSION ?= dev
@@ -7,7 +8,7 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -X github.com/0xivanov/self-hosted-deployer/internal/version.Version=$(VERSION) -X github.com/0xivanov/self-hosted-deployer/internal/version.Commit=$(COMMIT) -X github.com/0xivanov/self-hosted-deployer/internal/version.BuildDate=$(BUILD_DATE)
 
-.PHONY: fmt test build lint proto proto-lint proto-check clean
+.PHONY: fmt test build vet lint proto proto-lint proto-check clean
 
 fmt:
 	$(GO) fmt ./...
@@ -21,8 +22,11 @@ build:
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/deployer-server ./cmd/deployer-server
 	$(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/deployer-agent ./cmd/deployer-agent
 
-lint:
+vet:
 	$(GO) vet ./...
+
+lint:
+	$(GOLANGCI_LINT) run ./...
 
 proto:
 	$(BUF) generate

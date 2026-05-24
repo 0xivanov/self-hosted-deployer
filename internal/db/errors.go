@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -40,17 +41,23 @@ func formatOptionalTime(t *time.Time) sql.NullString {
 	return sql.NullString{String: formatTime(*t), Valid: true}
 }
 
-func parseStoredTime(value string) time.Time {
-	t, _ := time.Parse(time.RFC3339Nano, value)
-	return t
+func parseStoredTime(field string, value string) (time.Time, error) {
+	t, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse %s: %w", field, err)
+	}
+	return t, nil
 }
 
-func parseOptionalStoredTime(value sql.NullString) *time.Time {
+func parseOptionalStoredTime(field string, value sql.NullString) (*time.Time, error) {
 	if !value.Valid {
-		return nil
+		return nil, nil
 	}
-	t := parseStoredTime(value.String)
-	return &t
+	t, err := parseStoredTime(field, value.String)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
 }
 
 func optionalString(value string) sql.NullString {

@@ -12,6 +12,7 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/config"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -44,7 +45,7 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		AgentTokens: repos.AgentTokens,
 		JoinTokens:  repos.JoinTokens,
 	}, cfg.TokenHashKey)
-	grpcServer := grpc.NewServer(
+	grpcOptions := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(
 			UnaryLoggingInterceptor(logger),
 			auth.UnaryInterceptor(),
@@ -52,7 +53,18 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		grpc.ChainStreamInterceptor(
 			StreamLoggingInterceptor(logger),
 		),
-	)
+	}
+	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" {
+		serverCredentials, err := credentials.NewServerTLSFromFile(
+			cfg.TLSCertFile,
+			cfg.TLSKeyFile,
+		)
+		if err != nil {
+			return fmt.Errorf("load grpc tls credentials: %w", err)
+		}
+		grpcOptions = append(grpcOptions, grpc.Creds(serverCredentials))
+	}
+	grpcServer := grpc.NewServer(grpcOptions...)
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
@@ -70,16 +82,14 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok\n"))
+		writePlainText(logger, w, http.StatusOK, "ok\n")
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if err := repos.Health.Ping(r.Context()); err != nil {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ready\n"))
+		writePlainText(logger, w, http.StatusOK, "ready\n")
 	})
 	httpServer := &http.Server{
 		Handler:           mux,
@@ -104,12 +114,24 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	case <-ctx.Done():
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_ = httpServer.Shutdown(shutdownCtx)
+		shutdownErr := httpServer.Shutdown(shutdownCtx)
 		grpcServer.GracefulStop()
+		if shutdownErr != nil {
+			return fmt.Errorf("shutdown http: %w", shutdownErr)
+		}
 		return nil
 	case err := <-errs:
 		grpcServer.Stop()
-		_ = httpServer.Close()
+		if closeErr := httpServer.Close(); closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+			return errors.Join(err, fmt.Errorf("close http: %w", closeErr))
+		}
 		return err
+	}
+}
+
+func writePlainText(logger *slog.Logger, w http.ResponseWriter, status int, body string) {
+	w.WriteHeader(status)
+	if _, err := w.Write([]byte(body)); err != nil {
+		logger.Warn("write http response", "error", err)
 	}
 }

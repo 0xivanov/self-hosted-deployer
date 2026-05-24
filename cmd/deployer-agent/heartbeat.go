@@ -12,7 +12,10 @@ import (
 )
 
 func sendHeartbeat(ctx context.Context, client agentClient) error {
-	hostname, _ := os.Hostname()
+	hostname, err := os.Hostname()
+	if err != nil {
+		return fmt.Errorf("detect hostname: %w", err)
+	}
 	return client.Heartbeat(ctx, clicore.Heartbeat{
 		Status:          "online",
 		Hostname:        hostname,

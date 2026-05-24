@@ -28,7 +28,13 @@ func (r *RouteRepository) FindByDomain(ctx context.Context, domainName string) (
 	if err != nil {
 		return domain.Route{}, mapSQLError(err)
 	}
-	route.CreatedAt = parseStoredTime(createdAt)
-	route.UpdatedAt = parseStoredTime(updatedAt)
+	route.CreatedAt, err = parseStoredTime("created_at", createdAt)
+	if err != nil {
+		return domain.Route{}, err
+	}
+	route.UpdatedAt, err = parseStoredTime("updated_at", updatedAt)
+	if err != nil {
+		return domain.Route{}, err
+	}
 	return route, nil
 }
