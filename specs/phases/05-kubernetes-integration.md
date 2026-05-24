@@ -31,6 +31,25 @@ Acceptance Criteria:
 - Required k3s server flags/config are listed.
 - Existing-install detection behavior is specified.
 
+Bootstrap Strategy:
+
+- The MVP runs one k3s server on the VPS and zero or more k3s agents on enrolled Linux worker nodes.
+- k3s is installed through the official `get.k3s.io` installer rather than by vendoring a k3s binary. The deployer writes the server configuration first, then invokes the installer with `INSTALL_K3S_EXEC="server --config <path>"`.
+- The k3s server config is written to `/etc/rancher/k3s/config.yaml` by default. Operators can override this with `DEPLOYER_K3S_CONFIG_PATH`.
+- The control-plane kubeconfig defaults to `/etc/rancher/k3s/k3s.yaml`. Operators can override this with `DEPLOYER_KUBECONFIG`.
+- The k3s API is bound and advertised on the VPS WireGuard hub IP. Operators provide that IP through `DEPLOYER_K3S_WIREGUARD_IP` until Phase 06 persists hub network state.
+- Required k3s server config fields:
+  - `bind-address: <wireguard-ip>`
+  - `advertise-address: <wireguard-ip>`
+  - `node-ip: <wireguard-ip>`
+  - `tls-san: [<wireguard-ip>]`
+  - `write-kubeconfig: <kubeconfig-path>`
+  - `write-kubeconfig-mode: "0644"`
+- Existing install detection is conservative:
+  - If a k3s binary is already present or the configured kubeconfig already exists, `deployer-server bootstrap k3s` fails safely by default and tells the operator to inspect the host.
+  - Re-applying k3s config or re-running the installer requires an explicit `--force` flag.
+  - The bootstrap command never prints k3s node tokens.
+
 Dependencies:
 
 - `06.06`

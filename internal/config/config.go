@@ -15,6 +15,10 @@ type ServerConfig struct {
 	TokenHashKey      string
 	TLSCertFile       string
 	TLSKeyFile        string
+	KubeconfigPath    string
+	K3sConfigPath     string
+	K3sWireGuardIP    string
+	K3sInstallerURL   string
 }
 
 func LoadServer() ServerConfig {
@@ -27,6 +31,10 @@ func LoadServer() ServerConfig {
 		TokenHashKey:      os.Getenv("DEPLOYER_TOKEN_HASH_KEY"),
 		TLSCertFile:       os.Getenv("DEPLOYER_SERVER_TLS_CERT_FILE"),
 		TLSKeyFile:        os.Getenv("DEPLOYER_SERVER_TLS_KEY_FILE"),
+		KubeconfigPath:    envOrDefault("DEPLOYER_KUBECONFIG", "/etc/rancher/k3s/k3s.yaml"),
+		K3sConfigPath:     envOrDefault("DEPLOYER_K3S_CONFIG_PATH", "/etc/rancher/k3s/config.yaml"),
+		K3sWireGuardIP:    os.Getenv("DEPLOYER_K3S_WIREGUARD_IP"),
+		K3sInstallerURL:   envOrDefault("DEPLOYER_K3S_INSTALLER_URL", "https://get.k3s.io"),
 	}
 }
 

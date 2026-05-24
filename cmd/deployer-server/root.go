@@ -45,7 +45,7 @@ func run(args []string) int {
 	if flags.NArg() > 0 {
 		switch flags.Arg(0) {
 		case "bootstrap":
-			return bootstrap()
+			return bootstrap(flags.Args()[1:])
 		case "help":
 			usage()
 			return 0
