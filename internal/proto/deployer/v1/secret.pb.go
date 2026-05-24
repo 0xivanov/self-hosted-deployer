@@ -208,6 +208,7 @@ func (x *ListSecretsResponse) GetNames() []string {
 type DeleteSecretRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AppName       string                 `protobuf:"bytes,1,opt,name=app_name,json=appName,proto3" json:"app_name,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -245,6 +246,13 @@ func (*DeleteSecretRequest) Descriptor() ([]byte, []int) {
 func (x *DeleteSecretRequest) GetAppName() string {
 	if x != nil {
 		return x.AppName
+	}
+	return ""
+}
+
+func (x *DeleteSecretRequest) GetName() string {
+	if x != nil {
+		return x.Name
 	}
 	return ""
 }
@@ -298,9 +306,10 @@ const file_deployer_v1_secret_proto_rawDesc = "" +
 	"\x12ListSecretsRequest\x12\x19\n" +
 	"\bapp_name\x18\x01 \x01(\tR\aappName\"+\n" +
 	"\x13ListSecretsResponse\x12\x14\n" +
-	"\x05names\x18\x01 \x03(\tR\x05names\"0\n" +
+	"\x05names\x18\x01 \x03(\tR\x05names\"D\n" +
 	"\x13DeleteSecretRequest\x12\x19\n" +
-	"\bapp_name\x18\x01 \x01(\tR\aappName\"\x16\n" +
+	"\bapp_name\x18\x01 \x01(\tR\aappName\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\"\x16\n" +
 	"\x14DeleteSecretResponse2\x82\x02\n" +
 	"\rSecretService\x12J\n" +
 	"\tSetSecret\x12\x1d.deployer.v1.SetSecretRequest\x1a\x1e.deployer.v1.SetSecretResponse\x12P\n" +
