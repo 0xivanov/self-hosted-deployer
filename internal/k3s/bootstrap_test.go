@@ -102,17 +102,14 @@ func TestBootstrapWritesConfigAndRunsInstaller(t *testing.T) {
 	if len(ports.calls) != 2 || ports.calls[0] != "10.8.0.1:0" || ports.calls[1] != "10.8.0.1:6443" {
 		t.Fatalf("unexpected port checks: %#v", ports.calls)
 	}
-	if len(runner.calls) != 2 {
-		t.Fatalf("expected installer and systemctl calls, got %#v", runner.calls)
+	if len(runner.calls) != 1 {
+		t.Fatalf("expected installer call, got %#v", runner.calls)
 	}
 	if runner.calls[0].name != "/bin/sh" || !strings.Contains(runner.calls[0].env[0], "server --config /tmp/rancher/k3s/config.yaml") {
 		t.Fatalf("unexpected installer call: %#v", runner.calls[0])
 	}
 	if string(runner.calls[0].stdin) != "#!/bin/sh\n" {
 		t.Fatalf("installer stdin was not passed through: %q", string(runner.calls[0].stdin))
-	}
-	if runner.calls[1].name != "systemctl" || strings.Join(runner.calls[1].args, " ") != "enable --now k3s" {
-		t.Fatalf("unexpected service call: %#v", runner.calls[1])
 	}
 }
 

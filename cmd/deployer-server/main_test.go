@@ -55,14 +55,41 @@ func TestBootstrapK3sCommandUsesInstallerPath(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d", code)
 	}
-	if len(runner.calls) != 2 {
-		t.Fatalf("expected installer and service calls, got %#v", runner.calls)
+	if len(runner.calls) != 1 {
+		t.Fatalf("expected installer call, got %#v", runner.calls)
 	}
 	if runner.calls[0].name != "/bin/sh" {
 		t.Fatalf("expected installer shell, got %#v", runner.calls[0])
 	}
 	if !strings.Contains(strings.Join(runner.calls[0].env, "\n"), "server --config /tmp/k3s/config.yaml") {
 		t.Fatalf("installer env missing config path: %#v", runner.calls[0].env)
+	}
+}
+
+func TestFormatK3sAPIURLSupportsIPv6(t *testing.T) {
+	tests := []struct {
+		name string
+		host string
+		want string
+	}{
+		{
+			name: "ipv4",
+			host: "10.8.0.1",
+			want: "https://10.8.0.1:6443",
+		},
+		{
+			name: "ipv6",
+			host: "fd00::1",
+			want: "https://[fd00::1]:6443",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := formatK3sAPIURL(tt.host); got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/config"
@@ -104,8 +105,12 @@ func bootstrapK3s(args []string) int {
 	}
 	fmt.Fprintf(os.Stdout, "Config: %s\n", result.ConfigPath)
 	fmt.Fprintf(os.Stdout, "Kubeconfig: %s\n", result.KubeconfigPath)
-	fmt.Fprintf(os.Stdout, "WireGuard API: https://%s:6443\n", result.WireGuardIP)
+	fmt.Fprintf(os.Stdout, "WireGuard API: %s\n", formatK3sAPIURL(result.WireGuardIP))
 	return 0
+}
+
+func formatK3sAPIURL(host string) string {
+	return "https://" + net.JoinHostPort(host, "6443")
 }
 
 func bootstrapUsage() {

@@ -133,9 +133,6 @@ func (b Bootstrapper) Bootstrap(ctx context.Context, cfg Config) (Result, error)
 	if err := b.Runner.Run(ctx, "/bin/sh", nil, installerEnv, installerScript); err != nil {
 		return result, fmt.Errorf("run k3s installer: %w", err)
 	}
-	if err := b.Runner.Run(ctx, "systemctl", []string{"enable", "--now", "k3s"}, nil, nil); err != nil {
-		return result, fmt.Errorf("start k3s service: %w", err)
-	}
 
 	return result, nil
 }
