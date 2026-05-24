@@ -24,6 +24,8 @@ message Node {
   string arch = 9;
   string os = 10;
   string kernel = 11;
+  string wireguard_ip = 12;
+  string wireguard_public_key = 13;
 }
 
 message CreateJoinTokenRequest {
@@ -49,6 +51,7 @@ message JoinNodeResponse {
   string node_id = 1;
   string agent_token = 2;
   string node_name = 3;
+  string wireguard_ip = 4;
 }
 
 message ListNodesRequest {

@@ -16,11 +16,13 @@ func TestNodeRepositoryCreateListFindAndUpdate(t *testing.T) {
 	now := time.Date(2026, 5, 23, 10, 0, 0, 0, time.UTC)
 
 	if err := repo.Create(ctx, domain.Node{
-		ID:         "node-1",
-		Name:       "pi-kitchen",
-		LabelsJSON: `{"location":"home","role":"worker"}`,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:                 "node-1",
+		Name:               "pi-kitchen",
+		LabelsJSON:         `{"location":"home","role":"worker"}`,
+		WireGuardIP:        "10.8.0.2",
+		WireGuardPublicKey: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}); err != nil {
 		t.Fatalf("create node: %v", err)
 	}
@@ -39,6 +41,9 @@ func TestNodeRepositoryCreateListFindAndUpdate(t *testing.T) {
 	}
 	if byName.ID != "node-1" {
 		t.Fatalf("expected node-1, got %q", byName.ID)
+	}
+	if byName.WireGuardIP != "10.8.0.2" || byName.WireGuardPublicKey == "" {
+		t.Fatalf("expected WireGuard metadata, got %#v", byName)
 	}
 
 	nodes, err := repo.List(ctx)
@@ -69,6 +74,20 @@ func TestNodeRepositoryCreateListFindAndUpdate(t *testing.T) {
 	}
 	if updated.Hostname != "pi-kitchen.local" || updated.Arch != "linux/arm64" || updated.OS != "linux" || updated.Kernel != "6.6" {
 		t.Fatalf("metadata fields were not updated: %#v", updated)
+	}
+	if updated.WireGuardIP != "10.8.0.2" || updated.WireGuardPublicKey == "" {
+		t.Fatalf("heartbeat should not clear WireGuard metadata: %#v", updated)
+	}
+
+	if err := repo.SetWireGuard(ctx, "node-1", "10.8.0.3", "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=", seenAt.Add(time.Minute)); err != nil {
+		t.Fatalf("set WireGuard metadata: %v", err)
+	}
+	withWireGuard, err := repo.FindByID(ctx, "node-1")
+	if err != nil {
+		t.Fatalf("find WireGuard-updated node: %v", err)
+	}
+	if withWireGuard.WireGuardIP != "10.8.0.3" || withWireGuard.WireGuardPublicKey != "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI=" {
+		t.Fatalf("WireGuard metadata was not updated: %#v", withWireGuard)
 	}
 
 	if err := repo.UpdateStatus(ctx, "node-1", "drained", seenAt.Add(time.Minute)); err != nil {

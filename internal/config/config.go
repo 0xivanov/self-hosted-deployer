@@ -65,16 +65,18 @@ func (c ServerConfig) Validate() error {
 }
 
 type AgentConfig struct {
-	ServerURL          string
-	NodeCredentialPath string
-	WireGuardInterface string
+	ServerURL               string
+	NodeCredentialPath      string
+	WireGuardInterface      string
+	WireGuardPrivateKeyPath string
 }
 
 func LoadAgent() AgentConfig {
 	return AgentConfig{
-		ServerURL:          os.Getenv("DEPLOYER_SERVER_URL"),
-		NodeCredentialPath: envOrDefault("DEPLOYER_AGENT_CREDENTIAL_PATH", "/etc/deployer/agent/token"),
-		WireGuardInterface: envOrDefault("DEPLOYER_WIREGUARD_INTERFACE", "wg0"),
+		ServerURL:               os.Getenv("DEPLOYER_SERVER_URL"),
+		NodeCredentialPath:      envOrDefault("DEPLOYER_AGENT_CREDENTIAL_PATH", "/etc/deployer/agent/token"),
+		WireGuardInterface:      envOrDefault("DEPLOYER_WIREGUARD_INTERFACE", "wg0"),
+		WireGuardPrivateKeyPath: envOrDefault("DEPLOYER_WIREGUARD_PRIVATE_KEY_PATH", "/etc/deployer/wireguard/privatekey"),
 	}
 }
 
@@ -88,6 +90,9 @@ func (c AgentConfig) Validate() error {
 	}
 	if c.WireGuardInterface == "" {
 		errs = append(errs, errors.New("DEPLOYER_WIREGUARD_INTERFACE is required"))
+	}
+	if c.WireGuardPrivateKeyPath == "" {
+		errs = append(errs, errors.New("DEPLOYER_WIREGUARD_PRIVATE_KEY_PATH is required"))
 	}
 	return errors.Join(errs...)
 }

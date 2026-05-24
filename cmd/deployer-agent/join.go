@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/config"
+	"github.com/0xivanov/self-hosted-deployer/internal/wireguard"
 )
 
 func join(args []string) int {
@@ -19,6 +20,7 @@ func join(args []string) int {
 	serverURL := flags.String("server", cfg.ServerURL, "control plane server URL")
 	joinToken := flags.String("token", "", "node join token")
 	credentialPath := flags.String("credential-path", cfg.NodeCredentialPath, "path to store the agent credential")
+	wireGuardPrivateKeyPath := flags.String("wireguard-private-key-path", cfg.WireGuardPrivateKeyPath, "path to store the WireGuard private key")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -42,7 +44,17 @@ func join(args []string) int {
 		fmt.Fprintf(agentStderr, "detect hostname: %v\n", err)
 		return 1
 	}
-	result, err := client.JoinNode(context.Background(), strings.TrimSpace(*joinToken), hostname, runtime.GOOS+"/"+runtime.GOARCH)
+	keys, err := wireguard.GenerateKeyPair()
+	if err != nil {
+		fmt.Fprintln(agentStderr, err)
+		return 1
+	}
+	if err := writeWireGuardPrivateKey(*wireGuardPrivateKeyPath, keys.PrivateKey); err != nil {
+		fmt.Fprintln(agentStderr, err)
+		return 1
+	}
+
+	result, err := client.JoinNode(context.Background(), strings.TrimSpace(*joinToken), hostname, runtime.GOOS+"/"+runtime.GOARCH, keys.PublicKey)
 	if err != nil {
 		fmt.Fprintln(agentStderr, err)
 		return 1
@@ -52,5 +64,8 @@ func join(args []string) int {
 		return 1
 	}
 	fmt.Fprintf(agentStdout, "joined node %s (%s)\n", result.NodeName, result.NodeID)
+	if result.WireGuardIP != "" {
+		fmt.Fprintf(agentStdout, "wireguard ip: %s\n", result.WireGuardIP)
+	}
 	return 0
 }

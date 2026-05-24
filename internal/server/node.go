@@ -14,6 +14,7 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/domain"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"github.com/0xivanov/self-hosted-deployer/internal/security"
+	"github.com/0xivanov/self-hosted-deployer/internal/wireguard"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -30,6 +31,7 @@ type NodeRepository interface {
 	FindByName(ctx context.Context, name string) (domain.Node, error)
 	List(ctx context.Context) ([]domain.Node, error)
 	UpdateHeartbeat(ctx context.Context, nodeID string, heartbeat domain.Node, seenAt time.Time) error
+	SetWireGuard(ctx context.Context, nodeID string, wireGuardIP string, publicKey string, updatedAt time.Time) error
 }
 
 type consumableJoinTokenRepository interface {
@@ -98,6 +100,13 @@ func (s NodeService) CreateJoinToken(ctx context.Context, req *deployerv1.Create
 		return nil, status.Error(codes.Internal, "find node")
 	}
 	nodeExists := err == nil
+	wireGuardIP := existingNode.WireGuardIP
+	if wireGuardIP == "" {
+		wireGuardIP, err = s.allocateWireGuardIP(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	rawToken, err := security.NewToken(security.JoinTokenPrefix)
 	if err != nil {
@@ -124,16 +133,21 @@ func (s NodeService) CreateJoinToken(ctx context.Context, req *deployerv1.Create
 			return nil, status.Error(codes.Internal, "create node id")
 		}
 		node := domain.Node{
-			ID:         nodeID,
-			Name:       nodeName,
-			Status:     nodeStatusPending,
-			LabelsJSON: labelsJSON,
-			Arch:       req.GetLabels()["arch"],
-			CreatedAt:  now,
-			UpdatedAt:  now,
+			ID:          nodeID,
+			Name:        nodeName,
+			Status:      nodeStatusPending,
+			LabelsJSON:  labelsJSON,
+			Arch:        req.GetLabels()["arch"],
+			WireGuardIP: wireGuardIP,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		}
 		if err := s.nodes.Create(ctx, node); err != nil {
 			return nil, status.Error(codes.Internal, "create pending node")
+		}
+	} else if existingNode.WireGuardIP == "" {
+		if err := s.nodes.SetWireGuard(ctx, existingNode.ID, wireGuardIP, existingNode.WireGuardPublicKey, now); err != nil {
+			return nil, status.Error(codes.Internal, "assign WireGuard address")
 		}
 	}
 
@@ -148,6 +162,10 @@ func (s NodeService) JoinNode(ctx context.Context, req *deployerv1.JoinNodeReque
 	rawToken := strings.TrimSpace(req.GetJoinToken())
 	if rawToken == "" {
 		return nil, status.Error(codes.Unauthenticated, "join token is required")
+	}
+	publicKey := strings.TrimSpace(req.GetPublicKey())
+	if err := wireguard.ValidatePublicKey(publicKey); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	if _, err := security.Prefix(rawToken); err != nil {
 		return nil, status.Error(codes.Unauthenticated, "invalid join token")
@@ -188,6 +206,22 @@ func (s NodeService) JoinNode(ctx context.Context, req *deployerv1.JoinNodeReque
 	return joinResponse, nil
 }
 
+func (s NodeService) allocateWireGuardIP(ctx context.Context) (string, error) {
+	nodes, err := s.nodes.List(ctx)
+	if err != nil {
+		return "", status.Error(codes.Internal, "list nodes for WireGuard address allocation")
+	}
+	existingIPs := make([]string, 0, len(nodes))
+	for _, node := range nodes {
+		existingIPs = append(existingIPs, node.WireGuardIP)
+	}
+	wireGuardIP, err := wireguard.NextPeerIP(wireguard.DefaultSubnet, wireguard.DefaultHubIP, existingIPs)
+	if err != nil {
+		return "", status.Error(codes.ResourceExhausted, err.Error())
+	}
+	return wireGuardIP, nil
+}
+
 func (s NodeService) enrollNode(ctx context.Context, joinToken domain.JoinToken, req *deployerv1.JoinNodeRequest, now time.Time) (*deployerv1.JoinNodeResponse, error) {
 	nodeName := strings.TrimSpace(joinToken.IntendedNodeName)
 	if nodeName == "" {
@@ -215,13 +249,26 @@ func (s NodeService) enrollNode(ctx context.Context, joinToken domain.JoinToken,
 		node = domain.Node{
 			ID:        nodeID,
 			Name:      nodeName,
+			Status:    nodeStatusPending,
 			CreatedAt: now,
+			UpdatedAt: now,
 		}
 		if err := s.nodes.Create(ctx, node); err != nil {
 			return nil, status.Error(codes.Internal, "create node")
 		}
 	} else if err != nil {
 		return nil, status.Error(codes.Internal, "find node")
+	}
+
+	wireGuardIP := node.WireGuardIP
+	if wireGuardIP == "" {
+		wireGuardIP, err = s.allocateWireGuardIP(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := s.nodes.SetWireGuard(ctx, node.ID, wireGuardIP, strings.TrimSpace(req.GetPublicKey()), now); err != nil {
+		return nil, status.Error(codes.Internal, "store WireGuard peer metadata")
 	}
 
 	heartbeat := domain.Node{
@@ -251,9 +298,10 @@ func (s NodeService) enrollNode(ctx context.Context, joinToken domain.JoinToken,
 	}
 
 	return &deployerv1.JoinNodeResponse{
-		NodeId:     node.ID,
-		NodeName:   nodeName,
-		AgentToken: rawAgentToken,
+		NodeId:      node.ID,
+		NodeName:    nodeName,
+		AgentToken:  rawAgentToken,
+		WireguardIp: wireGuardIP,
 	}, nil
 }
 
@@ -334,17 +382,19 @@ func requireCaller(ctx context.Context, kind CallerKind) error {
 
 func protoNode(node domain.Node) *deployerv1.Node {
 	return &deployerv1.Node{
-		Id:         node.ID,
-		Name:       node.Name,
-		Status:     node.Status,
-		Labels:     unmarshalLabels(node.LabelsJSON),
-		CreatedAt:  formatProtoTime(node.CreatedAt),
-		UpdatedAt:  formatProtoTime(node.UpdatedAt),
-		LastSeenAt: formatOptionalProtoTime(node.LastSeenAt),
-		Hostname:   node.Hostname,
-		Arch:       node.Arch,
-		Os:         node.OS,
-		Kernel:     node.Kernel,
+		Id:                 node.ID,
+		Name:               node.Name,
+		Status:             node.Status,
+		Labels:             unmarshalLabels(node.LabelsJSON),
+		CreatedAt:          formatProtoTime(node.CreatedAt),
+		UpdatedAt:          formatProtoTime(node.UpdatedAt),
+		LastSeenAt:         formatOptionalProtoTime(node.LastSeenAt),
+		Hostname:           node.Hostname,
+		Arch:               node.Arch,
+		Os:                 node.OS,
+		Kernel:             node.Kernel,
+		WireguardIp:        node.WireGuardIP,
+		WireguardPublicKey: node.WireGuardPublicKey,
 	}
 }
 

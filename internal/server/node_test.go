@@ -60,17 +60,24 @@ func TestNodeServiceCreateJoinTokenJoinAndHeartbeat(t *testing.T) {
 	if pending.Status != "pending" {
 		t.Fatalf("expected pending node, got %#v", pending)
 	}
+	if pending.WireGuardIP != "10.8.0.2" {
+		t.Fatalf("expected allocated WireGuard IP, got %#v", pending)
+	}
 
 	joinResponse, err := service.JoinNode(ctx, &deployerv1.JoinNodeRequest{
 		JoinToken: rawJoinToken,
 		Hostname:  "pi-kitchen.local",
 		Arch:      "linux/arm64",
+		PublicKey: validWireGuardPublicKey,
 	})
 	if err != nil {
 		t.Fatalf("join node: %v", err)
 	}
 	if joinResponse.GetNodeId() != pending.ID || joinResponse.GetNodeName() != "pi-kitchen" || joinResponse.GetAgentToken() == "" {
 		t.Fatalf("unexpected join response: %#v", joinResponse)
+	}
+	if joinResponse.GetWireguardIp() != "10.8.0.2" {
+		t.Fatalf("expected join response WireGuard IP, got %#v", joinResponse)
 	}
 
 	agentTokenHash, err := security.HashToken([]byte("hash-key"), joinResponse.GetAgentToken())
@@ -88,8 +95,11 @@ func TestNodeServiceCreateJoinTokenJoinAndHeartbeat(t *testing.T) {
 	if online.Status != "online" || online.LastSeenAt == nil || online.Arch != "linux/arm64" {
 		t.Fatalf("expected activated node, got %#v", online)
 	}
+	if online.WireGuardIP != "10.8.0.2" || online.WireGuardPublicKey != validWireGuardPublicKey {
+		t.Fatalf("expected stored WireGuard metadata, got %#v", online)
+	}
 
-	_, err = service.JoinNode(ctx, &deployerv1.JoinNodeRequest{JoinToken: rawJoinToken})
+	_, err = service.JoinNode(ctx, &deployerv1.JoinNodeRequest{JoinToken: rawJoinToken, PublicKey: validWireGuardPublicKey})
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("expected reused join token to fail with PermissionDenied, got %v", err)
 	}
@@ -153,6 +163,62 @@ func TestNodeServiceCanReissueJoinTokenForPendingNode(t *testing.T) {
 	}
 }
 
+func TestNodeServiceAllocatesUniqueWireGuardIPs(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	service := NewNodeService(NodeServiceConfig{
+		Nodes:        nodes,
+		JoinTokens:   db.NewJoinTokenRepository(database),
+		AgentTokens:  db.NewAgentTokenRepository(database),
+		TokenHashKey: "hash-key",
+	})
+
+	for _, name := range []string{"pi-kitchen", "pi-office"} {
+		if _, err := service.CreateJoinToken(WithCaller(ctx, Caller{Kind: CallerAdmin}), &deployerv1.CreateJoinTokenRequest{NodeName: name}); err != nil {
+			t.Fatalf("create join token for %s: %v", name, err)
+		}
+	}
+
+	first, err := nodes.FindByName(ctx, "pi-kitchen")
+	if err != nil {
+		t.Fatalf("find first node: %v", err)
+	}
+	second, err := nodes.FindByName(ctx, "pi-office")
+	if err != nil {
+		t.Fatalf("find second node: %v", err)
+	}
+	if first.WireGuardIP != "10.8.0.2" || second.WireGuardIP != "10.8.0.3" {
+		t.Fatalf("unexpected WireGuard IP allocation: first=%#v second=%#v", first, second)
+	}
+}
+
+func TestNodeServiceRejectsJoinWithoutValidWireGuardPublicKey(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDB(t)
+	service := NewNodeService(NodeServiceConfig{
+		Nodes:        db.NewNodeRepository(database),
+		JoinTokens:   db.NewJoinTokenRepository(database),
+		AgentTokens:  db.NewAgentTokenRepository(database),
+		TokenHashKey: "hash-key",
+	})
+
+	createResponse, err := service.CreateJoinToken(WithCaller(ctx, Caller{Kind: CallerAdmin}), &deployerv1.CreateJoinTokenRequest{
+		NodeName: "pi-kitchen",
+	})
+	if err != nil {
+		t.Fatalf("create join token: %v", err)
+	}
+
+	_, err = service.JoinNode(ctx, &deployerv1.JoinNodeRequest{
+		JoinToken: createResponse.GetJoinToken(),
+		PublicKey: "not-base64",
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("expected InvalidArgument, got %v", err)
+	}
+}
+
 func TestNodeServiceDoesNotCreatePendingNodeWhenJoinTokenStoreFails(t *testing.T) {
 	ctx := context.Background()
 	database := openTestDB(t)
@@ -198,6 +264,7 @@ func TestNodeServiceDoesNotConsumeJoinTokenWhenAgentTokenStoreFails(t *testing.T
 		JoinToken: createResponse.GetJoinToken(),
 		Hostname:  "pi-kitchen.local",
 		Arch:      "linux/arm64",
+		PublicKey: validWireGuardPublicKey,
 	})
 	if status.Code(err) != codes.Internal {
 		t.Fatalf("expected Internal, got %v", err)
@@ -215,6 +282,8 @@ func TestNodeServiceDoesNotConsumeJoinTokenWhenAgentTokenStoreFails(t *testing.T
 		t.Fatalf("join token should remain unused after failed enrollment: %#v", stored)
 	}
 }
+
+const validWireGuardPublicKey = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
 
 type failingJoinTokenRepository struct {
 	err error
