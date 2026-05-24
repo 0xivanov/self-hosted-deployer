@@ -28,17 +28,19 @@ type JoinToken struct {
 }
 
 type Node struct {
-	ID         string
-	Name       string
-	Status     string
-	LabelsJSON string
-	Hostname   string
-	Arch       string
-	OS         string
-	Kernel     string
-	LastSeenAt *time.Time
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	ID                 string
+	Name               string
+	Status             string
+	LabelsJSON         string
+	Hostname           string
+	Arch               string
+	OS                 string
+	Kernel             string
+	WireGuardIP        string
+	WireGuardPublicKey string
+	LastSeenAt         *time.Time
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type App struct {

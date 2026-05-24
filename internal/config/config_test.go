@@ -38,12 +38,22 @@ func TestLoadServerK3sDefaults(t *testing.T) {
 
 func TestAgentConfigValidate(t *testing.T) {
 	cfg := AgentConfig{
-		ServerURL:          "https://deploy.example.com",
-		NodeCredentialPath: "/tmp/token",
-		WireGuardInterface: "wg0",
+		ServerURL:               "https://deploy.example.com",
+		NodeCredentialPath:      "/tmp/token",
+		WireGuardInterface:      "wg0",
+		WireGuardPrivateKeyPath: "/tmp/wg-privatekey",
 	}
 
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected valid config: %v", err)
+	}
+}
+
+func TestLoadAgentWireGuardPrivateKeyDefault(t *testing.T) {
+	t.Setenv("DEPLOYER_WIREGUARD_PRIVATE_KEY_PATH", "")
+
+	cfg := LoadAgent()
+	if cfg.WireGuardPrivateKeyPath != "/etc/deployer/wireguard/privatekey" {
+		t.Fatalf("unexpected WireGuard private key path %q", cfg.WireGuardPrivateKeyPath)
 	}
 }

@@ -36,17 +36,19 @@ type ServerStatus struct {
 }
 
 type NodeInfo struct {
-	ID         string            `json:"id"`
-	Name       string            `json:"name"`
-	Status     string            `json:"status"`
-	Labels     map[string]string `json:"labels"`
-	CreatedAt  string            `json:"created_at"`
-	UpdatedAt  string            `json:"updated_at"`
-	LastSeenAt string            `json:"last_seen_at,omitempty"`
-	Hostname   string            `json:"hostname,omitempty"`
-	Arch       string            `json:"arch,omitempty"`
-	OS         string            `json:"os,omitempty"`
-	Kernel     string            `json:"kernel,omitempty"`
+	ID                 string            `json:"id"`
+	Name               string            `json:"name"`
+	Status             string            `json:"status"`
+	Labels             map[string]string `json:"labels"`
+	CreatedAt          string            `json:"created_at"`
+	UpdatedAt          string            `json:"updated_at"`
+	LastSeenAt         string            `json:"last_seen_at,omitempty"`
+	Hostname           string            `json:"hostname,omitempty"`
+	Arch               string            `json:"arch,omitempty"`
+	OS                 string            `json:"os,omitempty"`
+	Kernel             string            `json:"kernel,omitempty"`
+	WireGuardIP        string            `json:"wireguard_ip,omitempty"`
+	WireGuardPublicKey string            `json:"wireguard_public_key,omitempty"`
 }
 
 type JoinTokenResult struct {
@@ -57,9 +59,10 @@ type JoinTokenResult struct {
 }
 
 type JoinResult struct {
-	NodeID     string `json:"node_id"`
-	NodeName   string `json:"node_name"`
-	AgentToken string `json:"agent_token,omitempty"`
+	NodeID      string `json:"node_id"`
+	NodeName    string `json:"node_name"`
+	WireGuardIP string `json:"wireguard_ip"`
+	AgentToken  string `json:"agent_token,omitempty"`
 }
 
 type Heartbeat struct {
@@ -203,7 +206,7 @@ func (c *PlatformClient) GetNode(ctx context.Context, ref string) (NodeInfo, err
 	return nodeInfo(response.GetNode()), nil
 }
 
-func (c *PlatformClient) JoinNode(ctx context.Context, joinToken string, hostname string, arch string) (JoinResult, error) {
+func (c *PlatformClient) JoinNode(ctx context.Context, joinToken string, hostname string, arch string, publicKey string) (JoinResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 
@@ -211,14 +214,16 @@ func (c *PlatformClient) JoinNode(ctx context.Context, joinToken string, hostnam
 		JoinToken: joinToken,
 		Hostname:  hostname,
 		Arch:      arch,
+		PublicKey: publicKey,
 	})
 	if err != nil {
 		return JoinResult{}, DecodeRPCError(err)
 	}
 	return JoinResult{
-		NodeID:     response.GetNodeId(),
-		NodeName:   response.GetNodeName(),
-		AgentToken: response.GetAgentToken(),
+		NodeID:      response.GetNodeId(),
+		NodeName:    response.GetNodeName(),
+		WireGuardIP: response.GetWireguardIp(),
+		AgentToken:  response.GetAgentToken(),
 	}, nil
 }
 
@@ -312,17 +317,19 @@ func nodeInfo(node *deployerv1.Node) NodeInfo {
 		return NodeInfo{}
 	}
 	return NodeInfo{
-		ID:         node.GetId(),
-		Name:       node.GetName(),
-		Status:     node.GetStatus(),
-		Labels:     node.GetLabels(),
-		CreatedAt:  node.GetCreatedAt(),
-		UpdatedAt:  node.GetUpdatedAt(),
-		LastSeenAt: node.GetLastSeenAt(),
-		Hostname:   node.GetHostname(),
-		Arch:       node.GetArch(),
-		OS:         node.GetOs(),
-		Kernel:     node.GetKernel(),
+		ID:                 node.GetId(),
+		Name:               node.GetName(),
+		Status:             node.GetStatus(),
+		Labels:             node.GetLabels(),
+		CreatedAt:          node.GetCreatedAt(),
+		UpdatedAt:          node.GetUpdatedAt(),
+		LastSeenAt:         node.GetLastSeenAt(),
+		Hostname:           node.GetHostname(),
+		Arch:               node.GetArch(),
+		OS:                 node.GetOs(),
+		Kernel:             node.GetKernel(),
+		WireGuardIP:        node.GetWireguardIp(),
+		WireGuardPublicKey: node.GetWireguardPublicKey(),
 	}
 }
 

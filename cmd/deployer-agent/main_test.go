@@ -11,15 +11,18 @@ import (
 	"time"
 
 	clicore "github.com/0xivanov/self-hosted-deployer/internal/cli"
+	"github.com/0xivanov/self-hosted-deployer/internal/wireguard"
 )
 
 func TestJoinPersistsCredentialWithoutPrintingToken(t *testing.T) {
 	credentialPath := filepath.Join(t.TempDir(), "agent", "token")
+	privateKeyPath := filepath.Join(t.TempDir(), "wireguard", "privatekey")
 	fake := &fakeAgentClient{
 		joinResult: clicore.JoinResult{
-			NodeID:     "node-1",
-			NodeName:   "pi-kitchen",
-			AgentToken: "dep_agent_secret",
+			NodeID:      "node-1",
+			NodeName:    "pi-kitchen",
+			WireGuardIP: "10.8.0.2",
+			AgentToken:  "dep_agent_secret",
 		},
 	}
 	var stdout bytes.Buffer
@@ -31,6 +34,7 @@ func TestJoinPersistsCredentialWithoutPrintingToken(t *testing.T) {
 		"--server", "localhost:7443",
 		"--token", "dep_join_once",
 		"--credential-path", credentialPath,
+		"--wireguard-private-key-path", privateKeyPath,
 	})
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr: %s", code, stderr.String())
@@ -40,6 +44,9 @@ func TestJoinPersistsCredentialWithoutPrintingToken(t *testing.T) {
 	}
 	if fake.joinToken != "dep_join_once" {
 		t.Fatalf("expected join token to be sent, got %q", fake.joinToken)
+	}
+	if err := wireguard.ValidatePublicKey(fake.publicKey); err != nil {
+		t.Fatalf("expected generated public key to be sent: %v", err)
 	}
 
 	data, err := os.ReadFile(credentialPath)
@@ -56,8 +63,26 @@ func TestJoinPersistsCredentialWithoutPrintingToken(t *testing.T) {
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("expected credential mode 0600, got %o", got)
 	}
-	if strings.Contains(stdout.String(), "dep_agent_secret") || strings.Contains(stderr.String(), "dep_agent_secret") {
-		t.Fatalf("agent token should not be printed, stdout=%q stderr=%q", stdout.String(), stderr.String())
+	privateKeyData, err := os.ReadFile(privateKeyPath)
+	if err != nil {
+		t.Fatalf("read WireGuard private key: %v", err)
+	}
+	if err := wireguard.ValidatePrivateKey(strings.TrimSpace(string(privateKeyData))); err != nil {
+		t.Fatalf("expected stored WireGuard private key: %v", err)
+	}
+	privateKeyInfo, err := os.Stat(privateKeyPath)
+	if err != nil {
+		t.Fatalf("stat WireGuard private key: %v", err)
+	}
+	if got := privateKeyInfo.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected WireGuard private key mode 0600, got %o", got)
+	}
+	privateKey := strings.TrimSpace(string(privateKeyData))
+	if strings.Contains(stdout.String(), "dep_agent_secret") ||
+		strings.Contains(stderr.String(), "dep_agent_secret") ||
+		strings.Contains(stdout.String(), privateKey) ||
+		strings.Contains(stderr.String(), privateKey) {
+		t.Fatalf("agent token and WireGuard private key should not be printed, stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }
 
@@ -159,14 +184,16 @@ type fakeAgentClient struct {
 	clientToken  string
 	closed       bool
 	joinToken    string
+	publicKey    string
 	joinResult   clicore.JoinResult
 	joinErr      error
 	heartbeat    clicore.Heartbeat
 	heartbeatErr error
 }
 
-func (c *fakeAgentClient) JoinNode(_ context.Context, joinToken string, _ string, _ string) (clicore.JoinResult, error) {
+func (c *fakeAgentClient) JoinNode(_ context.Context, joinToken string, _ string, _ string, publicKey string) (clicore.JoinResult, error) {
 	c.joinToken = joinToken
+	c.publicKey = publicKey
 	if c.joinErr != nil {
 		return clicore.JoinResult{}, c.joinErr
 	}

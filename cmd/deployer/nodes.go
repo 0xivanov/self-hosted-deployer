@@ -139,6 +139,8 @@ func (a cliApp) nodesInspect(args []string, opts runtimeOptions, client platform
 		clicore.Field{Name: "Status", Value: node.Status},
 		clicore.Field{Name: "Hostname", Value: valueOrDash(node.Hostname)},
 		clicore.Field{Name: "Arch", Value: valueOrDash(node.Arch)},
+		clicore.Field{Name: "WireGuard IP", Value: valueOrDash(node.WireGuardIP)},
+		clicore.Field{Name: "WireGuard public key", Value: valueOrDash(node.WireGuardPublicKey)},
 		clicore.Field{Name: "OS", Value: valueOrDash(node.OS)},
 		clicore.Field{Name: "Kernel", Value: valueOrDash(node.Kernel)},
 		clicore.Field{Name: "Last seen", Value: valueOrDash(node.LastSeenAt)},

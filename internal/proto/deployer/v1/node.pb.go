@@ -22,20 +22,22 @@ const (
 )
 
 type Node struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
-	Labels        map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	CreatedAt     string                 `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     string                 `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	LastSeenAt    string                 `protobuf:"bytes,7,opt,name=last_seen_at,json=lastSeenAt,proto3" json:"last_seen_at,omitempty"`
-	Hostname      string                 `protobuf:"bytes,8,opt,name=hostname,proto3" json:"hostname,omitempty"`
-	Arch          string                 `protobuf:"bytes,9,opt,name=arch,proto3" json:"arch,omitempty"`
-	Os            string                 `protobuf:"bytes,10,opt,name=os,proto3" json:"os,omitempty"`
-	Kernel        string                 `protobuf:"bytes,11,opt,name=kernel,proto3" json:"kernel,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Name               string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Status             string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	Labels             map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	CreatedAt          string                 `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt          string                 `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	LastSeenAt         string                 `protobuf:"bytes,7,opt,name=last_seen_at,json=lastSeenAt,proto3" json:"last_seen_at,omitempty"`
+	Hostname           string                 `protobuf:"bytes,8,opt,name=hostname,proto3" json:"hostname,omitempty"`
+	Arch               string                 `protobuf:"bytes,9,opt,name=arch,proto3" json:"arch,omitempty"`
+	Os                 string                 `protobuf:"bytes,10,opt,name=os,proto3" json:"os,omitempty"`
+	Kernel             string                 `protobuf:"bytes,11,opt,name=kernel,proto3" json:"kernel,omitempty"`
+	WireguardIp        string                 `protobuf:"bytes,12,opt,name=wireguard_ip,json=wireguardIp,proto3" json:"wireguard_ip,omitempty"`
+	WireguardPublicKey string                 `protobuf:"bytes,13,opt,name=wireguard_public_key,json=wireguardPublicKey,proto3" json:"wireguard_public_key,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *Node) Reset() {
@@ -141,6 +143,20 @@ func (x *Node) GetOs() string {
 func (x *Node) GetKernel() string {
 	if x != nil {
 		return x.Kernel
+	}
+	return ""
+}
+
+func (x *Node) GetWireguardIp() string {
+	if x != nil {
+		return x.WireguardIp
+	}
+	return ""
+}
+
+func (x *Node) GetWireguardPublicKey() string {
+	if x != nil {
+		return x.WireguardPublicKey
 	}
 	return ""
 }
@@ -338,6 +354,7 @@ type JoinNodeResponse struct {
 	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	AgentToken    string                 `protobuf:"bytes,2,opt,name=agent_token,json=agentToken,proto3" json:"agent_token,omitempty"`
 	NodeName      string                 `protobuf:"bytes,3,opt,name=node_name,json=nodeName,proto3" json:"node_name,omitempty"`
+	WireguardIp   string                 `protobuf:"bytes,4,opt,name=wireguard_ip,json=wireguardIp,proto3" json:"wireguard_ip,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -389,6 +406,13 @@ func (x *JoinNodeResponse) GetAgentToken() string {
 func (x *JoinNodeResponse) GetNodeName() string {
 	if x != nil {
 		return x.NodeName
+	}
+	return ""
+}
+
+func (x *JoinNodeResponse) GetWireguardIp() string {
+	if x != nil {
+		return x.WireguardIp
 	}
 	return ""
 }
@@ -717,7 +741,7 @@ var File_deployer_v1_node_proto protoreflect.FileDescriptor
 
 const file_deployer_v1_node_proto_rawDesc = "" +
 	"\n" +
-	"\x16deployer/v1/node.proto\x12\vdeployer.v1\"\xec\x02\n" +
+	"\x16deployer/v1/node.proto\x12\vdeployer.v1\"\xc1\x03\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -733,7 +757,9 @@ const file_deployer_v1_node_proto_rawDesc = "" +
 	"\x04arch\x18\t \x01(\tR\x04arch\x12\x0e\n" +
 	"\x02os\x18\n" +
 	" \x01(\tR\x02os\x12\x16\n" +
-	"\x06kernel\x18\v \x01(\tR\x06kernel\x1a9\n" +
+	"\x06kernel\x18\v \x01(\tR\x06kernel\x12!\n" +
+	"\fwireguard_ip\x18\f \x01(\tR\vwireguardIp\x120\n" +
+	"\x14wireguard_public_key\x18\r \x01(\tR\x12wireguardPublicKey\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xda\x01\n" +
@@ -757,12 +783,13 @@ const file_deployer_v1_node_proto_rawDesc = "" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x12\n" +
 	"\x04arch\x18\x03 \x01(\tR\x04arch\x12\x1d\n" +
 	"\n" +
-	"public_key\x18\x04 \x01(\tR\tpublicKey\"i\n" +
+	"public_key\x18\x04 \x01(\tR\tpublicKey\"\x8c\x01\n" +
 	"\x10JoinNodeResponse\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1f\n" +
 	"\vagent_token\x18\x02 \x01(\tR\n" +
 	"agentToken\x12\x1b\n" +
-	"\tnode_name\x18\x03 \x01(\tR\bnodeName\"N\n" +
+	"\tnode_name\x18\x03 \x01(\tR\bnodeName\x12!\n" +
+	"\fwireguard_ip\x18\x04 \x01(\tR\vwireguardIp\"N\n" +
 	"\x10ListNodesRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
