@@ -12,5 +12,7 @@ func newRepositories(database *db.Db) server.Repositories {
 		AgentTokens: db.NewAgentTokenRepository(database),
 		JoinTokens:  db.NewJoinTokenRepository(database),
 		Nodes:       db.NewNodeRepository(database),
+		Apps:        db.NewAppRepository(database),
+		Deployments: db.NewDeploymentRepository(database),
 	}
 }
