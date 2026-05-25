@@ -159,6 +159,7 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 		}
 	}
 	if err := s.syncRoute(ctx, app, cfg, now); err != nil {
+		_ = s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusFailed, err.Error(), now)
 		return nil, err
 	}
 
@@ -235,14 +236,14 @@ func (s AppService) DeleteApp(ctx context.Context, req *deployerv1.DeleteAppRequ
 			return nil, status.Error(codes.Internal, "delete app resources")
 		}
 	}
-	app, err = s.apps.MarkDeleted(ctx, name, s.now().UTC())
-	if err != nil {
-		return nil, status.Error(codes.Internal, "delete app")
-	}
 	if s.routes != nil {
 		if err := s.routes.DeleteByApp(ctx, app.ID); err != nil {
 			return nil, status.Error(codes.Internal, "delete app routes")
 		}
+	}
+	app, err = s.apps.MarkDeleted(ctx, name, s.now().UTC())
+	if err != nil {
+		return nil, status.Error(codes.Internal, "delete app")
 	}
 	appProto, err := protoApp(app)
 	if err != nil {

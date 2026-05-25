@@ -9,6 +9,7 @@ import (
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	"github.com/0xivanov/self-hosted-deployer/internal/db"
+	"github.com/0xivanov/self-hosted-deployer/internal/domain"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -258,6 +259,66 @@ func TestAppServiceRecordsResourceApplyFailure(t *testing.T) {
 	}
 }
 
+func TestAppServiceRecordsRouteSyncFailure(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	apps := db.NewAppRepository(database)
+	deployments := db.NewDeploymentRepository(database)
+	routes := &failingRouteRepository{
+		RouteRepository: db.NewRouteRepository(database),
+		upsertErr:       errors.New("write failed"),
+	}
+	service := NewAppService(AppServiceConfig{
+		Apps:        apps,
+		Deployments: deployments,
+		Routes:      routes,
+	})
+
+	_, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("expected route sync failure, got %v", err)
+	}
+	app, err := apps.FindByName(ctx, "my-api")
+	if err != nil {
+		t.Fatalf("find app: %v", err)
+	}
+	records, err := deployments.ListByApp(ctx, app.ID)
+	if err != nil || len(records) != 1 || records[0].Status != "failed" || records[0].FailureReason == "" {
+		t.Fatalf("expected failed deployment record, got %#v: %v", records, err)
+	}
+}
+
+func TestAppServiceCanRetryDeleteAfterRouteCleanupFailure(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	apps := db.NewAppRepository(database)
+	routes := &failingRouteRepository{RouteRepository: db.NewRouteRepository(database)}
+	service := NewAppService(AppServiceConfig{
+		Apps:        apps,
+		Deployments: db.NewDeploymentRepository(database),
+		Routes:      routes,
+	})
+
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)}); err != nil {
+		t.Fatalf("deploy app: %v", err)
+	}
+	routes.deleteErr = errors.New("write failed")
+	if _, err := service.DeleteApp(ctx, &deployerv1.DeleteAppRequest{Name: "my-api"}); status.Code(err) != codes.Internal {
+		t.Fatalf("expected route delete failure, got %v", err)
+	}
+	if _, err := apps.FindActiveByName(ctx, "my-api"); err != nil {
+		t.Fatalf("expected app to remain active for retry, got %v", err)
+	}
+
+	routes.deleteErr = nil
+	if _, err := service.DeleteApp(ctx, &deployerv1.DeleteAppRequest{Name: "my-api"}); err != nil {
+		t.Fatalf("retry delete app: %v", err)
+	}
+	if _, err := routes.FindByDomain(ctx, "api.example.com"); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("expected retry to remove route, got %v", err)
+	}
+}
+
 func testAppYAML(image string, replicas int) string {
 	return `name: my-api
 image: ` + image + `
@@ -314,4 +375,24 @@ func (r *recordingAppRuntime) Delete(_ context.Context, appName string) error {
 
 func (r *recordingAppRuntime) Status(context.Context, string) (string, error) {
 	return r.status, r.err
+}
+
+type failingRouteRepository struct {
+	RouteRepository
+	upsertErr error
+	deleteErr error
+}
+
+func (r *failingRouteRepository) UpsertForApp(ctx context.Context, route domain.Route) error {
+	if r.upsertErr != nil {
+		return r.upsertErr
+	}
+	return r.RouteRepository.UpsertForApp(ctx, route)
+}
+
+func (r *failingRouteRepository) DeleteByApp(ctx context.Context, appID string) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+	return r.RouteRepository.DeleteByApp(ctx, appID)
 }
