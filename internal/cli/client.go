@@ -24,6 +24,7 @@ type PlatformClient struct {
 	platformClient deployerv1.PlatformServiceClient
 	nodeClient     deployerv1.NodeServiceClient
 	appClient      deployerv1.AppServiceClient
+	secretClient   deployerv1.SecretServiceClient
 	token          string
 	timeout        time.Duration
 }
@@ -126,12 +127,14 @@ func NewPlatformClient(serverURL string, token string) (*PlatformClient, *grpc.C
 		return nil, nil, fmt.Errorf("create gRPC client for %q: %w", serverURL, err)
 	}
 
-	return NewPlatformClientForServices(
+	client := NewPlatformClientForServices(
 		deployerv1.NewPlatformServiceClient(conn),
 		deployerv1.NewNodeServiceClient(conn),
 		deployerv1.NewAppServiceClient(conn),
 		token,
-	), conn, nil
+	)
+	client.secretClient = deployerv1.NewSecretServiceClient(conn)
+	return client, conn, nil
 }
 
 func NewPlatformClientForService(client deployerv1.PlatformServiceClient, token string) *PlatformClient {
@@ -346,6 +349,36 @@ func (c *PlatformClient) InspectRoute(ctx context.Context, domain string) (Route
 	return routeInfo(response.GetRoute()), nil
 }
 
+func (c *PlatformClient) SetSecret(ctx context.Context, appName string, name string, value string) error {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+
+	_, err := c.secretClient.SetSecret(ctx, &deployerv1.SetSecretRequest{AppName: appName, Name: name, Value: value})
+	return DecodeRPCError(err)
+}
+
+func (c *PlatformClient) ListSecrets(ctx context.Context, appName string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+
+	response, err := c.secretClient.ListSecrets(ctx, &deployerv1.ListSecretsRequest{AppName: appName})
+	if err != nil {
+		return nil, DecodeRPCError(err)
+	}
+	return append([]string(nil), response.GetNames()...), nil
+}
+
+func (c *PlatformClient) DeleteSecret(ctx context.Context, appName string, name string) error {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+
+	_, err := c.secretClient.DeleteSecret(ctx, &deployerv1.DeleteSecretRequest{AppName: appName, Name: name})
+	return DecodeRPCError(err)
+}
+
 func (c *PlatformClient) withBearer(ctx context.Context) context.Context {
 	if c.token == "" {
 		return ctx
@@ -509,6 +542,8 @@ func DecodeRPCError(err error) error {
 		return fmt.Errorf("not found: %s", rpcStatus.Message())
 	case codes.AlreadyExists:
 		return fmt.Errorf("already exists: %s", rpcStatus.Message())
+	case codes.FailedPrecondition:
+		return fmt.Errorf("cannot proceed: %s", rpcStatus.Message())
 	case codes.Unavailable:
 		return fmt.Errorf("control plane unavailable: %s", rpcStatus.Message())
 	default:

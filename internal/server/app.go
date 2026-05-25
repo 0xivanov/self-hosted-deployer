@@ -47,7 +47,7 @@ type RouteRepository interface {
 }
 
 type AppRuntime interface {
-	Reconcile(ctx context.Context, cfg appconfig.Config) error
+	Reconcile(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string) error
 	Delete(ctx context.Context, appName string) error
 	Status(ctx context.Context, appName string) (string, error)
 }
@@ -58,6 +58,8 @@ type AppServiceConfig struct {
 	Apps            AppRepository
 	Deployments     DeploymentRepository
 	Routes          RouteRepository
+	Secrets         SecretRepository
+	Cipher          SecretCipher
 	Runtime         AppRuntime
 	Ingress         IngressRuntime
 	RouteTLSEnabled bool
@@ -68,6 +70,8 @@ type AppService struct {
 	apps            AppRepository
 	deployments     DeploymentRepository
 	routes          RouteRepository
+	secrets         SecretRepository
+	cipher          SecretCipher
 	runtime         AppRuntime
 	routeTLSEnabled bool
 	now             func() time.Time
@@ -82,6 +86,8 @@ func NewAppService(cfg AppServiceConfig) AppService {
 		apps:            cfg.Apps,
 		deployments:     cfg.Deployments,
 		routes:          cfg.Routes,
+		secrets:         cfg.Secrets,
+		cipher:          cfg.Cipher,
 		runtime:         runtime,
 		routeTLSEnabled: cfg.RouteTLSEnabled,
 		now:             time.Now,
@@ -152,8 +158,17 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if err := s.deployments.Create(ctx, deployment); err != nil {
 		return nil, status.Error(codes.Internal, "create deployment")
 	}
+	secretValues, secretRevision, err := resolveSecretValues(ctx, s.secrets, s.cipher, app.ID, cfg.Secrets)
+	if err != nil {
+		var missing requiredSecretNotSetError
+		if errors.As(err, &missing) {
+			err = status.Error(codes.FailedPrecondition, missing.Error())
+		}
+		_ = s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusFailed, err.Error(), now)
+		return nil, err
+	}
 	if s.runtime != nil {
-		if err := s.runtime.Reconcile(ctx, cfg); err != nil {
+		if err := s.runtime.Reconcile(ctx, cfg, secretValues, secretRevision); err != nil {
 			_ = s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusFailed, err.Error(), now)
 			return nil, status.Error(codes.Internal, "apply app resources")
 		}

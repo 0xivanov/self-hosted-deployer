@@ -126,6 +126,16 @@ func TestValidateIdentifiesExactFields(t *testing.T) {
 			body: strings.Replace(validYAML, "mode: stateless", "mode: durable", 1),
 			want: "state.mode must be one of stateless, stateful, cache",
 		},
+		{
+			name: "bad secret environment name",
+			body: strings.Replace(validYAML, "DATABASE_URL", "database-url", 1),
+			want: "must be a valid environment variable name",
+		},
+		{
+			name: "duplicate secret name",
+			body: strings.Replace(validYAML, "  - DATABASE_URL", "  - DATABASE_URL\n  - DATABASE_URL", 1),
+			want: "duplicate secret name",
+		},
 	}
 
 	for _, tt := range tests {

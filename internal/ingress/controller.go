@@ -45,6 +45,7 @@ type Controller struct {
 	namespaces  coretyped.NamespaceInterface
 	ingresses   networkingtyped.IngressInterface
 	services    coretyped.ServiceInterface
+	appSecrets  coretyped.SecretInterface
 	deployments appstyped.DeploymentInterface
 	issuers     dynamic.ResourceInterface
 }
@@ -79,6 +80,7 @@ func NewController(cfg ControllerConfig) (*Controller, error) {
 		namespaces:  clientset.CoreV1().Namespaces(),
 		ingresses:   clientset.NetworkingV1().Ingresses(namespace),
 		services:    clientset.CoreV1().Services(namespace),
+		appSecrets:  clientset.CoreV1().Secrets(namespace),
 		deployments: clientset.AppsV1().Deployments(namespace),
 		issuers:     issuers,
 	}, nil
@@ -88,8 +90,8 @@ func (c *Controller) TLSEnabled() bool {
 	return c.tls.Enabled()
 }
 
-func (c *Controller) Reconcile(ctx context.Context, cfg appconfig.Config) error {
-	if err := c.reconcileAppResources(ctx, cfg); err != nil {
+func (c *Controller) Reconcile(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string) error {
+	if err := c.reconcileAppResources(ctx, cfg, secretValues, secretRevision); err != nil {
 		return err
 	}
 	manifest, ok, err := ManifestForApp(cfg, c.namespace, c.tls)
@@ -133,6 +135,7 @@ func (c *Controller) Delete(ctx context.Context, appName string) error {
 		c.deleteIngress(ctx, appName),
 		c.deleteService(ctx, appName),
 		c.deleteDeployment(ctx, appName),
+		c.deleteAppSecret(ctx, appName),
 	)
 }
 

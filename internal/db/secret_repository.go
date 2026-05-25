@@ -39,3 +39,28 @@ func (r *SecretRepository) Find(ctx context.Context, appID string, name string) 
 	}
 	return secret, nil
 }
+
+func (r *SecretRepository) ListNamesByApp(ctx context.Context, appID string) ([]string, error) {
+	rows, err := r.db.db.QueryContext(ctx, `SELECT name FROM app_secrets WHERE app_id = ? ORDER BY name`, appID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	names := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return names, nil
+}
+
+func (r *SecretRepository) Delete(ctx context.Context, appID string, name string) error {
+	return mapRowsAffected(r.db.db.ExecContext(ctx, `DELETE FROM app_secrets WHERE app_id = ? AND name = ?`, appID, name))
+}

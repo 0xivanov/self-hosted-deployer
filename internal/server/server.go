@@ -26,11 +26,13 @@ type Repositories struct {
 	Apps        AppRepository
 	Deployments DeploymentRepository
 	Routes      RouteRepository
+	Secrets     SecretRepository
 }
 
 type Runtime struct {
 	Apps            AppRuntime
 	Ingress         IngressRuntime
+	SecretCipher    SecretCipher
 	RouteTLSEnabled bool
 }
 
@@ -90,8 +92,16 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		Apps:            repos.Apps,
 		Deployments:     repos.Deployments,
 		Routes:          repos.Routes,
+		Secrets:         repos.Secrets,
+		Cipher:          runtime.SecretCipher,
 		Runtime:         appRuntime,
 		RouteTLSEnabled: runtime.RouteTLSEnabled,
+	}))
+	deployerv1.RegisterSecretServiceServer(grpcServer, NewSecretService(SecretServiceConfig{
+		Apps:    repos.Apps,
+		Secrets: repos.Secrets,
+		Cipher:  runtime.SecretCipher,
+		Runtime: appRuntime,
 	}))
 
 	mux := http.NewServeMux()

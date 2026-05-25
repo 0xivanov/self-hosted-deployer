@@ -414,6 +414,54 @@ func TestRoutesListAndInspectUseRouteAPI(t *testing.T) {
 	}
 }
 
+func TestSecretsCommandsNeverPrintValues(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := clicore.SaveConfig(configPath, clicore.Config{
+		ServerURL:  "localhost:7443",
+		AdminToken: "dep_admin_saved",
+		Output:     clicore.OutputHuman,
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	client := &recordingAppClient{secretNames: []string{"DATABASE_URL"}}
+	app := newCLIApp(strings.NewReader(""), &stdout, &stderr)
+	app.readSecretValue = func(label string) (string, error) {
+		if label != "DATABASE_URL" {
+			t.Fatalf("unexpected secret prompt %q", label)
+		}
+		return "postgres://plain-value", nil
+	}
+	app.newPlatformClient = func(string, string) (platformClient, func() error, error) {
+		return client, func() error { return nil }, nil
+	}
+
+	if code := app.run([]string{"--config", configPath, "secrets", "set", "my-api", "DATABASE_URL"}); code != 0 {
+		t.Fatalf("expected secret set success, got %d: %s", code, stderr.String())
+	}
+	if client.secretValue != "postgres://plain-value" || strings.Contains(stdout.String(), "plain-value") || strings.Contains(stderr.String(), "plain-value") {
+		t.Fatalf("expected value delivered but not displayed, stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	if code := app.run([]string{"--config", configPath, "secrets", "list", "my-api"}); code != 0 {
+		t.Fatalf("expected secret list success, got %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "DATABASE_URL") || strings.Contains(stdout.String(), "plain-value") {
+		t.Fatalf("expected secret name only, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if code := app.run([]string{"--config", configPath, "secrets", "remove", "--yes", "my-api", "DATABASE_URL"}); code != 0 {
+		t.Fatalf("expected secret remove success, got %d: %s", code, stderr.String())
+	}
+	if client.deletedSecretName != "DATABASE_URL" {
+		t.Fatalf("expected deleted secret name, got %q", client.deletedSecretName)
+	}
+}
+
 type recordingClientFactory struct {
 	serverURL string
 	token     string
@@ -471,6 +519,18 @@ func (c recordingClient) InspectRoute(context.Context, string) (clicore.RouteInf
 	return clicore.RouteInfo{}, c.err
 }
 
+func (c recordingClient) SetSecret(context.Context, string, string, string) error {
+	return c.err
+}
+
+func (c recordingClient) ListSecrets(context.Context, string) ([]string, error) {
+	return nil, c.err
+}
+
+func (c recordingClient) DeleteSecret(context.Context, string, string) error {
+	return c.err
+}
+
 type recordingAppClient struct {
 	deployerYAML         string
 	deployResult         clicore.DeployResult
@@ -479,6 +539,11 @@ type recordingAppClient struct {
 	routes               []clicore.RouteInfo
 	route                clicore.RouteInfo
 	inspectedRouteDomain string
+	secretAppName        string
+	secretName           string
+	secretValue          string
+	secretNames          []string
+	deletedSecretName    string
 	err                  error
 }
 
@@ -518,6 +583,22 @@ func (c *recordingAppClient) ListRoutes(context.Context) ([]clicore.RouteInfo, e
 func (c *recordingAppClient) InspectRoute(_ context.Context, domain string) (clicore.RouteInfo, error) {
 	c.inspectedRouteDomain = domain
 	return c.route, c.err
+}
+
+func (c *recordingAppClient) SetSecret(_ context.Context, appName string, name string, value string) error {
+	c.secretAppName = appName
+	c.secretName = name
+	c.secretValue = value
+	return c.err
+}
+
+func (c *recordingAppClient) ListSecrets(context.Context, string) ([]string, error) {
+	return c.secretNames, c.err
+}
+
+func (c *recordingAppClient) DeleteSecret(_ context.Context, _ string, name string) error {
+	c.deletedSecretName = name
+	return c.err
 }
 
 func testDeployYAML(image string) string {

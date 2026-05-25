@@ -391,7 +391,14 @@ deployer secrets set my-api DATABASE_URL
 The CLI should prompt securely:
 
 ```text
-DATABASE_URL: ********
+DATABASE_URL: [input hidden]
+```
+
+For automation, a value may be passed explicitly, but this is less safe because
+the value may remain in shell history:
+
+```bash
+deployer secrets set --value 'postgres://...' my-api DATABASE_URL
 ```
 
 List secret names:
@@ -400,7 +407,14 @@ List secret names:
 deployer secrets list my-api
 ```
 
-Secret values should not be printed by default.
+Remove a secret after confirmation, or use `--yes` for automation:
+
+```bash
+deployer secrets remove my-api DATABASE_URL
+deployer secrets remove --yes my-api DATABASE_URL
+```
+
+Secret values are never returned by the secret API or printed by the CLI.
 
 ### 5.7 Status
 
@@ -586,17 +600,30 @@ Requirements:
 
 - Secret values encrypted at rest.
 - Encryption key stored outside the database.
-- Secret values never printed by default.
+- Secret values never returned by the API or printed by the CLI.
 - Secrets distributed only to nodes/clusters running the relevant app.
 - Secrets scoped per app.
 - Kubernetes Secrets created only where needed.
 
-Simple MVP approach:
+The control plane requires exactly one encryption key source at startup:
 
 ```text
-PLATFORM_SECRET_KEY
-  -> encrypts app secret values before database storage
+DEPLOYER_SECRET_KEY       -> raw 32-byte AES-256 key
+DEPLOYER_SECRET_KEY_FILE  -> path to a file containing the raw 32-byte key
 ```
+
+Key files are read byte-for-byte and must contain exactly 32 bytes; a trailing
+newline counts as key material. Secret values are encrypted before database
+storage with AES-256-GCM and a fresh random nonce for every update.
+
+When an app configuration declares secret names, the control plane creates one
+Kubernetes Secret for that app containing only those names and injects them as
+environment variables in the Deployment. A required name that has not been
+set blocks deployment, while secret values may be set one at a time before the
+complete set is deployed. Updating a referenced value changes a pod-template
+hash derived from encrypted secret state and starts a rollout, without exposing
+a plaintext-value hash. Removing a currently referenced secret is rejected
+until it is removed from the app configuration.
 
 More advanced future approach:
 

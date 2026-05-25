@@ -22,11 +22,12 @@ func TestControllerReconcilesAndDeletesAppResources(t *testing.T) {
 		namespaces:  clientset.CoreV1().Namespaces(),
 		ingresses:   clientset.NetworkingV1().Ingresses(DefaultNamespace),
 		services:    clientset.CoreV1().Services(DefaultNamespace),
+		appSecrets:  clientset.CoreV1().Secrets(DefaultNamespace),
 		deployments: clientset.AppsV1().Deployments(DefaultNamespace),
 	}
 	cfg := testAppConfig()
 
-	if err := controller.Reconcile(context.Background(), cfg); err != nil {
+	if err := controller.Reconcile(context.Background(), cfg, nil, ""); err != nil {
 		t.Fatalf("create app resources: %v", err)
 	}
 	serviceCreate, ingressCreate := -1, -1
@@ -63,7 +64,7 @@ func TestControllerReconcilesAndDeletesAppResources(t *testing.T) {
 
 	cfg.Routing.Domain = "new.example.com"
 	cfg.Image = "ivan/my-api:1.0.1"
-	if err := controller.Reconcile(context.Background(), cfg); err != nil {
+	if err := controller.Reconcile(context.Background(), cfg, nil, ""); err != nil {
 		t.Fatalf("update app resources: %v", err)
 	}
 	got, err := controller.ingresses.Get(context.Background(), cfg.Name, metav1.GetOptions{})
@@ -79,7 +80,7 @@ func TestControllerReconcilesAndDeletesAppResources(t *testing.T) {
 	}
 
 	cfg.Routing.Domain = ""
-	if err := controller.Reconcile(context.Background(), cfg); err != nil {
+	if err := controller.Reconcile(context.Background(), cfg, nil, ""); err != nil {
 		t.Fatalf("delete ingress: %v", err)
 	}
 	if _, err := controller.ingresses.Get(context.Background(), cfg.Name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
@@ -109,12 +110,13 @@ func TestControllerCreatesIssuerAndTLSIngress(t *testing.T) {
 		namespaces:  clientset.CoreV1().Namespaces(),
 		ingresses:   clientset.NetworkingV1().Ingresses(DefaultNamespace),
 		services:    clientset.CoreV1().Services(DefaultNamespace),
+		appSecrets:  clientset.CoreV1().Secrets(DefaultNamespace),
 		deployments: clientset.AppsV1().Deployments(DefaultNamespace),
 		issuers:     dynamicClient.Resource(clusterIssuerResource),
 	}
 	cfg := testAppConfig()
 
-	if err := controller.Reconcile(context.Background(), cfg); err != nil {
+	if err := controller.Reconcile(context.Background(), cfg, nil, ""); err != nil {
 		t.Fatalf("create TLS ingress: %v", err)
 	}
 	issuer, err := controller.issuers.Get(context.Background(), DefaultClusterIssuer, metav1.GetOptions{})
@@ -131,6 +133,61 @@ func TestControllerCreatesIssuerAndTLSIngress(t *testing.T) {
 	}
 	if len(got.Spec.TLS) != 1 || got.Spec.TLS[0].SecretName != "my-api-tls" {
 		t.Fatalf("unexpected ingress TLS: %#v", got.Spec.TLS)
+	}
+}
+
+func TestControllerAppliesReferencedSecretsBeforeDeploymentAndRestartsOnChange(t *testing.T) {
+	clientset := fake.NewSimpleClientset()
+	controller := &Controller{
+		namespace:   DefaultNamespace,
+		tls:         TLSConfig{}.WithDefaults(),
+		namespaces:  clientset.CoreV1().Namespaces(),
+		ingresses:   clientset.NetworkingV1().Ingresses(DefaultNamespace),
+		services:    clientset.CoreV1().Services(DefaultNamespace),
+		appSecrets:  clientset.CoreV1().Secrets(DefaultNamespace),
+		deployments: clientset.AppsV1().Deployments(DefaultNamespace),
+	}
+	cfg := testAppConfig()
+	cfg.Secrets = []string{"DATABASE_URL"}
+
+	if err := controller.Reconcile(context.Background(), cfg, map[string]string{"DATABASE_URL": "postgres://first"}, "encrypted-revision-1"); err != nil {
+		t.Fatalf("create app secret resources: %v", err)
+	}
+	secretCreate, deploymentCreate := -1, -1
+	for i, action := range clientset.Actions() {
+		if action.GetVerb() != "create" {
+			continue
+		}
+		switch action.GetResource().Resource {
+		case "secrets":
+			secretCreate = i
+		case "deployments":
+			deploymentCreate = i
+		}
+	}
+	if secretCreate < 0 || deploymentCreate < 0 || secretCreate > deploymentCreate {
+		t.Fatalf("expected Secret creation before Deployment creation, got actions %#v", clientset.Actions())
+	}
+	secret, err := controller.appSecrets.Get(context.Background(), cfg.Name, metav1.GetOptions{})
+	if err != nil || string(secret.Data["DATABASE_URL"]) != "postgres://first" {
+		t.Fatalf("unexpected Kubernetes Secret %#v: %v", secret, err)
+	}
+	deployment, err := controller.deployments.Get(context.Background(), cfg.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("get deployment: %v", err)
+	}
+	env := deployment.Spec.Template.Spec.Containers[0].Env
+	if len(env) != 1 || env[0].Name != "DATABASE_URL" || env[0].ValueFrom.SecretKeyRef.Key != "DATABASE_URL" {
+		t.Fatalf("unexpected deployment secret environment: %#v", env)
+	}
+	originalHash := deployment.Spec.Template.Annotations[secretHashAnnotation]
+
+	if err := controller.Reconcile(context.Background(), cfg, map[string]string{"DATABASE_URL": "postgres://updated"}, "encrypted-revision-2"); err != nil {
+		t.Fatalf("update app secret resources: %v", err)
+	}
+	deployment, err = controller.deployments.Get(context.Background(), cfg.Name, metav1.GetOptions{})
+	if err != nil || deployment.Spec.Template.Annotations[secretHashAnnotation] == originalHash {
+		t.Fatalf("expected changed secret hash annotation, got %#v: %v", deployment, err)
 	}
 }
 

@@ -1,6 +1,11 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestServerConfigValidateRequiresSensitiveKeys(t *testing.T) {
 	cfg := ServerConfig{
@@ -15,6 +20,61 @@ func TestServerConfigValidateRequiresSensitiveKeys(t *testing.T) {
 	}
 }
 
+func TestServerConfigSecretEncryptionKey(t *testing.T) {
+	tests := []struct {
+		name    string
+		key     string
+		keyFile func(t *testing.T) string
+		wantKey string
+		wantErr string
+	}{
+		{name: "environment key", key: strings.Repeat("a", 32), wantKey: strings.Repeat("a", 32)},
+		{name: "invalid environment key", key: "short", wantErr: "exactly 32 bytes"},
+		{
+			name:    "file key preserves trailing newline byte",
+			wantKey: strings.Repeat("b", 31) + "\n",
+			keyFile: func(t *testing.T) string {
+				path := filepath.Join(t.TempDir(), "secret.key")
+				if err := os.WriteFile(path, []byte(strings.Repeat("b", 31)+"\n"), 0o600); err != nil {
+					t.Fatalf("write key file: %v", err)
+				}
+				return path
+			},
+		},
+		{
+			name:    "file key rejects extra newline byte",
+			wantErr: "exactly 32 bytes",
+			keyFile: func(t *testing.T) string {
+				path := filepath.Join(t.TempDir(), "secret.key")
+				if err := os.WriteFile(path, []byte(strings.Repeat("b", 32)+"\n"), 0o600); err != nil {
+					t.Fatalf("write key file: %v", err)
+				}
+				return path
+			},
+		},
+		{name: "missing key", wantErr: "is required"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := ServerConfig{SecretKey: tt.key}
+			if tt.keyFile != nil {
+				cfg.SecretKeyFile = tt.keyFile(t)
+			}
+			key, err := cfg.SecretEncryptionKey()
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("expected %q error, got %v", tt.wantErr, err)
+				}
+				return
+			}
+			if err != nil || string(key) != tt.wantKey {
+				t.Fatalf("unexpected key result %q err=%v", key, err)
+			}
+		})
+	}
+}
+
 func TestLoadServerK3sDefaults(t *testing.T) {
 	t.Setenv("DEPLOYER_KUBECONFIG", "")
 	t.Setenv("DEPLOYER_INGRESS_NAMESPACE", "")
@@ -24,6 +84,7 @@ func TestLoadServerK3sDefaults(t *testing.T) {
 	t.Setenv("DEPLOYER_K3S_CONFIG_PATH", "")
 	t.Setenv("DEPLOYER_K3S_WIREGUARD_IP", "10.8.0.1")
 	t.Setenv("DEPLOYER_K3S_INSTALLER_URL", "")
+	t.Setenv("DEPLOYER_SECRET_KEY_FILE", "/tmp/deployer.key")
 
 	cfg := LoadServer()
 	if cfg.KubeconfigPath != "/etc/rancher/k3s/k3s.yaml" {
@@ -43,6 +104,9 @@ func TestLoadServerK3sDefaults(t *testing.T) {
 	}
 	if cfg.K3sWireGuardIP != "10.8.0.1" {
 		t.Fatalf("unexpected wireguard IP %q", cfg.K3sWireGuardIP)
+	}
+	if cfg.SecretKeyFile != "/tmp/deployer.key" {
+		t.Fatalf("unexpected secret key file %q", cfg.SecretKeyFile)
 	}
 }
 

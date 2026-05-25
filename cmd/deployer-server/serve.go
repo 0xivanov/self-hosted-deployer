@@ -11,6 +11,7 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	"github.com/0xivanov/self-hosted-deployer/internal/ingress"
 	"github.com/0xivanov/self-hosted-deployer/internal/logging"
+	"github.com/0xivanov/self-hosted-deployer/internal/security"
 	"github.com/0xivanov/self-hosted-deployer/internal/server"
 	"github.com/0xivanov/self-hosted-deployer/internal/version"
 )
@@ -21,6 +22,16 @@ func serve() int {
 
 	cfg := config.LoadServer()
 	if err := validateServeConfig(cfg); err != nil {
+		fmt.Fprintln(os.Stderr, config.FormatValidationError("server", err))
+		return 1
+	}
+	secretKey, err := cfg.SecretEncryptionKey()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, config.FormatValidationError("server", err))
+		return 1
+	}
+	secretCipher, err := security.NewSecretCipher(secretKey)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, config.FormatValidationError("server", err))
 		return 1
 	}
@@ -50,6 +61,7 @@ func serve() int {
 	}
 	runtime := server.Runtime{
 		Apps:            ingressController,
+		SecretCipher:    secretCipher,
 		RouteTLSEnabled: ingressController.TLSEnabled(),
 	}
 	if err := server.Serve(ctx, cfg, logger, newRepositories(database), runtime); err != nil {
