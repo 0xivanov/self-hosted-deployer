@@ -37,5 +37,8 @@ func validateServeConfig(cfg config.ServerConfig) error {
 	if err := config.ValidateTLSFiles(cfg.TLSCertFile, cfg.TLSKeyFile); err != nil {
 		errs = append(errs, err)
 	}
+	if _, err := cfg.EventRetention(); err != nil {
+		errs = append(errs, err)
+	}
 	return errors.Join(errs...)
 }

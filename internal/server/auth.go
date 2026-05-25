@@ -66,6 +66,28 @@ func (a Authenticator) UnaryInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
+func (a Authenticator) StreamInterceptor() grpc.StreamServerInterceptor {
+	return func(srv any, stream grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		if isPublicMethod(info.FullMethod) {
+			return handler(srv, stream)
+		}
+		caller, err := a.authenticate(stream.Context(), info.FullMethod)
+		if err != nil {
+			return err
+		}
+		return handler(srv, callerStream{ServerStream: stream, ctx: WithCaller(stream.Context(), caller)})
+	}
+}
+
+type callerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s callerStream) Context() context.Context {
+	return s.ctx
+}
+
 func (a Authenticator) authenticate(ctx context.Context, fullMethod string) (Caller, error) {
 	rawToken, err := bearerToken(ctx)
 	if err != nil {

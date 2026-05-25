@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -20,9 +21,12 @@ import (
 )
 
 const (
-	nodeStatusPending = "pending"
-	nodeStatusOnline  = "online"
-	defaultJoinTTL    = time.Hour
+	nodeStatusPending          = "pending"
+	nodeStatusOnline           = "online"
+	nodeStatusOffline          = "offline"
+	defaultJoinTTL             = time.Hour
+	defaultNodeOfflineAfter    = 2 * time.Minute
+	defaultNodeMonitorInterval = 30 * time.Second
 )
 
 type NodeRepository interface {
@@ -30,6 +34,7 @@ type NodeRepository interface {
 	FindByID(ctx context.Context, nodeID string) (domain.Node, error)
 	FindByName(ctx context.Context, name string) (domain.Node, error)
 	List(ctx context.Context) ([]domain.Node, error)
+	UpdateStatus(ctx context.Context, nodeID string, status string, updatedAt time.Time) error
 	UpdateHeartbeat(ctx context.Context, nodeID string, heartbeat domain.Node, seenAt time.Time) error
 	SetWireGuard(ctx context.Context, nodeID string, wireGuardIP string, publicKey string, updatedAt time.Time) error
 }
@@ -49,6 +54,7 @@ type NodeServiceConfig struct {
 	JoinTokens   consumableJoinTokenRepository
 	AgentTokens  creatableAgentTokenRepository
 	TokenHashKey string
+	Events       EventRecorder
 }
 
 type NodeService struct {
@@ -57,6 +63,7 @@ type NodeService struct {
 	joinTokens  consumableJoinTokenRepository
 	agentTokens creatableAgentTokenRepository
 	hashKey     []byte
+	events      EventRecorder
 	now         func() time.Time
 }
 
@@ -66,6 +73,7 @@ func NewNodeService(cfg NodeServiceConfig) NodeService {
 		joinTokens:  cfg.JoinTokens,
 		agentTokens: cfg.AgentTokens,
 		hashKey:     []byte(cfg.TokenHashKey),
+		events:      cfg.Events,
 		now:         time.Now,
 	}
 }
@@ -202,6 +210,20 @@ func (s NodeService) JoinNode(ctx context.Context, req *deployerv1.JoinNodeReque
 	} else if err != nil {
 		return nil, status.Error(codes.Internal, "consume join token")
 	}
+	recordEvent(ctx, s.events, domain.Event{
+		Type:         domain.EventTypeNodeJoined,
+		Severity:     domain.EventSeverityInfo,
+		Message:      fmt.Sprintf("node %s joined the platform", joinResponse.GetNodeName()),
+		NodeID:       joinResponse.GetNodeId(),
+		MetadataJSON: metadataJSON(map[string]any{"node_name": joinResponse.GetNodeName()}),
+	})
+	recordEvent(ctx, s.events, domain.Event{
+		Type:         domain.EventTypeNodeOnline,
+		Severity:     domain.EventSeverityInfo,
+		Message:      fmt.Sprintf("node %s is online", joinResponse.GetNodeName()),
+		NodeID:       joinResponse.GetNodeId(),
+		MetadataJSON: metadataJSON(map[string]any{"node_name": joinResponse.GetNodeName()}),
+	})
 
 	return joinResponse, nil
 }
@@ -353,6 +375,13 @@ func (s NodeService) HeartbeatNode(ctx context.Context, req *deployerv1.Heartbea
 	if statusValue == "" {
 		statusValue = nodeStatusOnline
 	}
+	previous, err := s.nodes.FindByID(ctx, caller.NodeID)
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, status.Error(codes.NotFound, "node not found")
+	}
+	if err != nil {
+		return nil, status.Error(codes.Internal, "get heartbeat node")
+	}
 	now := s.now().UTC()
 	if err := s.nodes.UpdateHeartbeat(ctx, caller.NodeID, domain.Node{
 		Status:   statusValue,
@@ -366,7 +395,72 @@ func (s NodeService) HeartbeatNode(ctx context.Context, req *deployerv1.Heartbea
 		}
 		return nil, status.Error(codes.Internal, "update heartbeat")
 	}
+	if previous.Status != statusValue {
+		switch statusValue {
+		case nodeStatusOnline:
+			recordEvent(ctx, s.events, domain.Event{
+				Type:         domain.EventTypeNodeOnline,
+				Severity:     domain.EventSeverityInfo,
+				Message:      fmt.Sprintf("node %s is online", previous.Name),
+				NodeID:       previous.ID,
+				MetadataJSON: metadataJSON(map[string]any{"node_name": previous.Name}),
+			})
+		case nodeStatusOffline:
+			recordEvent(ctx, s.events, domain.Event{
+				Type:         domain.EventTypeNodeOffline,
+				Severity:     domain.EventSeverityWarning,
+				Message:      fmt.Sprintf("node %s is offline", previous.Name),
+				NodeID:       previous.ID,
+				MetadataJSON: metadataJSON(map[string]any{"node_name": previous.Name}),
+			})
+		}
+	}
 	return &deployerv1.HeartbeatNodeResponse{AcceptedAt: formatProtoTime(now)}, nil
+}
+
+func MarkOfflineNodes(ctx context.Context, nodes NodeRepository, events EventRecorder, now time.Time, offlineAfter time.Duration) error {
+	if nodes == nil {
+		return nil
+	}
+	knownNodes, err := nodes.List(ctx)
+	if err != nil {
+		return err
+	}
+	for _, node := range knownNodes {
+		if node.Status != nodeStatusOnline || node.LastSeenAt == nil || now.Sub(*node.LastSeenAt) < offlineAfter {
+			continue
+		}
+		if err := nodes.UpdateStatus(ctx, node.ID, nodeStatusOffline, now); err != nil {
+			return err
+		}
+		recordEvent(ctx, events, domain.Event{
+			Type:         domain.EventTypeNodeOffline,
+			Severity:     domain.EventSeverityWarning,
+			Message:      fmt.Sprintf("node %s is offline", node.Name),
+			NodeID:       node.ID,
+			MetadataJSON: metadataJSON(map[string]any{"node_name": node.Name}),
+		})
+	}
+	return nil
+}
+
+func RunNodeOfflineMonitor(ctx context.Context, nodes NodeRepository, events EventRecorder, logger *slog.Logger) {
+	check := func() {
+		if err := MarkOfflineNodes(ctx, nodes, events, time.Now().UTC(), defaultNodeOfflineAfter); err != nil && ctx.Err() == nil {
+			logger.WarnContext(ctx, "mark offline nodes", "error", err)
+		}
+	}
+	check()
+	ticker := time.NewTicker(defaultNodeMonitorInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			check()
+		}
+	}
 }
 
 func requireCaller(ctx context.Context, kind CallerKind) error {

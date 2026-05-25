@@ -236,6 +236,31 @@ func TestAuthenticatorRejectsJoinTokenForNonJoinRPC(t *testing.T) {
 	}
 }
 
+func TestAuthenticatorSecuresEventWatchStreams(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDB(t)
+	repos := newTestTokenRepositories(database)
+	rawToken, tokenHash := createToken(t, security.AdminTokenPrefix, "hash-key")
+	if err := repos.AdminTokens.Create(ctx, domain.AdminToken{TokenHash: tokenHash, Name: "test", CreatedAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("create admin token: %v", err)
+	}
+	auth := NewAuthenticator(repos.Auth(), "hash-key")
+	handler := func(_ any, stream grpc.ServerStream) error {
+		caller, ok := CallerFromContext(stream.Context())
+		if !ok || caller.Kind != CallerAdmin {
+			t.Fatalf("expected authenticated admin stream, got %#v", caller)
+		}
+		return nil
+	}
+	info := &grpc.StreamServerInfo{FullMethod: "/deployer.v1.EventService/WatchEvents"}
+	if err := auth.StreamInterceptor()(nil, testServerStream{ctx: context.Background()}, info, handler); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("expected missing stream auth rejection, got %v", err)
+	}
+	if err := auth.StreamInterceptor()(nil, testServerStream{ctx: withBearer(ctx, rawToken)}, info, handler); err != nil {
+		t.Fatalf("authenticate event watch stream: %v", err)
+	}
+}
+
 func createToken(t *testing.T, prefix string, hashKey string) (string, string) {
 	t.Helper()
 	rawToken, err := security.NewToken(prefix)
@@ -295,6 +320,15 @@ func withAuthorization(ctx context.Context, value string) context.Context {
 
 type failingAdminUsageRepository struct {
 	token domain.AdminToken
+}
+
+type testServerStream struct {
+	grpc.ServerStream
+	ctx context.Context
+}
+
+func (s testServerStream) Context() context.Context {
+	return s.ctx
 }
 
 func (r failingAdminUsageRepository) FindByHash(context.Context, string) (domain.AdminToken, error) {

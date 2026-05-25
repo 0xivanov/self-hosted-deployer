@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package deployer.v1;
+
+option go_package = "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1;deployerv1";
+
+service EventService {
+  rpc ListEvents(ListEventsRequest) returns (ListEventsResponse);
+  rpc WatchEvents(WatchEventsRequest) returns (stream WatchEventsResponse);
+}
+
+message Event {
+  string id = 1;
+  string created_at = 2;
+  string type = 3;
+  string severity = 4;
+  string message = 5;
+  string app_id = 6;
+  string node_id = 7;
+  string deployment_id = 8;
+  string metadata_json = 9;
+}
+
+message ListEventsRequest {
+  string app = 1;
+  string node = 2;
+  string type = 3;
+  string severity = 4;
+  string since = 5;
+  int32 limit = 6;
+}
+
+message ListEventsResponse {
+  repeated Event events = 1;
+}
+
+message WatchEventsRequest {
+  string app = 1;
+  string node = 2;
+  string type = 3;
+  string severity = 4;
+  string since = 5;
+}
+
+message WatchEventsResponse {
+  Event event = 1;
+}

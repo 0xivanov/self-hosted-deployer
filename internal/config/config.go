@@ -4,49 +4,57 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/security"
 )
 
 type ServerConfig struct {
-	GRPCListenAddress string
-	HTTPListenAddress string
-	DatabaseURL       string
-	PublicBaseURL     string
-	SecretKey         string
-	SecretKeyFile     string
-	TokenHashKey      string
-	TLSCertFile       string
-	TLSKeyFile        string
-	KubeconfigPath    string
-	IngressNamespace  string
-	IngressACMEEmail  string
-	IngressTLSIssuer  string
-	IngressACMEServer string
-	K3sConfigPath     string
-	K3sWireGuardIP    string
-	K3sInstallerURL   string
+	GRPCListenAddress      string
+	HTTPListenAddress      string
+	DatabaseURL            string
+	PublicBaseURL          string
+	SecretKey              string
+	SecretKeyFile          string
+	TokenHashKey           string
+	TLSCertFile            string
+	TLSKeyFile             string
+	KubeconfigPath         string
+	IngressNamespace       string
+	IngressACMEEmail       string
+	IngressTLSIssuer       string
+	IngressACMEServer      string
+	K3sConfigPath          string
+	K3sWireGuardIP         string
+	K3sInstallerURL        string
+	EventRetentionMaxAge   string
+	EventRetentionMaxCount string
+	EventCleanupInterval   string
 }
 
 func LoadServer() ServerConfig {
 	return ServerConfig{
-		GRPCListenAddress: envOrDefault("DEPLOYER_SERVER_GRPC_ADDR", ":7443"),
-		HTTPListenAddress: envOrDefault("DEPLOYER_SERVER_HTTP_ADDR", ":7080"),
-		DatabaseURL:       envOrDefault("DEPLOYER_DATABASE_URL", "file:deployer.db"),
-		PublicBaseURL:     os.Getenv("DEPLOYER_PUBLIC_BASE_URL"),
-		SecretKey:         os.Getenv("DEPLOYER_SECRET_KEY"),
-		SecretKeyFile:     os.Getenv("DEPLOYER_SECRET_KEY_FILE"),
-		TokenHashKey:      os.Getenv("DEPLOYER_TOKEN_HASH_KEY"),
-		TLSCertFile:       os.Getenv("DEPLOYER_SERVER_TLS_CERT_FILE"),
-		TLSKeyFile:        os.Getenv("DEPLOYER_SERVER_TLS_KEY_FILE"),
-		KubeconfigPath:    envOrDefault("DEPLOYER_KUBECONFIG", "/etc/rancher/k3s/k3s.yaml"),
-		IngressNamespace:  envOrDefault("DEPLOYER_INGRESS_NAMESPACE", "deployer-apps"),
-		IngressACMEEmail:  os.Getenv("DEPLOYER_INGRESS_ACME_EMAIL"),
-		IngressTLSIssuer:  envOrDefault("DEPLOYER_INGRESS_TLS_ISSUER", "deployer-letsencrypt"),
-		IngressACMEServer: envOrDefault("DEPLOYER_INGRESS_ACME_SERVER", "https://acme-v02.api.letsencrypt.org/directory"),
-		K3sConfigPath:     envOrDefault("DEPLOYER_K3S_CONFIG_PATH", "/etc/rancher/k3s/config.yaml"),
-		K3sWireGuardIP:    os.Getenv("DEPLOYER_K3S_WIREGUARD_IP"),
-		K3sInstallerURL:   envOrDefault("DEPLOYER_K3S_INSTALLER_URL", "https://get.k3s.io"),
+		GRPCListenAddress:      envOrDefault("DEPLOYER_SERVER_GRPC_ADDR", ":7443"),
+		HTTPListenAddress:      envOrDefault("DEPLOYER_SERVER_HTTP_ADDR", ":7080"),
+		DatabaseURL:            envOrDefault("DEPLOYER_DATABASE_URL", "file:deployer.db"),
+		PublicBaseURL:          os.Getenv("DEPLOYER_PUBLIC_BASE_URL"),
+		SecretKey:              os.Getenv("DEPLOYER_SECRET_KEY"),
+		SecretKeyFile:          os.Getenv("DEPLOYER_SECRET_KEY_FILE"),
+		TokenHashKey:           os.Getenv("DEPLOYER_TOKEN_HASH_KEY"),
+		TLSCertFile:            os.Getenv("DEPLOYER_SERVER_TLS_CERT_FILE"),
+		TLSKeyFile:             os.Getenv("DEPLOYER_SERVER_TLS_KEY_FILE"),
+		KubeconfigPath:         envOrDefault("DEPLOYER_KUBECONFIG", "/etc/rancher/k3s/k3s.yaml"),
+		IngressNamespace:       envOrDefault("DEPLOYER_INGRESS_NAMESPACE", "deployer-apps"),
+		IngressACMEEmail:       os.Getenv("DEPLOYER_INGRESS_ACME_EMAIL"),
+		IngressTLSIssuer:       envOrDefault("DEPLOYER_INGRESS_TLS_ISSUER", "deployer-letsencrypt"),
+		IngressACMEServer:      envOrDefault("DEPLOYER_INGRESS_ACME_SERVER", "https://acme-v02.api.letsencrypt.org/directory"),
+		K3sConfigPath:          envOrDefault("DEPLOYER_K3S_CONFIG_PATH", "/etc/rancher/k3s/config.yaml"),
+		K3sWireGuardIP:         os.Getenv("DEPLOYER_K3S_WIREGUARD_IP"),
+		K3sInstallerURL:        envOrDefault("DEPLOYER_K3S_INSTALLER_URL", "https://get.k3s.io"),
+		EventRetentionMaxAge:   envOrDefault("DEPLOYER_EVENT_RETENTION_MAX_AGE", "720h"),
+		EventRetentionMaxCount: envOrDefault("DEPLOYER_EVENT_RETENTION_MAX_COUNT", "10000"),
+		EventCleanupInterval:   envOrDefault("DEPLOYER_EVENT_CLEANUP_INTERVAL", "1h"),
 	}
 }
 
@@ -71,6 +79,9 @@ func (c ServerConfig) Validate() error {
 		errs = append(errs, errors.New("DEPLOYER_TOKEN_HASH_KEY is required"))
 	}
 	if err := ValidateTLSFiles(c.TLSCertFile, c.TLSKeyFile); err != nil {
+		errs = append(errs, err)
+	}
+	if _, err := c.EventRetention(); err != nil {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
@@ -98,6 +109,40 @@ func (c ServerConfig) SecretEncryptionKey() ([]byte, error) {
 		return nil, fmt.Errorf("DEPLOYER_SECRET_KEY or DEPLOYER_SECRET_KEY_FILE must contain exactly %d bytes", security.SecretKeyBytes)
 	}
 	return append([]byte(nil), key...), nil
+}
+
+type EventRetentionConfig struct {
+	MaxAge          time.Duration
+	MaxCount        int
+	CleanupInterval time.Duration
+}
+
+func (c ServerConfig) EventRetention() (EventRetentionConfig, error) {
+	maxAgeValue := c.EventRetentionMaxAge
+	if maxAgeValue == "" {
+		maxAgeValue = "720h"
+	}
+	maxCountValue := c.EventRetentionMaxCount
+	if maxCountValue == "" {
+		maxCountValue = "10000"
+	}
+	cleanupValue := c.EventCleanupInterval
+	if cleanupValue == "" {
+		cleanupValue = "1h"
+	}
+	maxAge, err := time.ParseDuration(maxAgeValue)
+	if err != nil || maxAge <= 0 {
+		return EventRetentionConfig{}, errors.New("DEPLOYER_EVENT_RETENTION_MAX_AGE must be a positive duration")
+	}
+	maxCount, err := strconv.Atoi(maxCountValue)
+	if err != nil || maxCount <= 0 {
+		return EventRetentionConfig{}, errors.New("DEPLOYER_EVENT_RETENTION_MAX_COUNT must be a positive integer")
+	}
+	cleanupInterval, err := time.ParseDuration(cleanupValue)
+	if err != nil || cleanupInterval <= 0 {
+		return EventRetentionConfig{}, errors.New("DEPLOYER_EVENT_CLEANUP_INTERVAL must be a positive duration")
+	}
+	return EventRetentionConfig{MaxAge: maxAge, MaxCount: maxCount, CleanupInterval: cleanupInterval}, nil
 }
 
 type AgentConfig struct {

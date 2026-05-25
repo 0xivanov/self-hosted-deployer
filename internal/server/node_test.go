@@ -20,11 +20,13 @@ func TestNodeServiceCreateJoinTokenJoinAndHeartbeat(t *testing.T) {
 	nodes := db.NewNodeRepository(database)
 	joinTokens := db.NewJoinTokenRepository(database)
 	agentTokens := db.NewAgentTokenRepository(database)
+	eventRecorder := &recordingEventRecorder{}
 	service := NewNodeService(NodeServiceConfig{
 		Nodes:        nodes,
 		JoinTokens:   joinTokens,
 		AgentTokens:  agentTokens,
 		TokenHashKey: "hash-key",
+		Events:       eventRecorder,
 	})
 
 	createResponse, err := service.CreateJoinToken(WithCaller(ctx, Caller{Kind: CallerAdmin}), &deployerv1.CreateJoinTokenRequest{
@@ -98,6 +100,9 @@ func TestNodeServiceCreateJoinTokenJoinAndHeartbeat(t *testing.T) {
 	if online.WireGuardIP != "10.8.0.2" || online.WireGuardPublicKey != validWireGuardPublicKey {
 		t.Fatalf("expected stored WireGuard metadata, got %#v", online)
 	}
+	if !eventRecorder.hasType(domain.EventTypeNodeJoined) || !eventRecorder.hasType(domain.EventTypeNodeOnline) {
+		t.Fatalf("expected node lifecycle events, got %#v", eventRecorder.events)
+	}
 
 	_, err = service.JoinNode(ctx, &deployerv1.JoinNodeRequest{JoinToken: rawJoinToken, PublicKey: validWireGuardPublicKey})
 	if status.Code(err) != codes.PermissionDenied {
@@ -125,6 +130,24 @@ func TestNodeServiceCreateJoinTokenJoinAndHeartbeat(t *testing.T) {
 	if heartbeatNode.OS != "linux" || heartbeatNode.Kernel != "6.6" {
 		t.Fatalf("heartbeat metadata was not stored: %#v", heartbeatNode)
 	}
+	if _, err := service.HeartbeatNode(WithCaller(ctx, Caller{Kind: CallerAgent, NodeID: pending.ID}), &deployerv1.HeartbeatNodeRequest{Status: "offline"}); err != nil {
+		t.Fatalf("offline heartbeat: %v", err)
+	}
+	if !eventRecorder.hasType(domain.EventTypeNodeOffline) {
+		t.Fatalf("expected offline transition event, got %#v", eventRecorder.events)
+	}
+	if _, err := service.HeartbeatNode(WithCaller(ctx, Caller{Kind: CallerAgent, NodeID: pending.ID}), &deployerv1.HeartbeatNodeRequest{Status: "online"}); err != nil {
+		t.Fatalf("recovery heartbeat: %v", err)
+	}
+	onlineEvents := 0
+	for _, event := range eventRecorder.events {
+		if event.Type == domain.EventTypeNodeOnline {
+			onlineEvents++
+		}
+	}
+	if onlineEvents != 2 {
+		t.Fatalf("expected join and recovery online transitions, got %#v", eventRecorder.events)
+	}
 }
 
 func TestNodeServiceHeartbeatRequiresAgentCaller(t *testing.T) {
@@ -132,6 +155,39 @@ func TestNodeServiceHeartbeatRequiresAgentCaller(t *testing.T) {
 	_, err := service.HeartbeatNode(WithCaller(context.Background(), Caller{Kind: CallerAdmin}), &deployerv1.HeartbeatNodeRequest{})
 	if status.Code(err) != codes.PermissionDenied {
 		t.Fatalf("expected PermissionDenied, got %v", err)
+	}
+}
+
+func TestMarkOfflineNodesRecordsSingleTransition(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
+	lastSeen := now.Add(-3 * time.Minute)
+	if err := nodes.Create(ctx, domain.Node{
+		ID:         "node-stale",
+		Name:       "pi-stale",
+		Status:     nodeStatusOnline,
+		LabelsJSON: "{}",
+		CreatedAt:  lastSeen,
+		UpdatedAt:  lastSeen,
+		LastSeenAt: &lastSeen,
+	}); err != nil {
+		t.Fatalf("create online node: %v", err)
+	}
+	events := &recordingEventRecorder{}
+	if err := MarkOfflineNodes(ctx, nodes, events, now, defaultNodeOfflineAfter); err != nil {
+		t.Fatalf("mark offline nodes: %v", err)
+	}
+	if err := MarkOfflineNodes(ctx, nodes, events, now.Add(time.Minute), defaultNodeOfflineAfter); err != nil {
+		t.Fatalf("repeat offline scan: %v", err)
+	}
+	node, err := nodes.FindByID(ctx, "node-stale")
+	if err != nil || node.Status != nodeStatusOffline {
+		t.Fatalf("expected offline node, got %#v: %v", node, err)
+	}
+	if len(events.events) != 1 || events.events[0].Type != domain.EventTypeNodeOffline {
+		t.Fatalf("expected one offline transition event, got %#v", events.events)
 	}
 }
 

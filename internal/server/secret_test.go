@@ -22,8 +22,9 @@ func TestSecretServiceSetListAndDeleteStoresOnlyCiphertext(t *testing.T) {
 	apps := db.NewAppRepository(database)
 	secrets := db.NewSecretRepository(database)
 	cipher := newTestSecretCipher(t)
+	eventRecorder := &recordingEventRecorder{}
 	createSecretTestApp(t, apps, nil)
-	service := NewSecretService(SecretServiceConfig{Apps: apps, Secrets: secrets, Cipher: cipher})
+	service := NewSecretService(SecretServiceConfig{Apps: apps, Secrets: secrets, Cipher: cipher, Events: eventRecorder})
 
 	if _, err := service.SetSecret(ctx, &deployerv1.SetSecretRequest{
 		AppName: "my-api",
@@ -43,6 +44,13 @@ func TestSecretServiceSetListAndDeleteStoresOnlyCiphertext(t *testing.T) {
 	if err != nil || decrypted != "postgres://plain-value" {
 		t.Fatalf("decrypt stored secret got %q: %v", decrypted, err)
 	}
+	if _, err := service.SetSecret(ctx, &deployerv1.SetSecretRequest{
+		AppName: "my-api",
+		Name:    "DATABASE_URL",
+		Value:   "postgres://updated-value",
+	}); err != nil {
+		t.Fatalf("update secret: %v", err)
+	}
 	listed, err := service.ListSecrets(ctx, &deployerv1.ListSecretsRequest{AppName: "my-api"})
 	if err != nil || len(listed.GetNames()) != 1 || listed.GetNames()[0] != "DATABASE_URL" {
 		t.Fatalf("unexpected secret names %#v: %v", listed, err)
@@ -52,6 +60,16 @@ func TestSecretServiceSetListAndDeleteStoresOnlyCiphertext(t *testing.T) {
 	}
 	if _, err := secrets.Find(ctx, "app-1", "DATABASE_URL"); !errors.Is(err, db.ErrNotFound) {
 		t.Fatalf("expected deleted secret to be absent, got %v", err)
+	}
+	for _, eventType := range []domain.EventType{domain.EventTypeSecretCreated, domain.EventTypeSecretUpdated, domain.EventTypeSecretDeleted} {
+		if !eventRecorder.hasType(eventType) {
+			t.Fatalf("expected secret event %s, got %#v", eventType, eventRecorder.events)
+		}
+	}
+	for _, event := range eventRecorder.events {
+		if strings.Contains(event.MetadataJSON, "plain-value") || strings.Contains(event.MetadataJSON, "updated-value") {
+			t.Fatalf("secret metadata contained value: %q", event.MetadataJSON)
+		}
 	}
 }
 

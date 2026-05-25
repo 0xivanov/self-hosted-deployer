@@ -462,6 +462,45 @@ func TestSecretsCommandsNeverPrintValues(t *testing.T) {
 	}
 }
 
+func TestEventsListsFilteredDiagnosticsAndSupportsJSON(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := clicore.SaveConfig(configPath, clicore.Config{
+		ServerURL:  "localhost:7443",
+		AdminToken: "dep_admin_saved",
+		Output:     clicore.OutputHuman,
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	client := &recordingAppClient{events: []clicore.EventInfo{{
+		CreatedAt: "2026-05-25T12:00:00Z",
+		Type:      "app.deploy.failed",
+		Severity:  "error",
+		Message:   "deployment failed",
+	}}}
+	app := newCLIApp(strings.NewReader(""), &stdout, &stderr)
+	app.newPlatformClient = func(string, string) (platformClient, func() error, error) {
+		return client, func() error { return nil }, nil
+	}
+
+	if code := app.run([]string{"--config", configPath, "events", "--app", "my-api", "--severity", "error"}); code != 0 {
+		t.Fatalf("expected events success, got %d: %s", code, stderr.String())
+	}
+	if client.eventFilter.App != "my-api" || client.eventFilter.Severity != "error" || !strings.Contains(stdout.String(), "app.deploy.failed") {
+		t.Fatalf("expected filtered event output, filter=%#v stdout=%q", client.eventFilter, stdout.String())
+	}
+
+	stdout.Reset()
+	if code := app.run([]string{"--config", configPath, "--output", "json", "events", "--type", "app.deploy.failed"}); code != 0 {
+		t.Fatalf("expected JSON events success, got %d: %s", code, stderr.String())
+	}
+	if client.eventFilter.Type != "app.deploy.failed" || !strings.Contains(stdout.String(), `"events"`) {
+		t.Fatalf("expected JSON event output, filter=%#v stdout=%q", client.eventFilter, stdout.String())
+	}
+}
+
 type recordingClientFactory struct {
 	serverURL string
 	token     string
@@ -531,6 +570,14 @@ func (c recordingClient) DeleteSecret(context.Context, string, string) error {
 	return c.err
 }
 
+func (c recordingClient) ListEvents(context.Context, clicore.EventFilter) ([]clicore.EventInfo, error) {
+	return nil, c.err
+}
+
+func (c recordingClient) WatchEvents(context.Context, clicore.EventFilter, func(clicore.EventInfo) error) error {
+	return c.err
+}
+
 type recordingAppClient struct {
 	deployerYAML         string
 	deployResult         clicore.DeployResult
@@ -544,6 +591,8 @@ type recordingAppClient struct {
 	secretValue          string
 	secretNames          []string
 	deletedSecretName    string
+	events               []clicore.EventInfo
+	eventFilter          clicore.EventFilter
 	err                  error
 }
 
@@ -598,6 +647,21 @@ func (c *recordingAppClient) ListSecrets(context.Context, string) ([]string, err
 
 func (c *recordingAppClient) DeleteSecret(_ context.Context, _ string, name string) error {
 	c.deletedSecretName = name
+	return c.err
+}
+
+func (c *recordingAppClient) ListEvents(_ context.Context, filter clicore.EventFilter) ([]clicore.EventInfo, error) {
+	c.eventFilter = filter
+	return c.events, c.err
+}
+
+func (c *recordingAppClient) WatchEvents(_ context.Context, filter clicore.EventFilter, receive func(clicore.EventInfo) error) error {
+	c.eventFilter = filter
+	for _, event := range c.events {
+		if err := receive(event); err != nil {
+			return err
+		}
+	}
 	return c.err
 }
 

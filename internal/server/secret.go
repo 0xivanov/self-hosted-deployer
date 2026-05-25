@@ -42,6 +42,7 @@ type SecretServiceConfig struct {
 	Secrets SecretRepository
 	Cipher  SecretCipher
 	Runtime AppRuntime
+	Events  EventRecorder
 }
 
 type SecretService struct {
@@ -50,6 +51,7 @@ type SecretService struct {
 	secrets SecretRepository
 	cipher  SecretCipher
 	runtime AppRuntime
+	events  EventRecorder
 	now     func() time.Time
 }
 
@@ -59,6 +61,7 @@ func NewSecretService(cfg SecretServiceConfig) SecretService {
 		secrets: cfg.Secrets,
 		cipher:  cfg.Cipher,
 		runtime: cfg.Runtime,
+		events:  cfg.Events,
 		now:     time.Now,
 	}
 }
@@ -74,6 +77,14 @@ func (s SecretService) SetSecret(ctx context.Context, req *deployerv1.SetSecretR
 	if err != nil {
 		return nil, err
 	}
+	eventType := domain.EventTypeSecretCreated
+	eventMessage := "created"
+	if _, err := s.secrets.Find(ctx, app.ID, name); err == nil {
+		eventType = domain.EventTypeSecretUpdated
+		eventMessage = "updated"
+	} else if !errors.Is(err, db.ErrNotFound) {
+		return nil, status.Error(codes.Internal, "read secret")
+	}
 	ciphertext, err := s.cipher.Encrypt(req.GetValue())
 	if err != nil {
 		return nil, status.Error(codes.Internal, "encrypt secret")
@@ -88,6 +99,13 @@ func (s SecretService) SetSecret(ctx context.Context, req *deployerv1.SetSecretR
 	}); err != nil {
 		return nil, status.Error(codes.Internal, "set secret")
 	}
+	recordEvent(ctx, s.events, domain.Event{
+		Type:         eventType,
+		Severity:     domain.EventSeverityInfo,
+		Message:      fmt.Sprintf("secret %s %s for app %s", name, eventMessage, app.Name),
+		AppID:        app.ID,
+		MetadataJSON: metadataJSON(map[string]any{"app_name": app.Name, "secret_name": name}),
+	})
 	if err := s.reconcileReferencedSecret(ctx, app, name); err != nil {
 		return nil, err
 	}
@@ -135,6 +153,13 @@ func (s SecretService) DeleteSecret(ctx context.Context, req *deployerv1.DeleteS
 	} else if err != nil {
 		return nil, status.Error(codes.Internal, "delete secret")
 	}
+	recordEvent(ctx, s.events, domain.Event{
+		Type:         domain.EventTypeSecretDeleted,
+		Severity:     domain.EventSeverityInfo,
+		Message:      fmt.Sprintf("secret %s deleted for app %s", name, app.Name),
+		AppID:        app.ID,
+		MetadataJSON: metadataJSON(map[string]any{"app_name": app.Name, "secret_name": name}),
+	})
 	return &deployerv1.DeleteSecretResponse{}, nil
 }
 
