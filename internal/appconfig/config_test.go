@@ -57,6 +57,27 @@ placement:
 	}
 }
 
+func TestParseAllowsAppWithoutRoutingDomain(t *testing.T) {
+	cfg, err := Parse([]byte(`
+name: worker
+image: ivan/worker:1.0.0
+service:
+  port: 3000
+  health:
+    path: /health
+routing: {}
+deploy:
+  replicas: 1
+placement: {}
+`))
+	if err != nil {
+		t.Fatalf("parse config without routing domain: %v", err)
+	}
+	if cfg.Routing.Domain != "" {
+		t.Fatalf("expected empty routing domain, got %q", cfg.Routing.Domain)
+	}
+}
+
 func TestParseRejectsUnknownFields(t *testing.T) {
 	_, err := Parse([]byte(validYAML + "\nunexpected: true\n"))
 	if err == nil || !strings.Contains(err.Error(), "field unexpected not found") {

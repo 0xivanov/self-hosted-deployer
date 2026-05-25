@@ -119,9 +119,6 @@ func (c Config) Validate() error {
 	if !strings.HasPrefix(c.Service.Health.Path, "/") {
 		return fmt.Errorf("service.health.path must start with /")
 	}
-	if c.Routing.Domain == "" {
-		return fmt.Errorf("routing.domain is required")
-	}
 	if c.Deploy.Replicas < 1 {
 		return fmt.Errorf("deploy.replicas must be at least 1")
 	}

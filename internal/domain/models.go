@@ -75,6 +75,8 @@ type Route struct {
 	AppID      string
 	Domain     string
 	TargetPort int
+	Status     string
+	TLSEnabled bool
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }

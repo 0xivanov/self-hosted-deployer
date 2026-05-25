@@ -16,6 +16,10 @@ type ServerConfig struct {
 	TLSCertFile       string
 	TLSKeyFile        string
 	KubeconfigPath    string
+	IngressNamespace  string
+	IngressACMEEmail  string
+	IngressTLSIssuer  string
+	IngressACMEServer string
 	K3sConfigPath     string
 	K3sWireGuardIP    string
 	K3sInstallerURL   string
@@ -32,6 +36,10 @@ func LoadServer() ServerConfig {
 		TLSCertFile:       os.Getenv("DEPLOYER_SERVER_TLS_CERT_FILE"),
 		TLSKeyFile:        os.Getenv("DEPLOYER_SERVER_TLS_KEY_FILE"),
 		KubeconfigPath:    envOrDefault("DEPLOYER_KUBECONFIG", "/etc/rancher/k3s/k3s.yaml"),
+		IngressNamespace:  envOrDefault("DEPLOYER_INGRESS_NAMESPACE", "deployer-apps"),
+		IngressACMEEmail:  os.Getenv("DEPLOYER_INGRESS_ACME_EMAIL"),
+		IngressTLSIssuer:  envOrDefault("DEPLOYER_INGRESS_TLS_ISSUER", "deployer-letsencrypt"),
+		IngressACMEServer: envOrDefault("DEPLOYER_INGRESS_ACME_SERVER", "https://acme-v02.api.letsencrypt.org/directory"),
 		K3sConfigPath:     envOrDefault("DEPLOYER_K3S_CONFIG_PATH", "/etc/rancher/k3s/config.yaml"),
 		K3sWireGuardIP:    os.Getenv("DEPLOYER_K3S_WIREGUARD_IP"),
 		K3sInstallerURL:   envOrDefault("DEPLOYER_K3S_INSTALLER_URL", "https://get.k3s.io"),

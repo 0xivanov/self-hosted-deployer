@@ -66,6 +66,7 @@ func usage(w io.Writer, flags *flag.FlagSet) {
 	fmt.Fprintln(w, "  deploy     Submit deployer.yaml desired state")
 	fmt.Fprintln(w, "  login      Save CLI access to the control plane")
 	fmt.Fprintln(w, "  nodes      Add and inspect enrolled nodes")
+	fmt.Fprintln(w, "  routes     List and inspect public routes")
 	fmt.Fprintln(w, "  server     Inspect the configured control plane")
 	fmt.Fprintln(w, "  version    Print version information")
 	fmt.Fprintln(w, "  help       Show help")

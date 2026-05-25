@@ -90,6 +90,13 @@ func (a cliApp) appsInspect(args []string, opts runtimeOptions, client platformC
 			fmt.Fprintf(a.stdout, "%-24s %-12s %s\n", deployment.ID, deployment.Status, deployment.UpdatedAt)
 		}
 	}
+	if len(result.Routes) > 0 {
+		fmt.Fprintln(a.stdout)
+		fmt.Fprintf(a.stdout, "%-32s %-8s %-12s %s\n", "DOMAIN", "PORT", "STATUS", "TLS")
+		for _, route := range result.Routes {
+			fmt.Fprintf(a.stdout, "%-32s %-8d %-12s %t\n", route.Domain, route.TargetPort, route.Status, route.TLSEnabled)
+		}
+	}
 	return 0
 }
 

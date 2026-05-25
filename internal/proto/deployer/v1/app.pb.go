@@ -203,6 +203,8 @@ type Route struct {
 	AppId         string                 `protobuf:"bytes,2,opt,name=app_id,json=appId,proto3" json:"app_id,omitempty"`
 	Domain        string                 `protobuf:"bytes,3,opt,name=domain,proto3" json:"domain,omitempty"`
 	TargetPort    int32                  `protobuf:"varint,4,opt,name=target_port,json=targetPort,proto3" json:"target_port,omitempty"`
+	Status        string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	TlsEnabled    bool                   `protobuf:"varint,6,opt,name=tls_enabled,json=tlsEnabled,proto3" json:"tls_enabled,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -263,6 +265,20 @@ func (x *Route) GetTargetPort() int32 {
 		return x.TargetPort
 	}
 	return 0
+}
+
+func (x *Route) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *Route) GetTlsEnabled() bool {
+	if x != nil {
+		return x.TlsEnabled
+	}
+	return false
 }
 
 type DeployAppRequest struct {
@@ -969,6 +985,174 @@ func (x *GetDeploymentLogsResponse) GetLines() []string {
 	return nil
 }
 
+type ListRoutesRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRoutesRequest) Reset() {
+	*x = ListRoutesRequest{}
+	mi := &file_deployer_v1_app_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRoutesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRoutesRequest) ProtoMessage() {}
+
+func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_deployer_v1_app_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRoutesRequest.ProtoReflect.Descriptor instead.
+func (*ListRoutesRequest) Descriptor() ([]byte, []int) {
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{17}
+}
+
+type ListRoutesResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Routes        []*Route               `protobuf:"bytes,1,rep,name=routes,proto3" json:"routes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListRoutesResponse) Reset() {
+	*x = ListRoutesResponse{}
+	mi := &file_deployer_v1_app_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListRoutesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListRoutesResponse) ProtoMessage() {}
+
+func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_deployer_v1_app_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListRoutesResponse.ProtoReflect.Descriptor instead.
+func (*ListRoutesResponse) Descriptor() ([]byte, []int) {
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *ListRoutesResponse) GetRoutes() []*Route {
+	if x != nil {
+		return x.Routes
+	}
+	return nil
+}
+
+type InspectRouteRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Domain        string                 `protobuf:"bytes,1,opt,name=domain,proto3" json:"domain,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InspectRouteRequest) Reset() {
+	*x = InspectRouteRequest{}
+	mi := &file_deployer_v1_app_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InspectRouteRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InspectRouteRequest) ProtoMessage() {}
+
+func (x *InspectRouteRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_deployer_v1_app_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InspectRouteRequest.ProtoReflect.Descriptor instead.
+func (*InspectRouteRequest) Descriptor() ([]byte, []int) {
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *InspectRouteRequest) GetDomain() string {
+	if x != nil {
+		return x.Domain
+	}
+	return ""
+}
+
+type InspectRouteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Route         *Route                 `protobuf:"bytes,1,opt,name=route,proto3" json:"route,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InspectRouteResponse) Reset() {
+	*x = InspectRouteResponse{}
+	mi := &file_deployer_v1_app_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InspectRouteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InspectRouteResponse) ProtoMessage() {}
+
+func (x *InspectRouteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_deployer_v1_app_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InspectRouteResponse.ProtoReflect.Descriptor instead.
+func (*InspectRouteResponse) Descriptor() ([]byte, []int) {
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *InspectRouteResponse) GetRoute() *Route {
+	if x != nil {
+		return x.Route
+	}
+	return nil
+}
+
 var File_deployer_v1_app_proto protoreflect.FileDescriptor
 
 const file_deployer_v1_app_proto_rawDesc = "" +
@@ -993,13 +1177,16 @@ const file_deployer_v1_app_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x05 \x01(\tR\tcreatedAt\x12\x1d\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\tR\tupdatedAt\"g\n" +
+	"updated_at\x18\x06 \x01(\tR\tupdatedAt\"\xa0\x01\n" +
 	"\x05Route\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x15\n" +
 	"\x06app_id\x18\x02 \x01(\tR\x05appId\x12\x16\n" +
 	"\x06domain\x18\x03 \x01(\tR\x06domain\x12\x1f\n" +
 	"\vtarget_port\x18\x04 \x01(\x05R\n" +
-	"targetPort\"7\n" +
+	"targetPort\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12\x1f\n" +
+	"\vtls_enabled\x18\x06 \x01(\bR\n" +
+	"tlsEnabled\"7\n" +
 	"\x10DeployAppRequest\x12#\n" +
 	"\rdeployer_yaml\x18\x01 \x01(\tR\fdeployerYaml\"p\n" +
 	"\x11DeployAppResponse\x12\"\n" +
@@ -1042,7 +1229,14 @@ const file_deployer_v1_app_proto_rawDesc = "" +
 	"\n" +
 	"tail_lines\x18\x03 \x01(\x05R\ttailLines\"1\n" +
 	"\x19GetDeploymentLogsResponse\x12\x14\n" +
-	"\x05lines\x18\x01 \x03(\tR\x05lines2\xb8\x04\n" +
+	"\x05lines\x18\x01 \x03(\tR\x05lines\"\x13\n" +
+	"\x11ListRoutesRequest\"@\n" +
+	"\x12ListRoutesResponse\x12*\n" +
+	"\x06routes\x18\x01 \x03(\v2\x12.deployer.v1.RouteR\x06routes\"-\n" +
+	"\x13InspectRouteRequest\x12\x16\n" +
+	"\x06domain\x18\x01 \x01(\tR\x06domain\"@\n" +
+	"\x14InspectRouteResponse\x12(\n" +
+	"\x05route\x18\x01 \x01(\v2\x12.deployer.v1.RouteR\x05route2\xdc\x05\n" +
 	"\n" +
 	"AppService\x12J\n" +
 	"\tDeployApp\x12\x1d.deployer.v1.DeployAppRequest\x1a\x1e.deployer.v1.DeployAppResponse\x12G\n" +
@@ -1052,7 +1246,10 @@ const file_deployer_v1_app_proto_rawDesc = "" +
 	"\tDeleteApp\x12\x1d.deployer.v1.DeleteAppRequest\x1a\x1e.deployer.v1.DeleteAppResponse\x12A\n" +
 	"\x06GetApp\x12\x1a.deployer.v1.GetAppRequest\x1a\x1b.deployer.v1.GetAppResponse\x12S\n" +
 	"\fGetAppStatus\x12 .deployer.v1.GetAppStatusRequest\x1a!.deployer.v1.GetAppStatusResponse\x12b\n" +
-	"\x11GetDeploymentLogs\x12%.deployer.v1.GetDeploymentLogsRequest\x1a&.deployer.v1.GetDeploymentLogsResponseBPZNgithub.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1;deployerv1b\x06proto3"
+	"\x11GetDeploymentLogs\x12%.deployer.v1.GetDeploymentLogsRequest\x1a&.deployer.v1.GetDeploymentLogsResponse\x12M\n" +
+	"\n" +
+	"ListRoutes\x12\x1e.deployer.v1.ListRoutesRequest\x1a\x1f.deployer.v1.ListRoutesResponse\x12S\n" +
+	"\fInspectRoute\x12 .deployer.v1.InspectRouteRequest\x1a!.deployer.v1.InspectRouteResponseBPZNgithub.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1;deployerv1b\x06proto3"
 
 var (
 	file_deployer_v1_app_proto_rawDescOnce sync.Once
@@ -1066,7 +1263,7 @@ func file_deployer_v1_app_proto_rawDescGZIP() []byte {
 	return file_deployer_v1_app_proto_rawDescData
 }
 
-var file_deployer_v1_app_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_deployer_v1_app_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_deployer_v1_app_proto_goTypes = []any{
 	(*App)(nil),                       // 0: deployer.v1.App
 	(*Deployment)(nil),                // 1: deployer.v1.Deployment
@@ -1085,6 +1282,10 @@ var file_deployer_v1_app_proto_goTypes = []any{
 	(*GetAppStatusResponse)(nil),      // 14: deployer.v1.GetAppStatusResponse
 	(*GetDeploymentLogsRequest)(nil),  // 15: deployer.v1.GetDeploymentLogsRequest
 	(*GetDeploymentLogsResponse)(nil), // 16: deployer.v1.GetDeploymentLogsResponse
+	(*ListRoutesRequest)(nil),         // 17: deployer.v1.ListRoutesRequest
+	(*ListRoutesResponse)(nil),        // 18: deployer.v1.ListRoutesResponse
+	(*InspectRouteRequest)(nil),       // 19: deployer.v1.InspectRouteRequest
+	(*InspectRouteResponse)(nil),      // 20: deployer.v1.InspectRouteResponse
 }
 var file_deployer_v1_app_proto_depIdxs = []int32{
 	0,  // 0: deployer.v1.DeployAppResponse.app:type_name -> deployer.v1.App
@@ -1100,25 +1301,31 @@ var file_deployer_v1_app_proto_depIdxs = []int32{
 	0,  // 10: deployer.v1.GetAppStatusResponse.app:type_name -> deployer.v1.App
 	1,  // 11: deployer.v1.GetAppStatusResponse.latest_deployment:type_name -> deployer.v1.Deployment
 	2,  // 12: deployer.v1.GetAppStatusResponse.routes:type_name -> deployer.v1.Route
-	3,  // 13: deployer.v1.AppService.DeployApp:input_type -> deployer.v1.DeployAppRequest
-	5,  // 14: deployer.v1.AppService.ListApps:input_type -> deployer.v1.ListAppsRequest
-	7,  // 15: deployer.v1.AppService.InspectApp:input_type -> deployer.v1.InspectAppRequest
-	9,  // 16: deployer.v1.AppService.DeleteApp:input_type -> deployer.v1.DeleteAppRequest
-	11, // 17: deployer.v1.AppService.GetApp:input_type -> deployer.v1.GetAppRequest
-	13, // 18: deployer.v1.AppService.GetAppStatus:input_type -> deployer.v1.GetAppStatusRequest
-	15, // 19: deployer.v1.AppService.GetDeploymentLogs:input_type -> deployer.v1.GetDeploymentLogsRequest
-	4,  // 20: deployer.v1.AppService.DeployApp:output_type -> deployer.v1.DeployAppResponse
-	6,  // 21: deployer.v1.AppService.ListApps:output_type -> deployer.v1.ListAppsResponse
-	8,  // 22: deployer.v1.AppService.InspectApp:output_type -> deployer.v1.InspectAppResponse
-	10, // 23: deployer.v1.AppService.DeleteApp:output_type -> deployer.v1.DeleteAppResponse
-	12, // 24: deployer.v1.AppService.GetApp:output_type -> deployer.v1.GetAppResponse
-	14, // 25: deployer.v1.AppService.GetAppStatus:output_type -> deployer.v1.GetAppStatusResponse
-	16, // 26: deployer.v1.AppService.GetDeploymentLogs:output_type -> deployer.v1.GetDeploymentLogsResponse
-	20, // [20:27] is the sub-list for method output_type
-	13, // [13:20] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	2,  // 13: deployer.v1.ListRoutesResponse.routes:type_name -> deployer.v1.Route
+	2,  // 14: deployer.v1.InspectRouteResponse.route:type_name -> deployer.v1.Route
+	3,  // 15: deployer.v1.AppService.DeployApp:input_type -> deployer.v1.DeployAppRequest
+	5,  // 16: deployer.v1.AppService.ListApps:input_type -> deployer.v1.ListAppsRequest
+	7,  // 17: deployer.v1.AppService.InspectApp:input_type -> deployer.v1.InspectAppRequest
+	9,  // 18: deployer.v1.AppService.DeleteApp:input_type -> deployer.v1.DeleteAppRequest
+	11, // 19: deployer.v1.AppService.GetApp:input_type -> deployer.v1.GetAppRequest
+	13, // 20: deployer.v1.AppService.GetAppStatus:input_type -> deployer.v1.GetAppStatusRequest
+	15, // 21: deployer.v1.AppService.GetDeploymentLogs:input_type -> deployer.v1.GetDeploymentLogsRequest
+	17, // 22: deployer.v1.AppService.ListRoutes:input_type -> deployer.v1.ListRoutesRequest
+	19, // 23: deployer.v1.AppService.InspectRoute:input_type -> deployer.v1.InspectRouteRequest
+	4,  // 24: deployer.v1.AppService.DeployApp:output_type -> deployer.v1.DeployAppResponse
+	6,  // 25: deployer.v1.AppService.ListApps:output_type -> deployer.v1.ListAppsResponse
+	8,  // 26: deployer.v1.AppService.InspectApp:output_type -> deployer.v1.InspectAppResponse
+	10, // 27: deployer.v1.AppService.DeleteApp:output_type -> deployer.v1.DeleteAppResponse
+	12, // 28: deployer.v1.AppService.GetApp:output_type -> deployer.v1.GetAppResponse
+	14, // 29: deployer.v1.AppService.GetAppStatus:output_type -> deployer.v1.GetAppStatusResponse
+	16, // 30: deployer.v1.AppService.GetDeploymentLogs:output_type -> deployer.v1.GetDeploymentLogsResponse
+	18, // 31: deployer.v1.AppService.ListRoutes:output_type -> deployer.v1.ListRoutesResponse
+	20, // 32: deployer.v1.AppService.InspectRoute:output_type -> deployer.v1.InspectRouteResponse
+	24, // [24:33] is the sub-list for method output_type
+	15, // [15:24] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_deployer_v1_app_proto_init() }
@@ -1132,7 +1339,7 @@ func file_deployer_v1_app_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_deployer_v1_app_proto_rawDesc), len(file_deployer_v1_app_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   17,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

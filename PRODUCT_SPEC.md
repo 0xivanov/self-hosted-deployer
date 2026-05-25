@@ -237,7 +237,21 @@ Possible technologies:
 - Envoy
 - Kubernetes Ingress controller
 
-For MVP, Caddy or Traefik are good candidates.
+MVP routing backend decision:
+
+- Use Kubernetes `Ingress` resources with the default k3s Traefik ingress controller.
+- This keeps public routing state in the same Kubernetes API surface as Deployments and Services.
+- It avoids managing a separate host-level reverse proxy during the MVP while still matching k3s defaults.
+- Caddy remains a later option if automatic HTTPS or host-level proxying becomes simpler than Kubernetes-native ingress.
+
+MVP TLS strategy:
+
+- Use cert-manager with a platform-managed ACME `ClusterIssuer` and the default k3s Traefik ingress controller.
+- Setting `DEPLOYER_INGRESS_ACME_EMAIL` enables TLS for app routes and supplies the required ACME contact address. `DEPLOYER_INGRESS_TLS_ISSUER` and `DEPLOYER_INGRESS_ACME_SERVER` may override the defaults.
+- TLS-enabled app Ingress resources use a per-app certificate secret and bind Traefik's `websecure` entrypoint. Plain HTTP is intentionally not routed for those app routes in the MVP; clients must use HTTPS.
+- When no ACME email is configured, routes are created without TLS and reported with `tls_enabled: false`.
+- The cluster must have cert-manager installed before enabling automated TLS; route reconciliation reports an apply failure if the cert-manager API is unavailable.
+- App reconciliation applies its Namespace, Deployment, and Service before creating or updating its Ingress.
 
 Responsibilities:
 

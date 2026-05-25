@@ -9,6 +9,7 @@ import (
 
 	"github.com/0xivanov/self-hosted-deployer/internal/config"
 	"github.com/0xivanov/self-hosted-deployer/internal/db"
+	"github.com/0xivanov/self-hosted-deployer/internal/ingress"
 	"github.com/0xivanov/self-hosted-deployer/internal/logging"
 	"github.com/0xivanov/self-hosted-deployer/internal/server"
 	"github.com/0xivanov/self-hosted-deployer/internal/version"
@@ -34,7 +35,24 @@ func serve() int {
 	}
 	defer database.Close()
 
-	if err := server.Serve(ctx, cfg, logger, newRepositories(database)); err != nil {
+	ingressController, err := ingress.NewController(ingress.ControllerConfig{
+		KubeconfigPath: cfg.KubeconfigPath,
+		Namespace:      cfg.IngressNamespace,
+		TLS: ingress.TLSConfig{
+			ACMEEmail:     cfg.IngressACMEEmail,
+			ClusterIssuer: cfg.IngressTLSIssuer,
+			ACMEServer:    cfg.IngressACMEServer,
+		},
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	runtime := server.Runtime{
+		Apps:            ingressController,
+		RouteTLSEnabled: ingressController.TLSEnabled(),
+	}
+	if err := server.Serve(ctx, cfg, logger, newRepositories(database), runtime); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}

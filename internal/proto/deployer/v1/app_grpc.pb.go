@@ -26,6 +26,8 @@ const (
 	AppService_GetApp_FullMethodName            = "/deployer.v1.AppService/GetApp"
 	AppService_GetAppStatus_FullMethodName      = "/deployer.v1.AppService/GetAppStatus"
 	AppService_GetDeploymentLogs_FullMethodName = "/deployer.v1.AppService/GetDeploymentLogs"
+	AppService_ListRoutes_FullMethodName        = "/deployer.v1.AppService/ListRoutes"
+	AppService_InspectRoute_FullMethodName      = "/deployer.v1.AppService/InspectRoute"
 )
 
 // AppServiceClient is the client API for AppService service.
@@ -39,6 +41,8 @@ type AppServiceClient interface {
 	GetApp(ctx context.Context, in *GetAppRequest, opts ...grpc.CallOption) (*GetAppResponse, error)
 	GetAppStatus(ctx context.Context, in *GetAppStatusRequest, opts ...grpc.CallOption) (*GetAppStatusResponse, error)
 	GetDeploymentLogs(ctx context.Context, in *GetDeploymentLogsRequest, opts ...grpc.CallOption) (*GetDeploymentLogsResponse, error)
+	ListRoutes(ctx context.Context, in *ListRoutesRequest, opts ...grpc.CallOption) (*ListRoutesResponse, error)
+	InspectRoute(ctx context.Context, in *InspectRouteRequest, opts ...grpc.CallOption) (*InspectRouteResponse, error)
 }
 
 type appServiceClient struct {
@@ -119,6 +123,26 @@ func (c *appServiceClient) GetDeploymentLogs(ctx context.Context, in *GetDeploym
 	return out, nil
 }
 
+func (c *appServiceClient) ListRoutes(ctx context.Context, in *ListRoutesRequest, opts ...grpc.CallOption) (*ListRoutesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListRoutesResponse)
+	err := c.cc.Invoke(ctx, AppService_ListRoutes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *appServiceClient) InspectRoute(ctx context.Context, in *InspectRouteRequest, opts ...grpc.CallOption) (*InspectRouteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(InspectRouteResponse)
+	err := c.cc.Invoke(ctx, AppService_InspectRoute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AppServiceServer is the server API for AppService service.
 // All implementations must embed UnimplementedAppServiceServer
 // for forward compatibility.
@@ -130,6 +154,8 @@ type AppServiceServer interface {
 	GetApp(context.Context, *GetAppRequest) (*GetAppResponse, error)
 	GetAppStatus(context.Context, *GetAppStatusRequest) (*GetAppStatusResponse, error)
 	GetDeploymentLogs(context.Context, *GetDeploymentLogsRequest) (*GetDeploymentLogsResponse, error)
+	ListRoutes(context.Context, *ListRoutesRequest) (*ListRoutesResponse, error)
+	InspectRoute(context.Context, *InspectRouteRequest) (*InspectRouteResponse, error)
 	mustEmbedUnimplementedAppServiceServer()
 }
 
@@ -160,6 +186,12 @@ func (UnimplementedAppServiceServer) GetAppStatus(context.Context, *GetAppStatus
 }
 func (UnimplementedAppServiceServer) GetDeploymentLogs(context.Context, *GetDeploymentLogsRequest) (*GetDeploymentLogsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDeploymentLogs not implemented")
+}
+func (UnimplementedAppServiceServer) ListRoutes(context.Context, *ListRoutesRequest) (*ListRoutesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListRoutes not implemented")
+}
+func (UnimplementedAppServiceServer) InspectRoute(context.Context, *InspectRouteRequest) (*InspectRouteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method InspectRoute not implemented")
 }
 func (UnimplementedAppServiceServer) mustEmbedUnimplementedAppServiceServer() {}
 func (UnimplementedAppServiceServer) testEmbeddedByValue()                    {}
@@ -308,6 +340,42 @@ func _AppService_GetDeploymentLogs_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AppService_ListRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListRoutesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServiceServer).ListRoutes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppService_ListRoutes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServiceServer).ListRoutes(ctx, req.(*ListRoutesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AppService_InspectRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(InspectRouteRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServiceServer).InspectRoute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppService_InspectRoute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServiceServer).InspectRoute(ctx, req.(*InspectRouteRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AppService_ServiceDesc is the grpc.ServiceDesc for AppService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -342,6 +410,14 @@ var AppService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetDeploymentLogs",
 			Handler:    _AppService_GetDeploymentLogs_Handler,
+		},
+		{
+			MethodName: "ListRoutes",
+			Handler:    _AppService_ListRoutes_Handler,
+		},
+		{
+			MethodName: "InspectRoute",
+			Handler:    _AppService_InspectRoute_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
