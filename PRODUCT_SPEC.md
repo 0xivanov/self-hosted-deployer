@@ -1245,8 +1245,17 @@ deployer events
 deployer events --app my-api
 deployer events --node pi-garage
 deployer events --type app.deploy.failed
+deployer events --severity error
 deployer events --since 1h
 deployer events --watch
+```
+
+Event history is retained with conservative server defaults and can be tuned through:
+
+```text
+DEPLOYER_EVENT_RETENTION_MAX_AGE    -> maximum event age, default 720h
+DEPLOYER_EVENT_RETENTION_MAX_COUNT  -> maximum retained rows, default 10000
+DEPLOYER_EVENT_CLEANUP_INTERVAL     -> cleanup frequency, default 1h
 ```
 
 ## 18. MVP Scope

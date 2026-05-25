@@ -161,6 +161,21 @@ func (c *Controller) Status(ctx context.Context, appName string) (string, error)
 	return statusForDeployment(deployment), nil
 }
 
+func (c *Controller) StatusDetails(ctx context.Context, appName string) (string, int32, int32, error) {
+	deployment, err := c.deployments.Get(ctx, appName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return StatusUnavailable, 0, 0, nil
+	}
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("get Deployment %q for app status: %w", appName, err)
+	}
+	var desired int32
+	if deployment.Spec.Replicas != nil {
+		desired = *deployment.Spec.Replicas
+	}
+	return statusForDeployment(deployment), desired, deployment.Status.AvailableReplicas, nil
+}
+
 func (c *Controller) ensureIssuer(ctx context.Context) error {
 	if c.issuers == nil {
 		return fmt.Errorf("cert-manager client is required for TLS ingress")

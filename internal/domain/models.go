@@ -80,3 +80,58 @@ type Route struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }
+
+type EventSeverity string
+
+const (
+	EventSeverityInfo    EventSeverity = "info"
+	EventSeverityWarning EventSeverity = "warning"
+	EventSeverityError   EventSeverity = "error"
+)
+
+type EventType string
+
+const (
+	EventTypeNodeJoined         EventType = "node.joined"
+	EventTypeNodeOnline         EventType = "node.online"
+	EventTypeNodeOffline        EventType = "node.offline"
+	EventTypeNodeRemoved        EventType = "node.removed"
+	EventTypeAppDeployStarted   EventType = "app.deploy.started"
+	EventTypeAppDeploySucceeded EventType = "app.deploy.succeeded"
+	EventTypeAppDeployFailed    EventType = "app.deploy.failed"
+	EventTypeAppHealthDegraded  EventType = "app.health.degraded"
+	EventTypeAppHealthRecovered EventType = "app.health.recovered"
+	EventTypeRouteDegraded      EventType = "route.degraded"
+	EventTypeRouteRecovered     EventType = "route.recovered"
+	EventTypeSecretCreated      EventType = "secret.created"
+	EventTypeSecretUpdated      EventType = "secret.updated"
+	EventTypeSecretDeleted      EventType = "secret.deleted"
+)
+
+type Event struct {
+	ID           string
+	CreatedAt    time.Time
+	Type         EventType
+	Severity     EventSeverity
+	Message      string
+	AppID        string
+	NodeID       string
+	DeploymentID string
+	MetadataJSON string
+}
+
+type EventCursor struct {
+	CreatedAt time.Time
+	ID        string
+}
+
+type EventFilter struct {
+	AppID       string
+	NodeID      string
+	Type        EventType
+	Severity    EventSeverity
+	Since       *time.Time
+	After       *EventCursor
+	OldestFirst bool
+	Limit       int
+}

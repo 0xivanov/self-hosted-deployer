@@ -22,7 +22,7 @@ func TestAppServiceDeployUpdateListInspectAndDelete(t *testing.T) {
 	apps := db.NewAppRepository(database)
 	deployments := db.NewDeploymentRepository(database)
 	routes := db.NewRouteRepository(database)
-	runtime := &recordingAppRuntime{status: "healthy"}
+	runtime := &recordingAppRuntime{status: "healthy", desiredReplicas: 2, availableReplicas: 2}
 	service := NewAppService(AppServiceConfig{
 		Apps:            apps,
 		Deployments:     deployments,
@@ -190,12 +190,14 @@ func TestAppServiceUpdatesRouteDomain(t *testing.T) {
 func TestAppServiceRefreshesRouteHealth(t *testing.T) {
 	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
 	database := openTestDB(t)
-	runtime := &recordingAppRuntime{status: "healthy"}
+	runtime := &recordingAppRuntime{status: "healthy", desiredReplicas: 2, availableReplicas: 2}
+	eventRecorder := &recordingEventRecorder{}
 	service := NewAppService(AppServiceConfig{
 		Apps:        db.NewAppRepository(database),
 		Deployments: db.NewDeploymentRepository(database),
 		Routes:      db.NewRouteRepository(database),
 		Runtime:     runtime,
+		Events:      eventRecorder,
 	})
 	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)}); err != nil {
 		t.Fatalf("deploy app: %v", err)
@@ -206,9 +208,32 @@ func TestAppServiceRefreshesRouteHealth(t *testing.T) {
 	}
 
 	runtime.status = "unavailable"
+	runtime.availableReplicas = 0
 	listed, err = service.ListRoutes(ctx, &deployerv1.ListRoutesRequest{})
 	if err != nil || listed.GetRoutes()[0].GetStatus() != "unavailable" {
 		t.Fatalf("expected unavailable route, got %#v: %v", listed, err)
+	}
+	runtime.status = "healthy"
+	runtime.availableReplicas = 2
+	if _, err := service.ListRoutes(ctx, &deployerv1.ListRoutesRequest{}); err != nil {
+		t.Fatalf("refresh recovered route: %v", err)
+	}
+	for _, eventType := range []domain.EventType{
+		domain.EventTypeAppDeployStarted,
+		domain.EventTypeAppDeploySucceeded,
+		domain.EventTypeRouteDegraded,
+		domain.EventTypeAppHealthDegraded,
+		domain.EventTypeRouteRecovered,
+		domain.EventTypeAppHealthRecovered,
+	} {
+		if !eventRecorder.hasType(eventType) {
+			t.Fatalf("expected event %s, got %#v", eventType, eventRecorder.events)
+		}
+	}
+	for _, event := range eventRecorder.events {
+		if event.Type == domain.EventTypeAppHealthDegraded && !strings.Contains(event.MetadataJSON, `"desired_replicas":2`) {
+			t.Fatalf("expected app health metadata to contain replica counts, got %s", event.MetadataJSON)
+		}
 	}
 }
 
@@ -239,11 +264,13 @@ func TestAppServiceRecordsResourceApplyFailure(t *testing.T) {
 	database := openTestDB(t)
 	apps := db.NewAppRepository(database)
 	deployments := db.NewDeploymentRepository(database)
+	events := &recordingEventRecorder{}
 	service := NewAppService(AppServiceConfig{
 		Apps:        apps,
 		Deployments: deployments,
 		Routes:      db.NewRouteRepository(database),
 		Runtime:     &recordingAppRuntime{err: errors.New("apply failed")},
+		Events:      events,
 	})
 
 	_, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)})
@@ -257,6 +284,14 @@ func TestAppServiceRecordsResourceApplyFailure(t *testing.T) {
 	records, err := deployments.ListByApp(ctx, app.ID)
 	if err != nil || len(records) != 1 || records[0].Status != "failed" {
 		t.Fatalf("expected failed deployment record, got %#v: %v", records, err)
+	}
+	if !events.hasType(domain.EventTypeAppDeployStarted) || !events.hasType(domain.EventTypeAppDeployFailed) {
+		t.Fatalf("expected failed deploy events, got %#v", events.events)
+	}
+	for _, event := range events.events {
+		if event.Type == domain.EventTypeAppDeployFailed && !strings.Contains(event.MetadataJSON, "apply failed") {
+			t.Fatalf("expected failure reason in metadata, got %s", event.MetadataJSON)
+		}
 	}
 }
 
@@ -403,12 +438,14 @@ state:
 }
 
 type recordingAppRuntime struct {
-	reconciled      []appconfig.Config
-	secretValues    []map[string]string
-	secretRevisions []string
-	deleted         []string
-	status          string
-	err             error
+	reconciled        []appconfig.Config
+	secretValues      []map[string]string
+	secretRevisions   []string
+	deleted           []string
+	status            string
+	desiredReplicas   int32
+	availableReplicas int32
+	err               error
 }
 
 func (r *recordingAppRuntime) Reconcile(_ context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string) error {
@@ -425,6 +462,10 @@ func (r *recordingAppRuntime) Delete(_ context.Context, appName string) error {
 
 func (r *recordingAppRuntime) Status(context.Context, string) (string, error) {
 	return r.status, r.err
+}
+
+func (r *recordingAppRuntime) StatusDetails(context.Context, string) (string, int32, int32, error) {
+	return r.status, r.desiredReplicas, r.availableReplicas, r.err
 }
 
 type failingRouteRepository struct {

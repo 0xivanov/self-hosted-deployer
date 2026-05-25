@@ -23,7 +23,7 @@ func NewJoinTokenRepository(db *Db) *JoinTokenRepository {
 }
 
 func (r *JoinTokenRepository) Create(ctx context.Context, token domain.JoinToken) error {
-	_, err := r.db.db.ExecContext(ctx, `INSERT INTO node_join_tokens (token_hash, intended_node_name, labels_json, created_at, expires_at, used_at) VALUES (?, ?, ?, ?, ?, ?)`,
+	_, err := r.db.conn.ExecContext(ctx, `INSERT INTO node_join_tokens (token_hash, intended_node_name, labels_json, created_at, expires_at, used_at) VALUES (?, ?, ?, ?, ?, ?)`,
 		token.TokenHash, token.IntendedNodeName, token.LabelsJSON, formatTime(token.CreatedAt), formatTime(token.ExpiresAt), formatOptionalTime(token.UsedAt))
 	return err
 }
@@ -32,7 +32,7 @@ func (r *JoinTokenRepository) FindByHash(ctx context.Context, tokenHash string) 
 	var token domain.JoinToken
 	var createdAt, expiresAt string
 	var usedAt sql.NullString
-	err := r.db.db.QueryRowContext(ctx, `SELECT token_hash, intended_node_name, labels_json, created_at, expires_at, used_at FROM node_join_tokens WHERE token_hash = ?`, tokenHash).
+	err := r.db.conn.QueryRowContext(ctx, `SELECT token_hash, intended_node_name, labels_json, created_at, expires_at, used_at FROM node_join_tokens WHERE token_hash = ?`, tokenHash).
 		Scan(&token.TokenHash, &token.IntendedNodeName, &token.LabelsJSON, &createdAt, &expiresAt, &usedAt)
 	if err != nil {
 		return domain.JoinToken{}, mapSQLError(err)
@@ -63,7 +63,7 @@ func (r *JoinTokenRepository) Consume(ctx context.Context, tokenHash string, use
 	if !token.ExpiresAt.After(usedAt.UTC()) {
 		return domain.JoinToken{}, ErrJoinTokenExpired
 	}
-	if err := mapRowsAffected(r.db.db.ExecContext(ctx, `UPDATE node_join_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL`, formatTime(usedAt), tokenHash)); err != nil {
+	if err := mapRowsAffected(r.db.conn.ExecContext(ctx, `UPDATE node_join_tokens SET used_at = ? WHERE token_hash = ? AND used_at IS NULL`, formatTime(usedAt), tokenHash)); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return domain.JoinToken{}, ErrJoinTokenUsed
 		}

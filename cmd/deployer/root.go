@@ -70,6 +70,8 @@ func (a cliApp) dispatch(args []string, opts cliOptions) int {
 		return a.routes(args[1:], opts)
 	case "secrets":
 		return a.secrets(args[1:], opts)
+	case "events":
+		return a.events(args[1:], opts)
 	case "help":
 		usage(a.stderr, rootFlags(a.stderr, &cliOptions{}))
 		return 0

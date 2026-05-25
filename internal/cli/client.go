@@ -3,7 +3,9 @@ package cli
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -25,6 +27,7 @@ type PlatformClient struct {
 	nodeClient     deployerv1.NodeServiceClient
 	appClient      deployerv1.AppServiceClient
 	secretClient   deployerv1.SecretServiceClient
+	eventClient    deployerv1.EventServiceClient
 	token          string
 	timeout        time.Duration
 }
@@ -105,6 +108,27 @@ type RouteInfo struct {
 	TLSEnabled bool   `json:"tls_enabled"`
 }
 
+type EventInfo struct {
+	ID           string          `json:"id"`
+	CreatedAt    string          `json:"created_at"`
+	Type         string          `json:"type"`
+	Severity     string          `json:"severity"`
+	Message      string          `json:"message"`
+	AppID        string          `json:"app_id,omitempty"`
+	NodeID       string          `json:"node_id,omitempty"`
+	DeploymentID string          `json:"deployment_id,omitempty"`
+	Metadata     json.RawMessage `json:"metadata,omitempty"`
+}
+
+type EventFilter struct {
+	App      string
+	Node     string
+	Type     string
+	Severity string
+	Since    time.Time
+	Limit    int
+}
+
 type DeployResult struct {
 	App        AppInfo        `json:"app"`
 	Deployment DeploymentInfo `json:"deployment"`
@@ -134,6 +158,7 @@ func NewPlatformClient(serverURL string, token string) (*PlatformClient, *grpc.C
 		token,
 	)
 	client.secretClient = deployerv1.NewSecretServiceClient(conn)
+	client.eventClient = deployerv1.NewEventServiceClient(conn)
 	return client, conn, nil
 }
 
@@ -379,6 +404,64 @@ func (c *PlatformClient) DeleteSecret(ctx context.Context, appName string, name 
 	return DecodeRPCError(err)
 }
 
+func (c *PlatformClient) ListEvents(ctx context.Context, filter EventFilter) ([]EventInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	response, err := c.eventClient.ListEvents(ctx, eventListRequest(filter))
+	if err != nil {
+		return nil, DecodeRPCError(err)
+	}
+	events := make([]EventInfo, 0, len(response.GetEvents()))
+	for _, event := range response.GetEvents() {
+		events = append(events, eventInfo(event))
+	}
+	return events, nil
+}
+
+func (c *PlatformClient) WatchEvents(ctx context.Context, filter EventFilter, receive func(EventInfo) error) error {
+	stream, err := c.eventClient.WatchEvents(c.withBearer(ctx), &deployerv1.WatchEventsRequest{
+		App:      filter.App,
+		Node:     filter.Node,
+		Type:     filter.Type,
+		Severity: filter.Severity,
+		Since:    eventSince(filter.Since),
+	})
+	if err != nil {
+		return DecodeRPCError(err)
+	}
+	for {
+		response, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return DecodeRPCError(err)
+		}
+		if err := receive(eventInfo(response.GetEvent())); err != nil {
+			return err
+		}
+	}
+}
+
+func eventListRequest(filter EventFilter) *deployerv1.ListEventsRequest {
+	return &deployerv1.ListEventsRequest{
+		App:      filter.App,
+		Node:     filter.Node,
+		Type:     filter.Type,
+		Severity: filter.Severity,
+		Since:    eventSince(filter.Since),
+		Limit:    int32(filter.Limit),
+	}
+}
+
+func eventSince(since time.Time) string {
+	if since.IsZero() {
+		return ""
+	}
+	return since.UTC().Format(time.RFC3339Nano)
+}
+
 func (c *PlatformClient) withBearer(ctx context.Context) context.Context {
 	if c.token == "" {
 		return ctx
@@ -453,6 +536,27 @@ func routeInfo(route *deployerv1.Route) RouteInfo {
 		TargetPort: int(route.GetTargetPort()),
 		Status:     route.GetStatus(),
 		TLSEnabled: route.GetTlsEnabled(),
+	}
+}
+
+func eventInfo(event *deployerv1.Event) EventInfo {
+	if event == nil {
+		return EventInfo{}
+	}
+	metadata := json.RawMessage(event.GetMetadataJson())
+	if !json.Valid(metadata) {
+		metadata = json.RawMessage(`{}`)
+	}
+	return EventInfo{
+		ID:           event.GetId(),
+		CreatedAt:    event.GetCreatedAt(),
+		Type:         event.GetType(),
+		Severity:     event.GetSeverity(),
+		Message:      event.GetMessage(),
+		AppID:        event.GetAppId(),
+		NodeID:       event.GetNodeId(),
+		DeploymentID: event.GetDeploymentId(),
+		Metadata:     metadata,
 	}
 }
 

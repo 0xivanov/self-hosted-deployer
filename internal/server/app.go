@@ -52,6 +52,10 @@ type AppRuntime interface {
 	Status(ctx context.Context, appName string) (string, error)
 }
 
+type DetailedAppRuntime interface {
+	StatusDetails(ctx context.Context, appName string) (state string, desiredReplicas int32, availableReplicas int32, err error)
+}
+
 type IngressRuntime = AppRuntime
 
 type AppServiceConfig struct {
@@ -63,6 +67,7 @@ type AppServiceConfig struct {
 	Runtime         AppRuntime
 	Ingress         IngressRuntime
 	RouteTLSEnabled bool
+	Events          EventRecorder
 }
 
 type AppService struct {
@@ -74,6 +79,7 @@ type AppService struct {
 	cipher          SecretCipher
 	runtime         AppRuntime
 	routeTLSEnabled bool
+	events          EventRecorder
 	now             func() time.Time
 }
 
@@ -90,6 +96,7 @@ func NewAppService(cfg AppServiceConfig) AppService {
 		cipher:          cfg.Cipher,
 		runtime:         runtime,
 		routeTLSEnabled: cfg.RouteTLSEnabled,
+		events:          cfg.Events,
 		now:             time.Now,
 	}
 }
@@ -158,25 +165,27 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if err := s.deployments.Create(ctx, deployment); err != nil {
 		return nil, status.Error(codes.Internal, "create deployment")
 	}
+	s.recordDeployEvent(ctx, domain.EventTypeAppDeployStarted, domain.EventSeverityInfo, "deployment started", app, deployment, cfg, "")
 	secretValues, secretRevision, err := resolveSecretValues(ctx, s.secrets, s.cipher, app.ID, cfg.Secrets)
 	if err != nil {
 		var missing requiredSecretNotSetError
 		if errors.As(err, &missing) {
 			err = status.Error(codes.FailedPrecondition, missing.Error())
 		}
-		_ = s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusFailed, err.Error(), now)
+		s.recordFailedDeployment(ctx, app, deployment, cfg, err, now)
 		return nil, err
 	}
 	if s.runtime != nil {
 		if err := s.runtime.Reconcile(ctx, cfg, secretValues, secretRevision); err != nil {
-			_ = s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusFailed, err.Error(), now)
+			s.recordFailedDeployment(ctx, app, deployment, cfg, err, now)
 			return nil, status.Error(codes.Internal, "apply app resources")
 		}
 	}
 	if err := s.syncRoute(ctx, app, cfg, now); err != nil {
-		_ = s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusFailed, err.Error(), now)
+		s.recordFailedDeployment(ctx, app, deployment, cfg, err, now)
 		return nil, err
 	}
+	s.recordDeployEvent(ctx, domain.EventTypeAppDeploySucceeded, domain.EventSeverityInfo, "deployment applied", app, deployment, cfg, "")
 
 	appProto, err := protoApp(app)
 	if err != nil {
@@ -463,13 +472,69 @@ func (s AppService) refreshRouteStatus(ctx context.Context, app domain.App, rout
 	if runtimeStatus == route.Status {
 		return route, nil
 	}
+	previousStatus := route.Status
 	updatedAt := s.now().UTC()
 	if err := s.routes.UpdateStatus(ctx, route.ID, runtimeStatus, updatedAt); err != nil {
 		return domain.Route{}, status.Error(codes.Internal, "update route status")
 	}
 	route.Status = runtimeStatus
 	route.UpdatedAt = updatedAt
+	s.recordRouteHealthTransition(ctx, app, route, previousStatus, runtimeStatus)
 	return route, nil
+}
+
+func (s AppService) recordFailedDeployment(ctx context.Context, app domain.App, deployment domain.Deployment, cfg appconfig.Config, failure error, now time.Time) {
+	_ = s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusFailed, failure.Error(), now)
+	s.recordDeployEvent(ctx, domain.EventTypeAppDeployFailed, domain.EventSeverityError, "deployment failed", app, deployment, cfg, failure.Error())
+}
+
+func (s AppService) recordDeployEvent(ctx context.Context, eventType domain.EventType, severity domain.EventSeverity, message string, app domain.App, deployment domain.Deployment, cfg appconfig.Config, failureReason string) {
+	metadata := map[string]any{"app_name": app.Name, "image": cfg.Image}
+	if failureReason != "" {
+		metadata["failure_reason"] = failureReason
+	}
+	recordEvent(ctx, s.events, domain.Event{
+		Type:         eventType,
+		Severity:     severity,
+		Message:      fmt.Sprintf("%s for app %s", message, app.Name),
+		AppID:        app.ID,
+		DeploymentID: deployment.ID,
+		MetadataJSON: metadataJSON(metadata),
+	})
+}
+
+func (s AppService) recordRouteHealthTransition(ctx context.Context, app domain.App, route domain.Route, previousStatus string, newStatus string) {
+	wasDegraded := previousStatus == "degraded" || previousStatus == "unavailable"
+	isDegraded := newStatus == "degraded" || newStatus == "unavailable"
+	if wasDegraded == isDegraded {
+		return
+	}
+	metadata := map[string]any{"app_name": app.Name, "domain": route.Domain, "status": newStatus}
+	if runtime, ok := s.runtime.(DetailedAppRuntime); ok {
+		if _, desired, available, err := runtime.StatusDetails(ctx, app.Name); err == nil {
+			metadata["desired_replicas"] = desired
+			metadata["available_replicas"] = available
+		}
+	}
+	if isDegraded {
+		recordEvent(ctx, s.events, domain.Event{
+			Type: domain.EventTypeRouteDegraded, Severity: domain.EventSeverityWarning,
+			Message: fmt.Sprintf("route %s is degraded", route.Domain), AppID: app.ID, MetadataJSON: metadataJSON(metadata),
+		})
+		recordEvent(ctx, s.events, domain.Event{
+			Type: domain.EventTypeAppHealthDegraded, Severity: domain.EventSeverityWarning,
+			Message: fmt.Sprintf("app %s health is degraded", app.Name), AppID: app.ID, MetadataJSON: metadataJSON(metadata),
+		})
+		return
+	}
+	recordEvent(ctx, s.events, domain.Event{
+		Type: domain.EventTypeRouteRecovered, Severity: domain.EventSeverityInfo,
+		Message: fmt.Sprintf("route %s recovered", route.Domain), AppID: app.ID, MetadataJSON: metadataJSON(metadata),
+	})
+	recordEvent(ctx, s.events, domain.Event{
+		Type: domain.EventTypeAppHealthRecovered, Severity: domain.EventSeverityInfo,
+		Message: fmt.Sprintf("app %s health recovered", app.Name), AppID: app.ID, MetadataJSON: metadataJSON(metadata),
+	})
 }
 
 func protoApp(app domain.App) (*deployerv1.App, error) {

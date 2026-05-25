@@ -12,7 +12,7 @@ import (
 )
 
 type Db struct {
-	db *sql.DB
+	conn *sql.DB
 }
 
 func Open(ctx context.Context, dsn string) (*Db, error) {
@@ -40,15 +40,15 @@ func Open(ctx context.Context, dsn string) (*Db, error) {
 }
 
 func New(sqlDB *sql.DB) *Db {
-	return &Db{db: sqlDB}
+	return &Db{conn: sqlDB}
 }
 
 func (r *Db) Close() error {
-	return r.db.Close()
+	return r.conn.Close()
 }
 
 func (r *Db) Ping(ctx context.Context) error {
-	return r.db.PingContext(ctx)
+	return r.conn.PingContext(ctx)
 }
 
 func (r *Db) Migrate(ctx context.Context) error {
@@ -56,7 +56,7 @@ func (r *Db) Migrate(ctx context.Context) error {
 	if err := goose.SetDialect("sqlite3"); err != nil {
 		return fmt.Errorf("set migration dialect: %w", err)
 	}
-	if err := goose.UpContext(ctx, r.db, "."); err != nil {
+	if err := goose.UpContext(ctx, r.conn, "."); err != nil {
 		return fmt.Errorf("migrate sqlite: %w", err)
 	}
 	return nil

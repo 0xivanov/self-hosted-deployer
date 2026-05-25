@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestServerConfigValidateRequiresSensitiveKeys(t *testing.T) {
@@ -107,6 +108,32 @@ func TestLoadServerK3sDefaults(t *testing.T) {
 	}
 	if cfg.SecretKeyFile != "/tmp/deployer.key" {
 		t.Fatalf("unexpected secret key file %q", cfg.SecretKeyFile)
+	}
+}
+
+func TestServerConfigEventRetention(t *testing.T) {
+	got, err := (ServerConfig{}).EventRetention()
+	if err != nil {
+		t.Fatalf("default event retention: %v", err)
+	}
+	if got.MaxAge != 720*time.Hour || got.MaxCount != 10000 || got.CleanupInterval != time.Hour {
+		t.Fatalf("unexpected event retention defaults: %#v", got)
+	}
+
+	got, err = (ServerConfig{
+		EventRetentionMaxAge:   "24h",
+		EventRetentionMaxCount: "5",
+		EventCleanupInterval:   "30m",
+	}).EventRetention()
+	if err != nil {
+		t.Fatalf("custom event retention: %v", err)
+	}
+	if got.MaxAge != 24*time.Hour || got.MaxCount != 5 || got.CleanupInterval != 30*time.Minute {
+		t.Fatalf("unexpected custom event retention: %#v", got)
+	}
+
+	if _, err := (ServerConfig{EventRetentionMaxCount: "0"}).EventRetention(); err == nil {
+		t.Fatal("expected invalid event retention count to fail")
 	}
 }
 

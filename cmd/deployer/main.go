@@ -44,6 +44,8 @@ type platformClient interface {
 	SetSecret(ctx context.Context, appName string, name string, value string) error
 	ListSecrets(ctx context.Context, appName string) ([]string, error)
 	DeleteSecret(ctx context.Context, appName string, name string) error
+	ListEvents(ctx context.Context, filter clicore.EventFilter) ([]clicore.EventInfo, error)
+	WatchEvents(ctx context.Context, filter clicore.EventFilter, receive func(clicore.EventInfo) error) error
 }
 
 type platformClientFactory func(serverURL string, token string) (platformClient, func() error, error)

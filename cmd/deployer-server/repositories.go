@@ -16,5 +16,6 @@ func newRepositories(database *db.Db) server.Repositories {
 		Deployments: db.NewDeploymentRepository(database),
 		Routes:      db.NewRouteRepository(database),
 		Secrets:     db.NewSecretRepository(database),
+		Events:      db.NewEventRepository(database),
 	}
 }

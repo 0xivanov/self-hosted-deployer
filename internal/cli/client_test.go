@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc"
@@ -30,6 +31,34 @@ func TestPlatformClientStatusAttachesBearerToken(t *testing.T) {
 	}
 	if got.Version != "1.2.3" || !got.Ready {
 		t.Fatalf("unexpected status: %#v", got)
+	}
+	if service.authorization != "Bearer dep_admin_test" {
+		t.Fatalf("expected bearer token metadata, got %q", service.authorization)
+	}
+}
+
+func TestPlatformClientListEventsMapsFiltersAndAttachesBearerToken(t *testing.T) {
+	service := &recordingEventService{response: &deployerv1.ListEventsResponse{Events: []*deployerv1.Event{{
+		Id:           "event-1",
+		CreatedAt:    "2026-05-25T12:00:00Z",
+		Type:         "app.deploy.failed",
+		Severity:     "error",
+		Message:      "deployment failed",
+		MetadataJson: `{"image":"ivan/my-api:1.0.0"}`,
+	}}}}
+	client := NewPlatformClientForServices(nil, nil, nil, "dep_admin_test")
+	client.eventClient = service
+	since := time.Date(2026, 5, 25, 11, 0, 0, 0, time.UTC)
+
+	events, err := client.ListEvents(context.Background(), EventFilter{App: "my-api", Severity: "error", Since: since, Limit: 12})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	if len(events) != 1 || events[0].ID != "event-1" || string(events[0].Metadata) != `{"image":"ivan/my-api:1.0.0"}` {
+		t.Fatalf("unexpected event mapping: %#v", events)
+	}
+	if service.request.GetApp() != "my-api" || service.request.GetSeverity() != "error" || service.request.GetSince() != since.Format(time.RFC3339Nano) || service.request.GetLimit() != 12 {
+		t.Fatalf("unexpected event request: %#v", service.request)
 	}
 	if service.authorization != "Bearer dep_admin_test" {
 		t.Fatalf("expected bearer token metadata, got %q", service.authorization)
@@ -94,6 +123,27 @@ type recordingPlatformService struct {
 	status        *deployerv1.GetStatusResponse
 	err           error
 	authorization string
+}
+
+type recordingEventService struct {
+	response      *deployerv1.ListEventsResponse
+	request       *deployerv1.ListEventsRequest
+	authorization string
+}
+
+func (s *recordingEventService) ListEvents(ctx context.Context, request *deployerv1.ListEventsRequest, _ ...grpc.CallOption) (*deployerv1.ListEventsResponse, error) {
+	s.request = request
+	if md, ok := metadata.FromOutgoingContext(ctx); ok {
+		values := md.Get("authorization")
+		if len(values) > 0 {
+			s.authorization = values[0]
+		}
+	}
+	return s.response, nil
+}
+
+func (s *recordingEventService) WatchEvents(context.Context, *deployerv1.WatchEventsRequest, ...grpc.CallOption) (grpc.ServerStreamingClient[deployerv1.WatchEventsResponse], error) {
+	return nil, errors.New("not implemented")
 }
 
 func (s *recordingPlatformService) GetVersion(context.Context, *deployerv1.GetVersionRequest, ...grpc.CallOption) (*deployerv1.GetVersionResponse, error) {

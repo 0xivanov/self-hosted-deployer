@@ -27,6 +27,7 @@ type Repositories struct {
 	Deployments DeploymentRepository
 	Routes      RouteRepository
 	Secrets     SecretRepository
+	Events      EventRepository
 }
 
 type Runtime struct {
@@ -37,6 +38,10 @@ type Runtime struct {
 }
 
 func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, repos Repositories, runtime Runtime) error {
+	retention, err := cfg.EventRetention()
+	if err != nil {
+		return fmt.Errorf("configure event retention: %w", err)
+	}
 	grpcListener, err := net.Listen("tcp", cfg.GRPCListenAddress)
 	if err != nil {
 		return fmt.Errorf("listen grpc: %w", err)
@@ -61,6 +66,7 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		),
 		grpc.ChainStreamInterceptor(
 			StreamLoggingInterceptor(logger),
+			auth.StreamInterceptor(),
 		),
 	}
 	if cfg.TLSCertFile != "" || cfg.TLSKeyFile != "" {
@@ -78,11 +84,13 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
 	deployerv1.RegisterPlatformServiceServer(grpcServer, NewPlatformService(repos.Health))
+	eventRecorder := NewEventRecorder(repos.Events, logger)
 	deployerv1.RegisterNodeServiceServer(grpcServer, NewNodeService(NodeServiceConfig{
 		Nodes:        repos.Nodes,
 		JoinTokens:   repos.JoinTokens,
 		AgentTokens:  repos.AgentTokens,
 		TokenHashKey: cfg.TokenHashKey,
+		Events:       eventRecorder,
 	}))
 	appRuntime := runtime.Apps
 	if appRuntime == nil {
@@ -96,12 +104,19 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		Cipher:          runtime.SecretCipher,
 		Runtime:         appRuntime,
 		RouteTLSEnabled: runtime.RouteTLSEnabled,
+		Events:          eventRecorder,
 	}))
 	deployerv1.RegisterSecretServiceServer(grpcServer, NewSecretService(SecretServiceConfig{
 		Apps:    repos.Apps,
 		Secrets: repos.Secrets,
 		Cipher:  runtime.SecretCipher,
 		Runtime: appRuntime,
+		Events:  eventRecorder,
+	}))
+	deployerv1.RegisterEventServiceServer(grpcServer, NewEventService(EventServiceConfig{
+		Events: repos.Events,
+		Apps:   repos.Apps,
+		Nodes:  repos.Nodes,
 	}))
 
 	mux := http.NewServeMux()
@@ -121,6 +136,8 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	}
 
 	errs := make(chan error, 2)
+	go RunEventRetention(ctx, repos.Events, retention, logger)
+	go RunNodeOfflineMonitor(ctx, repos.Nodes, eventRecorder, logger)
 	go func() {
 		logger.Info("grpc server listening", "address", grpcListener.Addr().String())
 		if err := grpcServer.Serve(grpcListener); err != nil {
