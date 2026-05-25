@@ -20,6 +20,8 @@ import (
 
 var eventTypePattern = regexp.MustCompile(`^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$`)
 
+const eventWatchBatchSize = 1000
+
 type EventRepository interface {
 	Create(ctx context.Context, event domain.Event) error
 	List(ctx context.Context, filter domain.EventFilter) ([]domain.Event, error)
@@ -162,7 +164,7 @@ func (s EventService) WatchEvents(req *deployerv1.WatchEventsRequest, stream dep
 	if err := requireCaller(ctx, CallerAdmin); err != nil {
 		return err
 	}
-	filter, err := s.filter(ctx, req.GetApp(), req.GetNode(), req.GetType(), req.GetSeverity(), req.GetSince(), 1000)
+	filter, err := s.filter(ctx, req.GetApp(), req.GetNode(), req.GetType(), req.GetSeverity(), req.GetSince(), eventWatchBatchSize)
 	if err != nil {
 		return err
 	}
@@ -171,23 +173,23 @@ func (s EventService) WatchEvents(req *deployerv1.WatchEventsRequest, stream dep
 		filter.Since = &since
 	}
 
-	seen := map[string]struct{}{}
+	filter.OldestFirst = true
 	sendNew := func() error {
-		events, err := s.events.List(ctx, filter)
-		if err != nil {
-			return status.Error(codes.Internal, "watch events")
-		}
-		for i := len(events) - 1; i >= 0; i-- {
-			event := events[i]
-			if _, ok := seen[event.ID]; ok {
-				continue
+		for {
+			events, err := s.events.List(ctx, filter)
+			if err != nil {
+				return status.Error(codes.Internal, "watch events")
 			}
-			if err := stream.Send(&deployerv1.WatchEventsResponse{Event: protoEvent(event)}); err != nil {
-				return err
+			for _, event := range events {
+				if err := stream.Send(&deployerv1.WatchEventsResponse{Event: protoEvent(event)}); err != nil {
+					return err
+				}
+				filter.After = &domain.EventCursor{CreatedAt: event.CreatedAt, ID: event.ID}
 			}
-			seen[event.ID] = struct{}{}
+			if len(events) < eventWatchBatchSize {
+				return nil
+			}
 		}
-		return nil
 	}
 	if err := sendNew(); err != nil {
 		return err

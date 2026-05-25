@@ -12,6 +12,7 @@ import (
 const (
 	defaultEventListLimit = 100
 	maxEventListLimit     = 1000
+	eventTimeLayout       = "2006-01-02T15:04:05.000000000Z"
 )
 
 type EventRepository struct {
@@ -27,7 +28,7 @@ func (r *EventRepository) Create(ctx context.Context, event domain.Event) error 
 		event.MetadataJSON = "{}"
 	}
 	_, err := r.db.db.ExecContext(ctx, `INSERT INTO events (id, created_at, type, severity, message, app_id, node_id, deployment_id, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		event.ID, formatTime(event.CreatedAt), event.Type, event.Severity, event.Message, optionalString(event.AppID), optionalString(event.NodeID), optionalString(event.DeploymentID), event.MetadataJSON)
+		event.ID, formatEventTime(event.CreatedAt), event.Type, event.Severity, event.Message, optionalString(event.AppID), optionalString(event.NodeID), optionalString(event.DeploymentID), event.MetadataJSON)
 	return err
 }
 
@@ -53,12 +54,21 @@ func (r *EventRepository) List(ctx context.Context, filter domain.EventFilter) (
 	}
 	if filter.Since != nil {
 		conditions = append(conditions, "created_at >= ?")
-		args = append(args, formatTime(*filter.Since))
+		args = append(args, formatEventTime(*filter.Since))
+	}
+	if filter.After != nil {
+		conditions = append(conditions, "(created_at > ? OR (created_at = ? AND id > ?))")
+		cursorTime := formatEventTime(filter.After.CreatedAt)
+		args = append(args, cursorTime, cursorTime, filter.After.ID)
 	}
 	if len(conditions) > 0 {
 		query += " WHERE " + strings.Join(conditions, " AND ")
 	}
-	query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+	if filter.OldestFirst {
+		query += " ORDER BY created_at ASC, id ASC LIMIT ?"
+	} else {
+		query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+	}
 	limit := filter.Limit
 	if limit <= 0 {
 		limit = defaultEventListLimit
@@ -89,7 +99,7 @@ func (r *EventRepository) List(ctx context.Context, filter domain.EventFilter) (
 }
 
 func (r *EventRepository) PruneBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	result, err := r.db.db.ExecContext(ctx, `DELETE FROM events WHERE created_at < ?`, formatTime(cutoff))
+	result, err := r.db.db.ExecContext(ctx, `DELETE FROM events WHERE created_at < ?`, formatEventTime(cutoff))
 	if err != nil {
 		return 0, err
 	}
@@ -105,6 +115,10 @@ func (r *EventRepository) PruneToLimit(ctx context.Context, maxCount int) (int64
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+func formatEventTime(t time.Time) string {
+	return t.UTC().Format(eventTimeLayout)
 }
 
 type eventScanner interface {

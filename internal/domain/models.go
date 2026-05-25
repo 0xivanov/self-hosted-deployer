@@ -120,11 +120,18 @@ type Event struct {
 	MetadataJSON string
 }
 
+type EventCursor struct {
+	CreatedAt time.Time
+	ID        string
+}
+
 type EventFilter struct {
-	AppID    string
-	NodeID   string
-	Type     EventType
-	Severity EventSeverity
-	Since    *time.Time
-	Limit    int
+	AppID       string
+	NodeID      string
+	Type        EventType
+	Severity    EventSeverity
+	Since       *time.Time
+	After       *EventCursor
+	OldestFirst bool
+	Limit       int
 }

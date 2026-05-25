@@ -64,6 +64,39 @@ func TestEventRepositoryPrunesAgeAndCount(t *testing.T) {
 	}
 }
 
+func TestEventRepositoryOrdersFixedWidthTimestampsAndPagesForward(t *testing.T) {
+	ctx := context.Background()
+	repo := NewEventRepository(openEventTestDB(t))
+	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
+	for _, event := range []domain.Event{
+		{ID: "event-zero", CreatedAt: now, Type: domain.EventTypeNodeOnline, Severity: domain.EventSeverityInfo, Message: "zero"},
+		{ID: "event-nano", CreatedAt: now.Add(time.Nanosecond), Type: domain.EventTypeNodeOnline, Severity: domain.EventSeverityInfo, Message: "nano"},
+		{ID: "event-two", CreatedAt: now.Add(2 * time.Nanosecond), Type: domain.EventTypeNodeOnline, Severity: domain.EventSeverityInfo, Message: "two"},
+	} {
+		if err := repo.Create(ctx, event); err != nil {
+			t.Fatalf("create event: %v", err)
+		}
+	}
+
+	got, err := repo.List(ctx, domain.EventFilter{})
+	if err != nil || len(got) != 3 || got[0].ID != "event-two" || got[1].ID != "event-nano" || got[2].ID != "event-zero" {
+		t.Fatalf("unexpected fixed-width ordering %#v: %v", got, err)
+	}
+	cursor := domain.EventCursor{CreatedAt: now, ID: "event-zero"}
+	got, err = repo.List(ctx, domain.EventFilter{After: &cursor, OldestFirst: true})
+	if err != nil || len(got) != 2 || got[0].ID != "event-nano" || got[1].ID != "event-two" {
+		t.Fatalf("unexpected cursor page %#v: %v", got, err)
+	}
+	since := now.Add(time.Nanosecond)
+	got, err = repo.List(ctx, domain.EventFilter{Since: &since})
+	if err != nil || len(got) != 2 || got[0].ID != "event-two" || got[1].ID != "event-nano" {
+		t.Fatalf("unexpected fixed-width since results %#v: %v", got, err)
+	}
+	if removed, err := repo.PruneBefore(ctx, since); err != nil || removed != 1 {
+		t.Fatalf("unexpected fixed-width prune result removed=%d err=%v", removed, err)
+	}
+}
+
 func openEventTestDB(t *testing.T) *Db {
 	t.Helper()
 	database, err := Open(context.Background(), "file:"+filepath.Join(t.TempDir(), "deployer.db"))

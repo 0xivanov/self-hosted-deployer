@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -67,10 +68,39 @@ func TestEventServiceListsFilteredEventsAndWatchesExistingWindow(t *testing.T) {
 	}
 
 	streamCtx, cancel := context.WithCancel(ctx)
-	stream := &recordingEventStream{ctx: streamCtx, cancel: cancel}
+	stream := &recordingEventStream{ctx: streamCtx, cancel: cancel, stopAfter: 1}
 	err = service.WatchEvents(&deployerv1.WatchEventsRequest{Since: now.Add(-time.Second).Format(time.RFC3339Nano)}, stream)
 	if !errors.Is(err, context.Canceled) || len(stream.events) != 1 || stream.events[0].GetId() != "event-1" {
 		t.Fatalf("unexpected watch results %#v: %v", stream.events, err)
+	}
+}
+
+func TestEventServiceWatchEventsDrainsMoreThanOnePage(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	repository := db.NewEventRepository(openTestDB(t))
+	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
+	const total = eventWatchBatchSize + 1
+	for i := 0; i < total; i++ {
+		if err := repository.Create(ctx, domain.Event{
+			ID:        fmt.Sprintf("event-%04d", i),
+			CreatedAt: now.Add(time.Duration(i+1) * time.Nanosecond),
+			Type:      domain.EventTypeNodeOnline,
+			Severity:  domain.EventSeverityInfo,
+			Message:   "node online",
+		}); err != nil {
+			t.Fatalf("create event %d: %v", i, err)
+		}
+	}
+	service := NewEventService(EventServiceConfig{Events: repository, PollInterval: time.Millisecond})
+	streamCtx, cancel := context.WithCancel(ctx)
+	stream := &recordingEventStream{ctx: streamCtx, cancel: cancel, stopAfter: total}
+
+	err := service.WatchEvents(&deployerv1.WatchEventsRequest{Since: now.Format(time.RFC3339Nano)}, stream)
+	if !errors.Is(err, context.Canceled) || len(stream.events) != total {
+		t.Fatalf("unexpected paged watch results count=%d err=%v", len(stream.events), err)
+	}
+	if stream.events[0].GetId() != "event-0000" || stream.events[total-1].GetId() != "event-1000" {
+		t.Fatalf("unexpected paged watch order first=%q last=%q", stream.events[0].GetId(), stream.events[total-1].GetId())
 	}
 }
 
@@ -120,9 +150,10 @@ func (failingEventRepository) PruneToLimit(context.Context, int) (int64, error) 
 
 type recordingEventStream struct {
 	grpc.ServerStream
-	ctx    context.Context
-	cancel context.CancelFunc
-	events []*deployerv1.Event
+	ctx       context.Context
+	cancel    context.CancelFunc
+	events    []*deployerv1.Event
+	stopAfter int
 }
 
 func (s *recordingEventStream) Context() context.Context {
@@ -131,6 +162,8 @@ func (s *recordingEventStream) Context() context.Context {
 
 func (s *recordingEventStream) Send(response *deployerv1.WatchEventsResponse) error {
 	s.events = append(s.events, response.GetEvent())
-	s.cancel()
+	if s.stopAfter > 0 && len(s.events) >= s.stopAfter {
+		s.cancel()
+	}
 	return nil
 }
