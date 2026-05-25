@@ -160,6 +160,10 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	}
 	secretValues, secretRevision, err := resolveSecretValues(ctx, s.secrets, s.cipher, app.ID, cfg.Secrets)
 	if err != nil {
+		var missing requiredSecretNotSetError
+		if errors.As(err, &missing) {
+			err = status.Error(codes.FailedPrecondition, missing.Error())
+		}
 		_ = s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusFailed, err.Error(), now)
 		return nil, err
 	}

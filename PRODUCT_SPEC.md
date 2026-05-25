@@ -612,13 +612,15 @@ DEPLOYER_SECRET_KEY       -> raw 32-byte AES-256 key
 DEPLOYER_SECRET_KEY_FILE  -> path to a file containing the raw 32-byte key
 ```
 
-Key files may end in a newline. Secret values are encrypted before database
+Key files are read byte-for-byte and must contain exactly 32 bytes; a trailing
+newline counts as key material. Secret values are encrypted before database
 storage with AES-256-GCM and a fresh random nonce for every update.
 
 When an app configuration declares secret names, the control plane creates one
 Kubernetes Secret for that app containing only those names and injects them as
 environment variables in the Deployment. A required name that has not been
-set blocks deployment. Updating a referenced value changes a pod-template
+set blocks deployment, while secret values may be set one at a time before the
+complete set is deployed. Updating a referenced value changes a pod-template
 hash derived from encrypted secret state and starts a rollout, without exposing
 a plaintext-value hash. Removing a currently referenced secret is rejected
 until it is removed from the app configuration.

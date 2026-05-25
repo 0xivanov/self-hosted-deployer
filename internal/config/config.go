@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -91,7 +90,7 @@ func (c ServerConfig) SecretEncryptionKey() ([]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read DEPLOYER_SECRET_KEY_FILE: %w", err)
 		}
-		key = bytes.TrimRight(data, "\r\n")
+		key = data
 	default:
 		return nil, errors.New("DEPLOYER_SECRET_KEY or DEPLOYER_SECRET_KEY_FILE is required")
 	}

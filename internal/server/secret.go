@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -26,6 +27,14 @@ type SecretRepository interface {
 type SecretCipher interface {
 	Encrypt(plaintext string) (string, error)
 	Decrypt(ciphertext string) (string, error)
+}
+
+type requiredSecretNotSetError struct {
+	name string
+}
+
+func (e requiredSecretNotSetError) Error() string {
+	return fmt.Sprintf("required secret %q is not set", e.name)
 }
 
 type SecretServiceConfig struct {
@@ -176,6 +185,10 @@ func (s SecretService) reconcileReferencedSecret(ctx context.Context, app domain
 	}
 	secretValues, secretRevision, err := resolveSecretValues(ctx, s.secrets, s.cipher, app.ID, cfg.Secrets)
 	if err != nil {
+		var missing requiredSecretNotSetError
+		if errors.As(err, &missing) {
+			return nil
+		}
 		return err
 	}
 	if err := s.runtime.Reconcile(ctx, cfg, secretValues, secretRevision); err != nil {
@@ -196,7 +209,7 @@ func resolveSecretValues(ctx context.Context, secrets SecretRepository, cipher S
 	for _, name := range names {
 		secret, err := secrets.Find(ctx, appID, name)
 		if errors.Is(err, db.ErrNotFound) {
-			return nil, "", status.Errorf(codes.FailedPrecondition, "required secret %q is not set", name)
+			return nil, "", requiredSecretNotSetError{name: name}
 		}
 		if err != nil {
 			return nil, "", status.Error(codes.Internal, "read app secret")

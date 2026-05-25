@@ -55,23 +55,29 @@ func TestSecretServiceSetListAndDeleteStoresOnlyCiphertext(t *testing.T) {
 	}
 }
 
-func TestSecretServiceReconcilesUpdatesAndProtectsReferencedSecret(t *testing.T) {
+func TestSecretServiceSetsReferencedSecretsIndependentlyThenReconcilesUpdates(t *testing.T) {
 	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
 	database := openTestDB(t)
 	apps := db.NewAppRepository(database)
 	secrets := db.NewSecretRepository(database)
 	cipher := newTestSecretCipher(t)
 	runtime := &recordingAppRuntime{}
-	createSecretTestApp(t, apps, []string{"DATABASE_URL"})
+	createSecretTestApp(t, apps, []string{"DATABASE_URL", "JWT_SECRET"})
 	service := NewSecretService(SecretServiceConfig{Apps: apps, Secrets: secrets, Cipher: cipher, Runtime: runtime})
 
 	if _, err := service.SetSecret(ctx, &deployerv1.SetSecretRequest{AppName: "my-api", Name: "DATABASE_URL", Value: "first"}); err != nil {
 		t.Fatalf("set referenced secret: %v", err)
 	}
+	if len(runtime.secretValues) != 0 {
+		t.Fatalf("expected incomplete secret setup not to reconcile, got %#v", runtime.secretValues)
+	}
+	if _, err := service.SetSecret(ctx, &deployerv1.SetSecretRequest{AppName: "my-api", Name: "JWT_SECRET", Value: "jwt"}); err != nil {
+		t.Fatalf("set final referenced secret: %v", err)
+	}
 	if _, err := service.SetSecret(ctx, &deployerv1.SetSecretRequest{AppName: "my-api", Name: "DATABASE_URL", Value: "updated"}); err != nil {
 		t.Fatalf("update referenced secret: %v", err)
 	}
-	if len(runtime.secretValues) != 2 || runtime.secretValues[1]["DATABASE_URL"] != "updated" {
+	if len(runtime.secretValues) != 2 || runtime.secretValues[0]["JWT_SECRET"] != "jwt" || runtime.secretValues[1]["DATABASE_URL"] != "updated" {
 		t.Fatalf("expected secret update reconciliation, got %#v", runtime.secretValues)
 	}
 	if len(runtime.secretRevisions) != 2 || runtime.secretRevisions[0] == "" || runtime.secretRevisions[0] == runtime.secretRevisions[1] {

@@ -25,12 +25,25 @@ func TestServerConfigSecretEncryptionKey(t *testing.T) {
 		name    string
 		key     string
 		keyFile func(t *testing.T) string
+		wantKey string
 		wantErr string
 	}{
-		{name: "environment key", key: strings.Repeat("a", 32)},
+		{name: "environment key", key: strings.Repeat("a", 32), wantKey: strings.Repeat("a", 32)},
 		{name: "invalid environment key", key: "short", wantErr: "exactly 32 bytes"},
 		{
-			name: "file key",
+			name:    "file key preserves trailing newline byte",
+			wantKey: strings.Repeat("b", 31) + "\n",
+			keyFile: func(t *testing.T) string {
+				path := filepath.Join(t.TempDir(), "secret.key")
+				if err := os.WriteFile(path, []byte(strings.Repeat("b", 31)+"\n"), 0o600); err != nil {
+					t.Fatalf("write key file: %v", err)
+				}
+				return path
+			},
+		},
+		{
+			name:    "file key rejects extra newline byte",
+			wantErr: "exactly 32 bytes",
 			keyFile: func(t *testing.T) string {
 				path := filepath.Join(t.TempDir(), "secret.key")
 				if err := os.WriteFile(path, []byte(strings.Repeat("b", 32)+"\n"), 0o600); err != nil {
@@ -55,8 +68,8 @@ func TestServerConfigSecretEncryptionKey(t *testing.T) {
 				}
 				return
 			}
-			if err != nil || len(key) != 32 {
-				t.Fatalf("unexpected key result length=%d err=%v", len(key), err)
+			if err != nil || string(key) != tt.wantKey {
+				t.Fatalf("unexpected key result %q err=%v", key, err)
 			}
 		})
 	}
