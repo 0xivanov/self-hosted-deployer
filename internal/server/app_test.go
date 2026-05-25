@@ -11,6 +11,7 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	"github.com/0xivanov/self-hosted-deployer/internal/domain"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
+	"github.com/0xivanov/self-hosted-deployer/internal/security"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -319,6 +320,51 @@ func TestAppServiceCanRetryDeleteAfterRouteCleanupFailure(t *testing.T) {
 	}
 }
 
+func TestAppServiceRequiresAndPassesReferencedSecretsToRuntime(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	apps := db.NewAppRepository(database)
+	secrets := db.NewSecretRepository(database)
+	cipher, err := security.NewSecretCipher([]byte(strings.Repeat("s", security.SecretKeyBytes)))
+	if err != nil {
+		t.Fatalf("new secret cipher: %v", err)
+	}
+	runtime := &recordingAppRuntime{}
+	service := NewAppService(AppServiceConfig{
+		Apps:        apps,
+		Deployments: db.NewDeploymentRepository(database),
+		Routes:      db.NewRouteRepository(database),
+		Secrets:     secrets,
+		Cipher:      cipher,
+		Runtime:     runtime,
+	})
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)}); err != nil {
+		t.Fatalf("deploy initial app: %v", err)
+	}
+	secretYAML := strings.Replace(testAppYAML("ivan/my-api:1.0.1", 2), "state:\n", "secrets:\n  - DATABASE_URL\nstate:\n", 1)
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: secretYAML}); status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("expected missing required secret failure, got %v", err)
+	}
+	app, err := apps.FindByName(ctx, "my-api")
+	if err != nil {
+		t.Fatalf("find app: %v", err)
+	}
+	encrypted, err := cipher.Encrypt("postgres://app-db")
+	if err != nil {
+		t.Fatalf("encrypt secret: %v", err)
+	}
+	now := service.now().UTC()
+	if err := secrets.Set(ctx, domain.Secret{AppID: app.ID, Name: "DATABASE_URL", Ciphertext: encrypted, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("set stored secret: %v", err)
+	}
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: secretYAML}); err != nil {
+		t.Fatalf("deploy app with secret: %v", err)
+	}
+	if got := runtime.secretValues[len(runtime.secretValues)-1]["DATABASE_URL"]; got != "postgres://app-db" {
+		t.Fatalf("runtime received unexpected secret value %q", got)
+	}
+}
+
 func testAppYAML(image string, replicas int) string {
 	return `name: my-api
 image: ` + image + `
@@ -357,14 +403,18 @@ state:
 }
 
 type recordingAppRuntime struct {
-	reconciled []appconfig.Config
-	deleted    []string
-	status     string
-	err        error
+	reconciled      []appconfig.Config
+	secretValues    []map[string]string
+	secretRevisions []string
+	deleted         []string
+	status          string
+	err             error
 }
 
-func (r *recordingAppRuntime) Reconcile(_ context.Context, cfg appconfig.Config) error {
+func (r *recordingAppRuntime) Reconcile(_ context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string) error {
 	r.reconciled = append(r.reconciled, cfg)
+	r.secretValues = append(r.secretValues, secretValues)
+	r.secretRevisions = append(r.secretRevisions, secretRevision)
 	return r.err
 }
 

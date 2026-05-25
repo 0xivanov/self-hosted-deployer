@@ -13,11 +13,16 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-func (c *Controller) reconcileAppResources(ctx context.Context, cfg appconfig.Config) error {
+const secretHashAnnotation = "deployer.io/secret-hash"
+
+func (c *Controller) reconcileAppResources(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string) error {
 	if err := c.reconcileNamespace(ctx); err != nil {
 		return err
 	}
-	if err := c.reconcileDeployment(ctx, cfg); err != nil {
+	if err := c.reconcileSecret(ctx, cfg, secretValues); err != nil {
+		return err
+	}
+	if err := c.reconcileDeployment(ctx, cfg, secretRevision); err != nil {
 		return err
 	}
 	if err := c.reconcileService(ctx, cfg); err != nil {
@@ -48,8 +53,11 @@ func (c *Controller) reconcileNamespace(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) reconcileDeployment(ctx context.Context, cfg appconfig.Config) error {
-	desired := deploymentForApp(cfg, c.namespace)
+func (c *Controller) reconcileDeployment(ctx context.Context, cfg appconfig.Config, secretRevision string) error {
+	desired, err := deploymentForApp(cfg, c.namespace, secretRevision)
+	if err != nil {
+		return err
+	}
 	existing, err := c.deployments.Get(ctx, desired.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		if _, err := c.deployments.Create(ctx, desired, metav1.CreateOptions{}); err != nil {
@@ -63,6 +71,31 @@ func (c *Controller) reconcileDeployment(ctx context.Context, cfg appconfig.Conf
 	desired.ResourceVersion = existing.ResourceVersion
 	if _, err := c.deployments.Update(ctx, desired, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("update Deployment %q: %w", desired.Name, err)
+	}
+	return nil
+}
+
+func (c *Controller) reconcileSecret(ctx context.Context, cfg appconfig.Config, secretValues map[string]string) error {
+	if len(cfg.Secrets) == 0 {
+		return c.deleteAppSecret(ctx, cfg.Name)
+	}
+	desired, err := secretForApp(cfg, c.namespace, secretValues)
+	if err != nil {
+		return err
+	}
+	existing, err := c.appSecrets.Get(ctx, desired.Name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		if _, err := c.appSecrets.Create(ctx, desired, metav1.CreateOptions{}); err != nil {
+			return fmt.Errorf("create Secret %q: %w", desired.Name, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get Secret %q: %w", desired.Name, err)
+	}
+	desired.ResourceVersion = existing.ResourceVersion
+	if _, err := c.appSecrets.Update(ctx, desired, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update Secret %q: %w", desired.Name, err)
 	}
 	return nil
 }
@@ -112,7 +145,18 @@ func (c *Controller) deleteService(ctx context.Context, appName string) error {
 	return nil
 }
 
-func deploymentForApp(cfg appconfig.Config, namespace string) *appsv1.Deployment {
+func (c *Controller) deleteAppSecret(ctx context.Context, appName string) error {
+	err := c.appSecrets.Delete(ctx, appName, metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("delete Secret %q: %w", appName, err)
+	}
+	return nil
+}
+
+func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision string) (*appsv1.Deployment, error) {
 	cfg.Normalize()
 	labels := appLabels(cfg.Name)
 	replicas := int32(cfg.Deploy.Replicas)
@@ -157,7 +201,43 @@ func deploymentForApp(cfg appconfig.Config, namespace string) *appsv1.Deployment
 			LabelSelector:     &metav1.LabelSelector{MatchLabels: labels},
 		}}
 	}
-	return deployment
+	if len(cfg.Secrets) > 0 {
+		if strings.TrimSpace(secretRevision) == "" {
+			return nil, fmt.Errorf("secret revision is missing")
+		}
+		deployment.Spec.Template.Annotations = map[string]string{secretHashAnnotation: secretRevision}
+		for _, name := range cfg.Secrets {
+			deployment.Spec.Template.Spec.Containers[0].Env = append(deployment.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
+				Name: name,
+				ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: cfg.Name},
+					Key:                  name,
+				}},
+			})
+		}
+	}
+	return deployment, nil
+}
+
+func secretForApp(cfg appconfig.Config, namespace string, secretValues map[string]string) (*corev1.Secret, error) {
+	cfg.Normalize()
+	data := make(map[string][]byte, len(cfg.Secrets))
+	for _, name := range cfg.Secrets {
+		value, ok := secretValues[name]
+		if !ok {
+			return nil, fmt.Errorf("required secret %q is missing", name)
+		}
+		data[name] = []byte(value)
+	}
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cfg.Name,
+			Namespace: namespace,
+			Labels:    appLabels(cfg.Name),
+		},
+		Type: corev1.SecretTypeOpaque,
+		Data: data,
+	}, nil
 }
 
 func serviceForApp(cfg appconfig.Config, namespace string) *corev1.Service {

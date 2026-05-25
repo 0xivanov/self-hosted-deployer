@@ -31,6 +31,9 @@ func validateServeConfig(cfg config.ServerConfig) error {
 	if cfg.TokenHashKey == "" {
 		errs = append(errs, errors.New("DEPLOYER_TOKEN_HASH_KEY is required"))
 	}
+	if _, err := cfg.SecretEncryptionKey(); err != nil {
+		errs = append(errs, err)
+	}
 	if err := config.ValidateTLSFiles(cfg.TLSCertFile, cfg.TLSKeyFile); err != nil {
 		errs = append(errs, err)
 	}

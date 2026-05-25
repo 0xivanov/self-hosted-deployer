@@ -1,9 +1,12 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
+
+	"github.com/0xivanov/self-hosted-deployer/internal/security"
 )
 
 type ServerConfig struct {
@@ -12,6 +15,7 @@ type ServerConfig struct {
 	DatabaseURL       string
 	PublicBaseURL     string
 	SecretKey         string
+	SecretKeyFile     string
 	TokenHashKey      string
 	TLSCertFile       string
 	TLSKeyFile        string
@@ -32,6 +36,7 @@ func LoadServer() ServerConfig {
 		DatabaseURL:       envOrDefault("DEPLOYER_DATABASE_URL", "file:deployer.db"),
 		PublicBaseURL:     os.Getenv("DEPLOYER_PUBLIC_BASE_URL"),
 		SecretKey:         os.Getenv("DEPLOYER_SECRET_KEY"),
+		SecretKeyFile:     os.Getenv("DEPLOYER_SECRET_KEY_FILE"),
 		TokenHashKey:      os.Getenv("DEPLOYER_TOKEN_HASH_KEY"),
 		TLSCertFile:       os.Getenv("DEPLOYER_SERVER_TLS_CERT_FILE"),
 		TLSKeyFile:        os.Getenv("DEPLOYER_SERVER_TLS_KEY_FILE"),
@@ -60,8 +65,8 @@ func (c ServerConfig) Validate() error {
 	if c.PublicBaseURL == "" {
 		errs = append(errs, errors.New("DEPLOYER_PUBLIC_BASE_URL is required"))
 	}
-	if c.SecretKey == "" {
-		errs = append(errs, errors.New("DEPLOYER_SECRET_KEY is required"))
+	if _, err := c.SecretEncryptionKey(); err != nil {
+		errs = append(errs, err)
 	}
 	if c.TokenHashKey == "" {
 		errs = append(errs, errors.New("DEPLOYER_TOKEN_HASH_KEY is required"))
@@ -70,6 +75,30 @@ func (c ServerConfig) Validate() error {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+func (c ServerConfig) SecretEncryptionKey() ([]byte, error) {
+	if c.SecretKey != "" && c.SecretKeyFile != "" {
+		return nil, errors.New("set only one of DEPLOYER_SECRET_KEY or DEPLOYER_SECRET_KEY_FILE")
+	}
+
+	var key []byte
+	switch {
+	case c.SecretKey != "":
+		key = []byte(c.SecretKey)
+	case c.SecretKeyFile != "":
+		data, err := os.ReadFile(c.SecretKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("read DEPLOYER_SECRET_KEY_FILE: %w", err)
+		}
+		key = bytes.TrimRight(data, "\r\n")
+	default:
+		return nil, errors.New("DEPLOYER_SECRET_KEY or DEPLOYER_SECRET_KEY_FILE is required")
+	}
+	if len(key) != security.SecretKeyBytes {
+		return nil, fmt.Errorf("DEPLOYER_SECRET_KEY or DEPLOYER_SECRET_KEY_FILE must contain exactly %d bytes", security.SecretKeyBytes)
+	}
+	return append([]byte(nil), key...), nil
 }
 
 type AgentConfig struct {

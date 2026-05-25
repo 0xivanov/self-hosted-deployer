@@ -17,6 +17,7 @@ const (
 )
 
 var appNamePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+var secretNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type Config struct {
 	Name      string          `json:"name" yaml:"name"`
@@ -127,10 +128,26 @@ func (c Config) Validate() error {
 	default:
 		return fmt.Errorf("state.mode must be one of stateless, stateful, cache")
 	}
+	seenSecrets := map[string]struct{}{}
 	for i, secret := range c.Secrets {
-		if secret == "" {
-			return fmt.Errorf("secrets[%d] cannot be empty", i)
+		if err := ValidateSecretName(secret); err != nil {
+			return fmt.Errorf("secrets[%d]: %w", i, err)
 		}
+		if _, ok := seenSecrets[secret]; ok {
+			return fmt.Errorf("secrets[%d]: duplicate secret name %q", i, secret)
+		}
+		seenSecrets[secret] = struct{}{}
+	}
+	return nil
+}
+
+func ValidateSecretName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("secret name cannot be empty")
+	}
+	if !secretNamePattern.MatchString(name) {
+		return fmt.Errorf("secret name %q must be a valid environment variable name", name)
 	}
 	return nil
 }
