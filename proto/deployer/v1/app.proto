@@ -12,6 +12,8 @@ service AppService {
   rpc GetApp(GetAppRequest) returns (GetAppResponse);
   rpc GetAppStatus(GetAppStatusRequest) returns (GetAppStatusResponse);
   rpc GetDeploymentLogs(GetDeploymentLogsRequest) returns (GetDeploymentLogsResponse);
+  rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
+  rpc InspectRoute(InspectRouteRequest) returns (InspectRouteResponse);
 }
 
 message App {
@@ -38,6 +40,8 @@ message Route {
   string app_id = 2;
   string domain = 3;
   int32 target_port = 4;
+  string status = 5;
+  bool tls_enabled = 6;
 }
 
 message DeployAppRequest {
@@ -105,4 +109,18 @@ message GetDeploymentLogsRequest {
 
 message GetDeploymentLogsResponse {
   repeated string lines = 1;
+}
+
+message ListRoutesRequest {}
+
+message ListRoutesResponse {
+  repeated Route routes = 1;
+}
+
+message InspectRouteRequest {
+  string domain = 1;
+}
+
+message InspectRouteResponse {
+  Route route = 1;
 }

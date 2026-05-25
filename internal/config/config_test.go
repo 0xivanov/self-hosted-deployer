@@ -17,6 +17,10 @@ func TestServerConfigValidateRequiresSensitiveKeys(t *testing.T) {
 
 func TestLoadServerK3sDefaults(t *testing.T) {
 	t.Setenv("DEPLOYER_KUBECONFIG", "")
+	t.Setenv("DEPLOYER_INGRESS_NAMESPACE", "")
+	t.Setenv("DEPLOYER_INGRESS_ACME_EMAIL", "ops@example.com")
+	t.Setenv("DEPLOYER_INGRESS_TLS_ISSUER", "")
+	t.Setenv("DEPLOYER_INGRESS_ACME_SERVER", "")
 	t.Setenv("DEPLOYER_K3S_CONFIG_PATH", "")
 	t.Setenv("DEPLOYER_K3S_WIREGUARD_IP", "10.8.0.1")
 	t.Setenv("DEPLOYER_K3S_INSTALLER_URL", "")
@@ -27,6 +31,12 @@ func TestLoadServerK3sDefaults(t *testing.T) {
 	}
 	if cfg.K3sConfigPath != "/etc/rancher/k3s/config.yaml" {
 		t.Fatalf("unexpected k3s config path %q", cfg.K3sConfigPath)
+	}
+	if cfg.IngressNamespace != "deployer-apps" || cfg.IngressTLSIssuer != "deployer-letsencrypt" {
+		t.Fatalf("unexpected ingress defaults: %#v", cfg)
+	}
+	if cfg.IngressACMEEmail != "ops@example.com" || cfg.IngressACMEServer != "https://acme-v02.api.letsencrypt.org/directory" {
+		t.Fatalf("unexpected ingress TLS config: %#v", cfg)
 	}
 	if cfg.K3sInstallerURL != "https://get.k3s.io" {
 		t.Fatalf("unexpected installer URL %q", cfg.K3sInstallerURL)

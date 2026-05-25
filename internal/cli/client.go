@@ -95,6 +95,15 @@ type DeploymentInfo struct {
 	UpdatedAt     string `json:"updated_at"`
 }
 
+type RouteInfo struct {
+	ID         string `json:"id"`
+	AppID      string `json:"app_id"`
+	Domain     string `json:"domain"`
+	TargetPort int    `json:"target_port"`
+	Status     string `json:"status"`
+	TLSEnabled bool   `json:"tls_enabled"`
+}
+
 type DeployResult struct {
 	App        AppInfo        `json:"app"`
 	Deployment DeploymentInfo `json:"deployment"`
@@ -103,6 +112,7 @@ type DeployResult struct {
 type AppInspectResult struct {
 	App         AppInfo          `json:"app"`
 	Deployments []DeploymentInfo `json:"deployments"`
+	Routes      []RouteInfo      `json:"routes"`
 }
 
 func NewPlatformClient(serverURL string, token string) (*PlatformClient, *grpc.ClientConn, error) {
@@ -302,7 +312,38 @@ func (c *PlatformClient) InspectApp(ctx context.Context, name string) (AppInspec
 	for _, deployment := range response.GetDeployments() {
 		result.Deployments = append(result.Deployments, deploymentInfo(deployment))
 	}
+	for _, route := range response.GetRoutes() {
+		result.Routes = append(result.Routes, routeInfo(route))
+	}
 	return result, nil
+}
+
+func (c *PlatformClient) ListRoutes(ctx context.Context) ([]RouteInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+
+	response, err := c.appClient.ListRoutes(ctx, &deployerv1.ListRoutesRequest{})
+	if err != nil {
+		return nil, DecodeRPCError(err)
+	}
+	routes := make([]RouteInfo, 0, len(response.GetRoutes()))
+	for _, route := range response.GetRoutes() {
+		routes = append(routes, routeInfo(route))
+	}
+	return routes, nil
+}
+
+func (c *PlatformClient) InspectRoute(ctx context.Context, domain string) (RouteInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+
+	response, err := c.appClient.InspectRoute(ctx, &deployerv1.InspectRouteRequest{Domain: domain})
+	if err != nil {
+		return RouteInfo{}, DecodeRPCError(err)
+	}
+	return routeInfo(response.GetRoute()), nil
 }
 
 func (c *PlatformClient) withBearer(ctx context.Context) context.Context {
@@ -365,6 +406,20 @@ func deploymentInfo(deployment *deployerv1.Deployment) DeploymentInfo {
 		FailureReason: deployment.GetFailureReason(),
 		CreatedAt:     deployment.GetCreatedAt(),
 		UpdatedAt:     deployment.GetUpdatedAt(),
+	}
+}
+
+func routeInfo(route *deployerv1.Route) RouteInfo {
+	if route == nil {
+		return RouteInfo{}
+	}
+	return RouteInfo{
+		ID:         route.GetId(),
+		AppID:      route.GetAppId(),
+		Domain:     route.GetDomain(),
+		TargetPort: int(route.GetTargetPort()),
+		Status:     route.GetStatus(),
+		TLSEnabled: route.GetTlsEnabled(),
 	}
 }
 

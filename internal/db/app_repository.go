@@ -28,10 +28,18 @@ func (r *AppRepository) Update(ctx context.Context, app domain.App) error {
 }
 
 func (r *AppRepository) FindByName(ctx context.Context, name string) (domain.App, error) {
+	return r.findOne(ctx, `SELECT id, name, image, desired_state_json, created_at, updated_at, deleted_at FROM apps WHERE name = ?`, name)
+}
+
+func (r *AppRepository) FindByID(ctx context.Context, appID string) (domain.App, error) {
+	return r.findOne(ctx, `SELECT id, name, image, desired_state_json, created_at, updated_at, deleted_at FROM apps WHERE id = ?`, appID)
+}
+
+func (r *AppRepository) findOne(ctx context.Context, query string, args ...any) (domain.App, error) {
 	var app domain.App
 	var createdAt, updatedAt string
 	var deletedAt sql.NullString
-	err := r.db.db.QueryRowContext(ctx, `SELECT id, name, image, desired_state_json, created_at, updated_at, deleted_at FROM apps WHERE name = ?`, name).
+	err := r.db.db.QueryRowContext(ctx, query, args...).
 		Scan(&app.ID, &app.Name, &app.Image, &app.DesiredStateJSON, &createdAt, &updatedAt, &deletedAt)
 	if err != nil {
 		return domain.App{}, mapSQLError(err)

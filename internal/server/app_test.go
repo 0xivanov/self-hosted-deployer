@@ -2,9 +2,12 @@ package server
 
 import (
 	"context"
+	"errors"
 	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc/codes"
@@ -16,7 +19,15 @@ func TestAppServiceDeployUpdateListInspectAndDelete(t *testing.T) {
 	database := openTestDB(t)
 	apps := db.NewAppRepository(database)
 	deployments := db.NewDeploymentRepository(database)
-	service := NewAppService(AppServiceConfig{Apps: apps, Deployments: deployments})
+	routes := db.NewRouteRepository(database)
+	runtime := &recordingAppRuntime{status: "healthy"}
+	service := NewAppService(AppServiceConfig{
+		Apps:            apps,
+		Deployments:     deployments,
+		Routes:          routes,
+		Runtime:         runtime,
+		RouteTLSEnabled: true,
+	})
 
 	first, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)})
 	if err != nil {
@@ -36,6 +47,16 @@ func TestAppServiceDeployUpdateListInspectAndDelete(t *testing.T) {
 	if updated.GetDeployment().GetId() == first.GetDeployment().GetId() {
 		t.Fatalf("expected a new deployment record for update")
 	}
+	route, err := routes.FindByDomain(ctx, "api.example.com")
+	if err != nil {
+		t.Fatalf("find route: %v", err)
+	}
+	if route.AppID != first.GetApp().GetId() || route.TargetPort != 3000 || route.Status != "pending" || !route.TLSEnabled {
+		t.Fatalf("unexpected route: %#v", route)
+	}
+	if len(runtime.reconciled) != 2 || runtime.reconciled[1].Routing.Domain != "api.example.com" {
+		t.Fatalf("expected app resource reconciles, got %#v", runtime.reconciled)
+	}
 
 	listed, err := service.ListApps(ctx, &deployerv1.ListAppsRequest{})
 	if err != nil {
@@ -52,12 +73,37 @@ func TestAppServiceDeployUpdateListInspectAndDelete(t *testing.T) {
 	if len(inspected.GetDeployments()) != 2 {
 		t.Fatalf("expected two deployments, got %#v", inspected.GetDeployments())
 	}
+	if len(inspected.GetRoutes()) != 1 || inspected.GetRoutes()[0].GetDomain() != "api.example.com" ||
+		inspected.GetRoutes()[0].GetStatus() != "healthy" || !inspected.GetRoutes()[0].GetTlsEnabled() {
+		t.Fatalf("expected app route in inspect response, got %#v", inspected.GetRoutes())
+	}
+
+	listedRoutes, err := service.ListRoutes(ctx, &deployerv1.ListRoutesRequest{})
+	if err != nil {
+		t.Fatalf("list routes: %v", err)
+	}
+	if len(listedRoutes.GetRoutes()) != 1 || listedRoutes.GetRoutes()[0].GetDomain() != "api.example.com" {
+		t.Fatalf("unexpected routes list: %#v", listedRoutes)
+	}
+	inspectedRoute, err := service.InspectRoute(ctx, &deployerv1.InspectRouteRequest{Domain: "api.example.com"})
+	if err != nil {
+		t.Fatalf("inspect route: %v", err)
+	}
+	if inspectedRoute.GetRoute().GetAppId() != first.GetApp().GetId() {
+		t.Fatalf("unexpected inspected route: %#v", inspectedRoute)
+	}
 
 	if _, err := service.DeleteApp(ctx, &deployerv1.DeleteAppRequest{Name: "my-api"}); err != nil {
 		t.Fatalf("delete app: %v", err)
 	}
 	if _, err := service.InspectApp(ctx, &deployerv1.InspectAppRequest{Name: "my-api"}); status.Code(err) != codes.NotFound {
 		t.Fatalf("expected deleted app to be hidden, got %v", err)
+	}
+	if _, err := routes.FindByDomain(ctx, "api.example.com"); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("expected delete to remove app route, got %v", err)
+	}
+	if len(runtime.deleted) != 1 || runtime.deleted[0] != "my-api" {
+		t.Fatalf("expected deleted app resources, got %#v", runtime.deleted)
 	}
 }
 
@@ -79,6 +125,139 @@ func TestAppServiceDeployRejectsInvalidConfig(t *testing.T) {
 	}
 }
 
+func TestAppServiceDeletesRouteWhenDomainRemoved(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	routes := db.NewRouteRepository(database)
+	runtime := &recordingAppRuntime{status: "healthy"}
+	service := NewAppService(AppServiceConfig{
+		Apps:        db.NewAppRepository(database),
+		Deployments: db.NewDeploymentRepository(database),
+		Routes:      routes,
+		Runtime:     runtime,
+	})
+
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)}); err != nil {
+		t.Fatalf("deploy with route: %v", err)
+	}
+	if _, err := routes.FindByDomain(ctx, "api.example.com"); err != nil {
+		t.Fatalf("expected route: %v", err)
+	}
+
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAMLWithoutDomain("ivan/my-api:1.0.1", 2)}); err != nil {
+		t.Fatalf("deploy without route: %v", err)
+	}
+	if _, err := routes.FindByDomain(ctx, "api.example.com"); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("expected route to be deleted, got %v", err)
+	}
+	if len(runtime.reconciled) != 2 || runtime.reconciled[1].Routing.Domain != "" {
+		t.Fatalf("expected resource reconciliation without domain, got %#v", runtime.reconciled)
+	}
+}
+
+func TestAppServiceUpdatesRouteDomain(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	routes := db.NewRouteRepository(database)
+	runtime := &recordingAppRuntime{status: "healthy"}
+	service := NewAppService(AppServiceConfig{
+		Apps:        db.NewAppRepository(database),
+		Deployments: db.NewDeploymentRepository(database),
+		Routes:      routes,
+		Runtime:     runtime,
+	})
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)}); err != nil {
+		t.Fatalf("deploy original domain: %v", err)
+	}
+	updatedYAML := strings.Replace(testAppYAML("ivan/my-api:1.0.1", 2), "api.example.com", "new.example.com", 1)
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: updatedYAML}); err != nil {
+		t.Fatalf("deploy new domain: %v", err)
+	}
+	if _, err := routes.FindByDomain(ctx, "api.example.com"); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("expected original domain removed, got %v", err)
+	}
+	route, err := routes.FindByDomain(ctx, "new.example.com")
+	if err != nil || route.AppID == "" {
+		t.Fatalf("expected new route domain, got %#v: %v", route, err)
+	}
+	if runtime.reconciled[1].Routing.Domain != "new.example.com" {
+		t.Fatalf("expected updated route host, got %#v", runtime.reconciled)
+	}
+}
+
+func TestAppServiceRefreshesRouteHealth(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	runtime := &recordingAppRuntime{status: "healthy"}
+	service := NewAppService(AppServiceConfig{
+		Apps:        db.NewAppRepository(database),
+		Deployments: db.NewDeploymentRepository(database),
+		Routes:      db.NewRouteRepository(database),
+		Runtime:     runtime,
+	})
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)}); err != nil {
+		t.Fatalf("deploy app: %v", err)
+	}
+	listed, err := service.ListRoutes(ctx, &deployerv1.ListRoutesRequest{})
+	if err != nil || listed.GetRoutes()[0].GetStatus() != "healthy" {
+		t.Fatalf("expected healthy route, got %#v: %v", listed, err)
+	}
+
+	runtime.status = "unavailable"
+	listed, err = service.ListRoutes(ctx, &deployerv1.ListRoutesRequest{})
+	if err != nil || listed.GetRoutes()[0].GetStatus() != "unavailable" {
+		t.Fatalf("expected unavailable route, got %#v: %v", listed, err)
+	}
+}
+
+func TestAppServiceRejectsDomainOwnedByAnotherAppBeforeIngress(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	runtime := &recordingAppRuntime{status: "healthy"}
+	service := NewAppService(AppServiceConfig{
+		Apps:        db.NewAppRepository(database),
+		Deployments: db.NewDeploymentRepository(database),
+		Routes:      db.NewRouteRepository(database),
+		Runtime:     runtime,
+	})
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)}); err != nil {
+		t.Fatalf("deploy first app: %v", err)
+	}
+	otherAppYAML := strings.Replace(testAppYAML("ivan/other-api:1.0.0", 2), "name: my-api", "name: other-api", 1)
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: otherAppYAML}); status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("expected duplicate domain conflict, got %v", err)
+	}
+	if len(runtime.reconciled) != 1 {
+		t.Fatalf("expected no conflicting app reconcile, got %#v", runtime.reconciled)
+	}
+}
+
+func TestAppServiceRecordsResourceApplyFailure(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	apps := db.NewAppRepository(database)
+	deployments := db.NewDeploymentRepository(database)
+	service := NewAppService(AppServiceConfig{
+		Apps:        apps,
+		Deployments: deployments,
+		Routes:      db.NewRouteRepository(database),
+		Runtime:     &recordingAppRuntime{err: errors.New("apply failed")},
+	})
+
+	_, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)})
+	if status.Code(err) != codes.Internal {
+		t.Fatalf("expected resource apply failure, got %v", err)
+	}
+	app, err := apps.FindByName(ctx, "my-api")
+	if err != nil {
+		t.Fatalf("find app: %v", err)
+	}
+	records, err := deployments.ListByApp(ctx, app.ID)
+	if err != nil || len(records) != 1 || records[0].Status != "failed" {
+		t.Fatalf("expected failed deployment record, got %#v: %v", records, err)
+	}
+}
+
 func testAppYAML(image string, replicas int) string {
 	return `name: my-api
 image: ` + image + `
@@ -96,4 +275,43 @@ placement:
 state:
   mode: stateless
 `
+}
+
+func testAppYAMLWithoutDomain(image string, replicas int) string {
+	return `name: my-api
+image: ` + image + `
+service:
+  port: 3000
+  health:
+    path: /health
+routing: {}
+deploy:
+  replicas: ` + strconv.Itoa(replicas) + `
+placement:
+  arch: linux/arm64
+  spread: true
+state:
+  mode: stateless
+`
+}
+
+type recordingAppRuntime struct {
+	reconciled []appconfig.Config
+	deleted    []string
+	status     string
+	err        error
+}
+
+func (r *recordingAppRuntime) Reconcile(_ context.Context, cfg appconfig.Config) error {
+	r.reconciled = append(r.reconciled, cfg)
+	return r.err
+}
+
+func (r *recordingAppRuntime) Delete(_ context.Context, appName string) error {
+	r.deleted = append(r.deleted, appName)
+	return r.err
+}
+
+func (r *recordingAppRuntime) Status(context.Context, string) (string, error) {
+	return r.status, r.err
 }

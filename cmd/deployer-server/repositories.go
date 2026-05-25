@@ -14,5 +14,6 @@ func newRepositories(database *db.Db) server.Repositories {
 		Nodes:       db.NewNodeRepository(database),
 		Apps:        db.NewAppRepository(database),
 		Deployments: db.NewDeploymentRepository(database),
+		Routes:      db.NewRouteRepository(database),
 	}
 }

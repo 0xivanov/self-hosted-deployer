@@ -36,6 +36,8 @@ type platformClient interface {
 	DeployApp(ctx context.Context, deployerYAML string) (clicore.DeployResult, error)
 	ListApps(ctx context.Context) ([]clicore.AppInfo, error)
 	InspectApp(ctx context.Context, name string) (clicore.AppInspectResult, error)
+	ListRoutes(ctx context.Context) ([]clicore.RouteInfo, error)
+	InspectRoute(ctx context.Context, domain string) (clicore.RouteInfo, error)
 }
 
 type platformClientFactory func(serverURL string, token string) (platformClient, func() error, error)

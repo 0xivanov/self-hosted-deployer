@@ -25,9 +25,16 @@ type Repositories struct {
 	Nodes       NodeRepository
 	Apps        AppRepository
 	Deployments DeploymentRepository
+	Routes      RouteRepository
 }
 
-func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, repos Repositories) error {
+type Runtime struct {
+	Apps            AppRuntime
+	Ingress         IngressRuntime
+	RouteTLSEnabled bool
+}
+
+func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, repos Repositories, runtime Runtime) error {
 	grpcListener, err := net.Listen("tcp", cfg.GRPCListenAddress)
 	if err != nil {
 		return fmt.Errorf("listen grpc: %w", err)
@@ -75,9 +82,16 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		AgentTokens:  repos.AgentTokens,
 		TokenHashKey: cfg.TokenHashKey,
 	}))
+	appRuntime := runtime.Apps
+	if appRuntime == nil {
+		appRuntime = runtime.Ingress
+	}
 	deployerv1.RegisterAppServiceServer(grpcServer, NewAppService(AppServiceConfig{
-		Apps:        repos.Apps,
-		Deployments: repos.Deployments,
+		Apps:            repos.Apps,
+		Deployments:     repos.Deployments,
+		Routes:          repos.Routes,
+		Runtime:         appRuntime,
+		RouteTLSEnabled: runtime.RouteTLSEnabled,
 	}))
 
 	mux := http.NewServeMux()

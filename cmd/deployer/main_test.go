@@ -355,13 +355,62 @@ func TestAppsListAndInspectUseAppAPI(t *testing.T) {
 			StateMode: "stateless",
 		},
 		Deployments: []clicore.DeploymentInfo{{ID: "deploy-1", Status: "pending"}},
+		Routes:      []clicore.RouteInfo{{ID: "route-1", Domain: "api.example.com", TargetPort: 3000, Status: "healthy", TLSEnabled: true}},
 	}
 	code = app.run([]string{"--config", configPath, "apps", "inspect", "my-api"})
 	if code != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr: %s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "deploy-1") {
-		t.Fatalf("expected deployment history in inspect output, got %q", stdout.String())
+	if !strings.Contains(stdout.String(), "deploy-1") || !strings.Contains(stdout.String(), "api.example.com") {
+		t.Fatalf("expected deployment and route details in inspect output, got %q", stdout.String())
+	}
+}
+
+func TestRoutesListAndInspectUseRouteAPI(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	if err := clicore.SaveConfig(configPath, clicore.Config{
+		ServerURL:  "localhost:7443",
+		AdminToken: "dep_admin_saved",
+		Output:     clicore.OutputHuman,
+	}); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	client := &recordingAppClient{
+		routes: []clicore.RouteInfo{{
+			Domain:     "api.example.com",
+			TargetPort: 3000,
+			Status:     "healthy",
+			TLSEnabled: true,
+		}},
+		route: clicore.RouteInfo{
+			AppID:      "app-1",
+			Domain:     "api.example.com",
+			TargetPort: 3000,
+			Status:     "healthy",
+			TLSEnabled: true,
+		},
+	}
+	app := newCLIApp(strings.NewReader(""), &stdout, &stderr)
+	app.newPlatformClient = func(string, string) (platformClient, func() error, error) {
+		return client, func() error { return nil }, nil
+	}
+
+	if code := app.run([]string{"--config", configPath, "routes", "list"}); code != 0 {
+		t.Fatalf("expected routes list success, got %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "api.example.com") || !strings.Contains(stdout.String(), "healthy") {
+		t.Fatalf("expected health in routes list, got %q", stdout.String())
+	}
+
+	stdout.Reset()
+	if code := app.run([]string{"--config", configPath, "routes", "inspect", "api.example.com"}); code != 0 {
+		t.Fatalf("expected route inspect success, got %d: %s", code, stderr.String())
+	}
+	if client.inspectedRouteDomain != "api.example.com" || !strings.Contains(stdout.String(), "app-1") {
+		t.Fatalf("expected inspected route output, got %q", stdout.String())
 	}
 }
 
@@ -414,12 +463,23 @@ func (c recordingClient) InspectApp(context.Context, string) (clicore.AppInspect
 	return clicore.AppInspectResult{}, c.err
 }
 
+func (c recordingClient) ListRoutes(context.Context) ([]clicore.RouteInfo, error) {
+	return nil, c.err
+}
+
+func (c recordingClient) InspectRoute(context.Context, string) (clicore.RouteInfo, error) {
+	return clicore.RouteInfo{}, c.err
+}
+
 type recordingAppClient struct {
-	deployerYAML string
-	deployResult clicore.DeployResult
-	apps         []clicore.AppInfo
-	inspect      clicore.AppInspectResult
-	err          error
+	deployerYAML         string
+	deployResult         clicore.DeployResult
+	apps                 []clicore.AppInfo
+	inspect              clicore.AppInspectResult
+	routes               []clicore.RouteInfo
+	route                clicore.RouteInfo
+	inspectedRouteDomain string
+	err                  error
 }
 
 func (c *recordingAppClient) Status(context.Context) (clicore.ServerStatus, error) {
@@ -449,6 +509,15 @@ func (c *recordingAppClient) ListApps(context.Context) ([]clicore.AppInfo, error
 
 func (c *recordingAppClient) InspectApp(context.Context, string) (clicore.AppInspectResult, error) {
 	return c.inspect, c.err
+}
+
+func (c *recordingAppClient) ListRoutes(context.Context) ([]clicore.RouteInfo, error) {
+	return c.routes, c.err
+}
+
+func (c *recordingAppClient) InspectRoute(_ context.Context, domain string) (clicore.RouteInfo, error) {
+	c.inspectedRouteDomain = domain
+	return c.route, c.err
 }
 
 func testDeployYAML(image string) string {
