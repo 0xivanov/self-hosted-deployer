@@ -16,13 +16,13 @@ func NewRouteRepository(db *Db) *RouteRepository {
 }
 
 func (r *RouteRepository) Create(ctx context.Context, route domain.Route) error {
-	_, err := r.db.db.ExecContext(ctx, `INSERT INTO routes (id, app_id, domain, target_port, status, tls_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err := r.db.conn.ExecContext(ctx, `INSERT INTO routes (id, app_id, domain, target_port, status, tls_enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		route.ID, route.AppID, route.Domain, route.TargetPort, route.Status, boolToInt(route.TLSEnabled), formatTime(route.CreatedAt), formatTime(route.UpdatedAt))
 	return err
 }
 
 func (r *RouteRepository) UpsertForApp(ctx context.Context, route domain.Route) error {
-	_, err := r.db.db.ExecContext(ctx, `
+	_, err := r.db.conn.ExecContext(ctx, `
 		INSERT INTO routes (id, app_id, domain, target_port, status, tls_enabled, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(app_id) DO UPDATE SET
@@ -36,7 +36,7 @@ func (r *RouteRepository) UpsertForApp(ctx context.Context, route domain.Route) 
 }
 
 func (r *RouteRepository) DeleteByApp(ctx context.Context, appID string) error {
-	_, err := r.db.db.ExecContext(ctx, `DELETE FROM routes WHERE app_id = ?`, appID)
+	_, err := r.db.conn.ExecContext(ctx, `DELETE FROM routes WHERE app_id = ?`, appID)
 	return err
 }
 
@@ -45,7 +45,7 @@ func (r *RouteRepository) FindByDomain(ctx context.Context, domainName string) (
 }
 
 func (r *RouteRepository) List(ctx context.Context) ([]domain.Route, error) {
-	rows, err := r.db.db.QueryContext(ctx, `SELECT id, app_id, domain, target_port, status, tls_enabled, created_at, updated_at FROM routes ORDER BY domain`)
+	rows, err := r.db.conn.QueryContext(ctx, `SELECT id, app_id, domain, target_port, status, tls_enabled, created_at, updated_at FROM routes ORDER BY domain`)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (r *RouteRepository) List(ctx context.Context) ([]domain.Route, error) {
 }
 
 func (r *RouteRepository) ListByApp(ctx context.Context, appID string) ([]domain.Route, error) {
-	rows, err := r.db.db.QueryContext(ctx, `SELECT id, app_id, domain, target_port, status, tls_enabled, created_at, updated_at FROM routes WHERE app_id = ? ORDER BY domain`, appID)
+	rows, err := r.db.conn.QueryContext(ctx, `SELECT id, app_id, domain, target_port, status, tls_enabled, created_at, updated_at FROM routes WHERE app_id = ? ORDER BY domain`, appID)
 	if err != nil {
 		return nil, err
 	}
@@ -87,11 +87,11 @@ func (r *RouteRepository) ListByApp(ctx context.Context, appID string) ([]domain
 }
 
 func (r *RouteRepository) UpdateStatus(ctx context.Context, routeID string, status string, updatedAt time.Time) error {
-	return mapRowsAffected(r.db.db.ExecContext(ctx, `UPDATE routes SET status = ?, updated_at = ? WHERE id = ?`, status, formatTime(updatedAt), routeID))
+	return mapRowsAffected(r.db.conn.ExecContext(ctx, `UPDATE routes SET status = ?, updated_at = ? WHERE id = ?`, status, formatTime(updatedAt), routeID))
 }
 
 func (r *RouteRepository) findOne(ctx context.Context, query string, args ...any) (domain.Route, error) {
-	row := r.db.db.QueryRowContext(ctx, query, args...)
+	row := r.db.conn.QueryRowContext(ctx, query, args...)
 	route, err := scanRoute(row)
 	if err != nil {
 		return domain.Route{}, mapSQLError(err)

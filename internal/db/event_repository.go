@@ -27,7 +27,7 @@ func (r *EventRepository) Create(ctx context.Context, event domain.Event) error 
 	if event.MetadataJSON == "" {
 		event.MetadataJSON = "{}"
 	}
-	_, err := r.db.db.ExecContext(ctx, `INSERT INTO events (id, created_at, type, severity, message, app_id, node_id, deployment_id, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err := r.db.conn.ExecContext(ctx, `INSERT INTO events (id, created_at, type, severity, message, app_id, node_id, deployment_id, metadata_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.ID, formatEventTime(event.CreatedAt), event.Type, event.Severity, event.Message, optionalString(event.AppID), optionalString(event.NodeID), optionalString(event.DeploymentID), event.MetadataJSON)
 	return err
 }
@@ -78,7 +78,7 @@ func (r *EventRepository) List(ctx context.Context, filter domain.EventFilter) (
 	}
 	args = append(args, limit)
 
-	rows, err := r.db.db.QueryContext(ctx, query, args...)
+	rows, err := r.db.conn.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (r *EventRepository) List(ctx context.Context, filter domain.EventFilter) (
 }
 
 func (r *EventRepository) PruneBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	result, err := r.db.db.ExecContext(ctx, `DELETE FROM events WHERE created_at < ?`, formatEventTime(cutoff))
+	result, err := r.db.conn.ExecContext(ctx, `DELETE FROM events WHERE created_at < ?`, formatEventTime(cutoff))
 	if err != nil {
 		return 0, err
 	}
@@ -110,7 +110,7 @@ func (r *EventRepository) PruneToLimit(ctx context.Context, maxCount int) (int64
 	if maxCount < 1 {
 		return 0, nil
 	}
-	result, err := r.db.db.ExecContext(ctx, `DELETE FROM events WHERE id IN (SELECT id FROM events ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?)`, maxCount)
+	result, err := r.db.conn.ExecContext(ctx, `DELETE FROM events WHERE id IN (SELECT id FROM events ORDER BY created_at DESC, id DESC LIMIT -1 OFFSET ?)`, maxCount)
 	if err != nil {
 		return 0, err
 	}

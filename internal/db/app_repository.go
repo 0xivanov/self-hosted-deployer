@@ -17,13 +17,13 @@ func NewAppRepository(db *Db) *AppRepository {
 }
 
 func (r *AppRepository) Create(ctx context.Context, app domain.App) error {
-	_, err := r.db.db.ExecContext(ctx, `INSERT INTO apps (id, name, image, desired_state_json, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	_, err := r.db.conn.ExecContext(ctx, `INSERT INTO apps (id, name, image, desired_state_json, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		app.ID, app.Name, app.Image, app.DesiredStateJSON, formatTime(app.CreatedAt), formatTime(app.UpdatedAt), formatOptionalTime(app.DeletedAt))
 	return err
 }
 
 func (r *AppRepository) Update(ctx context.Context, app domain.App) error {
-	return mapRowsAffected(r.db.db.ExecContext(ctx, `UPDATE apps SET image = ?, desired_state_json = ?, updated_at = ?, deleted_at = ? WHERE id = ?`,
+	return mapRowsAffected(r.db.conn.ExecContext(ctx, `UPDATE apps SET image = ?, desired_state_json = ?, updated_at = ?, deleted_at = ? WHERE id = ?`,
 		app.Image, app.DesiredStateJSON, formatTime(app.UpdatedAt), formatOptionalTime(app.DeletedAt), app.ID))
 }
 
@@ -39,7 +39,7 @@ func (r *AppRepository) findOne(ctx context.Context, query string, args ...any) 
 	var app domain.App
 	var createdAt, updatedAt string
 	var deletedAt sql.NullString
-	err := r.db.db.QueryRowContext(ctx, query, args...).
+	err := r.db.conn.QueryRowContext(ctx, query, args...).
 		Scan(&app.ID, &app.Name, &app.Image, &app.DesiredStateJSON, &createdAt, &updatedAt, &deletedAt)
 	if err != nil {
 		return domain.App{}, mapSQLError(err)
@@ -71,7 +71,7 @@ func (r *AppRepository) FindActiveByName(ctx context.Context, name string) (doma
 }
 
 func (r *AppRepository) List(ctx context.Context) ([]domain.App, error) {
-	rows, err := r.db.db.QueryContext(ctx, `SELECT id, name, image, desired_state_json, created_at, updated_at, deleted_at FROM apps WHERE deleted_at IS NULL ORDER BY name`)
+	rows, err := r.db.conn.QueryContext(ctx, `SELECT id, name, image, desired_state_json, created_at, updated_at, deleted_at FROM apps WHERE deleted_at IS NULL ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +92,7 @@ func (r *AppRepository) List(ctx context.Context) ([]domain.App, error) {
 }
 
 func (r *AppRepository) MarkDeleted(ctx context.Context, name string, deletedAt time.Time) (domain.App, error) {
-	result, err := r.db.db.ExecContext(ctx, `UPDATE apps SET updated_at = ?, deleted_at = ? WHERE name = ? AND deleted_at IS NULL`,
+	result, err := r.db.conn.ExecContext(ctx, `UPDATE apps SET updated_at = ?, deleted_at = ? WHERE name = ? AND deleted_at IS NULL`,
 		formatTime(deletedAt), formatTime(deletedAt), name)
 	if err := mapRowsAffected(result, err); err != nil {
 		return domain.App{}, err
