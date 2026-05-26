@@ -46,6 +46,8 @@ type Controller struct {
 	ingresses   networkingtyped.IngressInterface
 	services    coretyped.ServiceInterface
 	appSecrets  coretyped.SecretInterface
+	nodes       coretyped.NodeInterface
+	pods        coretyped.PodInterface
 	deployments appstyped.DeploymentInterface
 	issuers     dynamic.ResourceInterface
 }
@@ -81,6 +83,8 @@ func NewController(cfg ControllerConfig) (*Controller, error) {
 		ingresses:   clientset.NetworkingV1().Ingresses(namespace),
 		services:    clientset.CoreV1().Services(namespace),
 		appSecrets:  clientset.CoreV1().Secrets(namespace),
+		nodes:       clientset.CoreV1().Nodes(),
+		pods:        clientset.CoreV1().Pods(namespace),
 		deployments: clientset.AppsV1().Deployments(namespace),
 		issuers:     issuers,
 	}, nil

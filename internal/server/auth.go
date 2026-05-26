@@ -36,6 +36,7 @@ type AgentTokenRepository interface {
 	Create(ctx context.Context, token domain.AgentToken) error
 	FindByHash(ctx context.Context, tokenHash string) (domain.AgentToken, error)
 	MarkUsed(ctx context.Context, tokenHash string, usedAt time.Time) error
+	RevokeByNodeID(ctx context.Context, nodeID string, revokedAt time.Time) error
 }
 
 type JoinTokenRepository interface {

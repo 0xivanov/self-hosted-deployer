@@ -6,6 +6,7 @@ import (
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -224,6 +225,104 @@ func TestControllerStatusUsesAvailableReplicas(t *testing.T) {
 				t.Fatalf("got status %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDeploymentMapsResiliencePolicies(t *testing.T) {
+	t.Run("resilient adds replicas and required spread", func(t *testing.T) {
+		cfg := testAppConfig()
+		cfg.Deploy.Replicas = 1
+		cfg.Placement.Spread = false
+		cfg.Resilience.Mode = appconfig.ResilienceResilient
+		deployment, err := deploymentForApp(cfg, DefaultNamespace, "")
+		if err != nil {
+			t.Fatalf("render resilient deployment: %v", err)
+		}
+		if *deployment.Spec.Replicas != 2 ||
+			len(deployment.Spec.Template.Spec.TopologySpreadConstraints) != 1 ||
+			deployment.Spec.Template.Spec.TopologySpreadConstraints[0].WhenUnsatisfiable != corev1.DoNotSchedule {
+			t.Fatalf("unexpected resilient policy: %#v", deployment.Spec)
+		}
+	})
+
+	t.Run("fallback prefers home then fallback nodes", func(t *testing.T) {
+		cfg := testAppConfig()
+		cfg.Resilience.Mode = appconfig.ResilienceFallback
+		cfg.Placement.Prefer = []map[string]string{{"location": "home"}}
+		cfg.Placement.Fallback = []map[string]string{{"location": "vps"}}
+		deployment, err := deploymentForApp(cfg, DefaultNamespace, "")
+		if err != nil {
+			t.Fatalf("render fallback deployment: %v", err)
+		}
+		terms := deployment.Spec.Template.Spec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+		if len(terms) != 2 || terms[0].Weight != 100 || terms[1].Weight != 50 {
+			t.Fatalf("unexpected fallback affinity: %#v", terms)
+		}
+	})
+
+	t.Run("pinned requires selected node labels", func(t *testing.T) {
+		cfg := testAppConfig()
+		cfg.Resilience.Mode = appconfig.ResiliencePinned
+		cfg.Placement.Prefer = []map[string]string{{"kubernetes.io/hostname": "pi-kitchen"}}
+		deployment, err := deploymentForApp(cfg, DefaultNamespace, "")
+		if err != nil {
+			t.Fatalf("render pinned deployment: %v", err)
+		}
+		if deployment.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"] != "pi-kitchen" {
+			t.Fatalf("unexpected pinned selector: %#v", deployment.Spec.Template.Spec.NodeSelector)
+		}
+	})
+}
+
+func TestControllerManagesNodeReadinessAndReportsRunningNodes(t *testing.T) {
+	replicas := int32(2)
+	clientset := fake.NewSimpleClientset(
+		&corev1.Node{
+			ObjectMeta: metav1.ObjectMeta{Name: "pi-kitchen"},
+			Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{{
+				Type: corev1.NodeReady, Status: corev1.ConditionTrue, Message: "kubelet ready",
+			}}},
+		},
+		&appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{Name: "my-api", Namespace: DefaultNamespace},
+			Spec:       appsv1.DeploymentSpec{Replicas: &replicas},
+			Status:     appsv1.DeploymentStatus{AvailableReplicas: 2},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "my-api-1", Namespace: DefaultNamespace, Labels: map[string]string{"deployer.io/app": "my-api"}},
+			Spec:       corev1.PodSpec{NodeName: "pi-kitchen"},
+			Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+		},
+	)
+	controller := &Controller{
+		namespace:   DefaultNamespace,
+		nodes:       clientset.CoreV1().Nodes(),
+		pods:        clientset.CoreV1().Pods(DefaultNamespace),
+		deployments: clientset.AppsV1().Deployments(DefaultNamespace),
+	}
+	state, message, schedulable, err := controller.NodeReadiness(context.Background(), "pi-kitchen")
+	if err != nil || state != "ready" || message != "kubelet ready" || !schedulable {
+		t.Fatalf("unexpected readiness state=%q message=%q schedulable=%t err=%v", state, message, schedulable, err)
+	}
+	if err := controller.CordonNode(context.Background(), "pi-kitchen"); err != nil {
+		t.Fatalf("cordon node: %v", err)
+	}
+	node, err := clientset.CoreV1().Nodes().Get(context.Background(), "pi-kitchen", metav1.GetOptions{})
+	if err != nil || !node.Spec.Unschedulable {
+		t.Fatalf("expected cordoned node: %#v err=%v", node, err)
+	}
+	if err := controller.UncordonNode(context.Background(), "pi-kitchen"); err != nil {
+		t.Fatalf("uncordon node: %v", err)
+	}
+	status, desired, available, nodes, err := controller.RuntimeStatus(context.Background(), "my-api")
+	if err != nil || status != StatusHealthy || desired != 2 || available != 2 || len(nodes) != 1 || nodes[0] != "pi-kitchen" {
+		t.Fatalf("unexpected runtime status %q %d/%d nodes=%#v err=%v", status, available, desired, nodes, err)
+	}
+	if err := controller.RemoveNode(context.Background(), "pi-kitchen"); err != nil {
+		t.Fatalf("remove node: %v", err)
+	}
+	if state, _, _, err := controller.NodeReadiness(context.Background(), "pi-kitchen"); err != nil || state != "missing" {
+		t.Fatalf("expected missing removed Kubernetes node, state=%q err=%v", state, err)
 	}
 }
 

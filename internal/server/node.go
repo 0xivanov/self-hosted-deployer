@@ -21,12 +21,13 @@ import (
 )
 
 const (
-	nodeStatusPending          = "pending"
-	nodeStatusOnline           = "online"
-	nodeStatusOffline          = "offline"
-	defaultJoinTTL             = time.Hour
-	defaultNodeOfflineAfter    = 2 * time.Minute
-	defaultNodeMonitorInterval = 30 * time.Second
+	nodeStatusPending       = "pending"
+	nodeStatusOnline        = "online"
+	nodeStatusOffline       = "offline"
+	nodeStatusDrained       = "drained"
+	nodeStatusRemoved       = "removed"
+	defaultJoinTTL          = time.Hour
+	defaultNodeOfflineAfter = 2 * time.Minute
 )
 
 type NodeRepository interface {
@@ -45,36 +46,54 @@ type consumableJoinTokenRepository interface {
 	Consume(ctx context.Context, tokenHash string, usedAt time.Time) (domain.JoinToken, error)
 }
 
-type creatableAgentTokenRepository interface {
+type nodeAgentTokenRepository interface {
 	Create(ctx context.Context, token domain.AgentToken) error
+	RevokeByNodeID(ctx context.Context, nodeID string, revokedAt time.Time) error
+}
+
+type NodeRuntime interface {
+	NodeReadiness(ctx context.Context, nodeName string) (state string, message string, schedulable bool, err error)
+	CordonNode(ctx context.Context, nodeName string) error
+	UncordonNode(ctx context.Context, nodeName string) error
+	RemoveNode(ctx context.Context, nodeName string) error
 }
 
 type NodeServiceConfig struct {
 	Nodes        NodeRepository
 	JoinTokens   consumableJoinTokenRepository
-	AgentTokens  creatableAgentTokenRepository
+	AgentTokens  nodeAgentTokenRepository
 	TokenHashKey string
 	Events       EventRecorder
+	Runtime      NodeRuntime
+	OfflineAfter time.Duration
 }
 
 type NodeService struct {
 	deployerv1.UnimplementedNodeServiceServer
-	nodes       NodeRepository
-	joinTokens  consumableJoinTokenRepository
-	agentTokens creatableAgentTokenRepository
-	hashKey     []byte
-	events      EventRecorder
-	now         func() time.Time
+	nodes        NodeRepository
+	joinTokens   consumableJoinTokenRepository
+	agentTokens  nodeAgentTokenRepository
+	hashKey      []byte
+	events       EventRecorder
+	runtime      NodeRuntime
+	offlineAfter time.Duration
+	now          func() time.Time
 }
 
 func NewNodeService(cfg NodeServiceConfig) NodeService {
+	offlineAfter := cfg.OfflineAfter
+	if offlineAfter <= 0 {
+		offlineAfter = defaultNodeOfflineAfter
+	}
 	return NodeService{
-		nodes:       cfg.Nodes,
-		joinTokens:  cfg.JoinTokens,
-		agentTokens: cfg.AgentTokens,
-		hashKey:     []byte(cfg.TokenHashKey),
-		events:      cfg.Events,
-		now:         time.Now,
+		nodes:        cfg.Nodes,
+		joinTokens:   cfg.JoinTokens,
+		agentTokens:  cfg.AgentTokens,
+		hashKey:      []byte(cfg.TokenHashKey),
+		events:       cfg.Events,
+		runtime:      cfg.Runtime,
+		offlineAfter: offlineAfter,
+		now:          time.Now,
 	}
 }
 
@@ -281,6 +300,9 @@ func (s NodeService) enrollNode(ctx context.Context, joinToken domain.JoinToken,
 	} else if err != nil {
 		return nil, status.Error(codes.Internal, "find node")
 	}
+	if node.Status == nodeStatusRemoved {
+		return nil, status.Error(codes.PermissionDenied, "node has been removed")
+	}
 
 	wireGuardIP := node.WireGuardIP
 	if wireGuardIP == "" {
@@ -362,7 +384,11 @@ func (s NodeService) GetNode(ctx context.Context, req *deployerv1.GetNodeRequest
 	if err != nil {
 		return nil, status.Error(codes.Internal, "get node")
 	}
-	return &deployerv1.GetNodeResponse{Node: protoNode(node)}, nil
+	nodeProto, err := s.nodeWithReadiness(ctx, node)
+	if err != nil {
+		return nil, err
+	}
+	return &deployerv1.GetNodeResponse{Node: nodeProto}, nil
 }
 
 func (s NodeService) HeartbeatNode(ctx context.Context, req *deployerv1.HeartbeatNodeRequest) (*deployerv1.HeartbeatNodeResponse, error) {
@@ -382,9 +408,19 @@ func (s NodeService) HeartbeatNode(ctx context.Context, req *deployerv1.Heartbea
 	if err != nil {
 		return nil, status.Error(codes.Internal, "get heartbeat node")
 	}
+	if previous.Status == nodeStatusRemoved {
+		return nil, status.Error(codes.PermissionDenied, "node has been removed")
+	}
+	if statusValue != nodeStatusOnline && statusValue != nodeStatusOffline {
+		return nil, status.Error(codes.InvalidArgument, "status must be online or offline")
+	}
+	effectiveStatus := statusValue
+	if previous.Status == nodeStatusDrained {
+		effectiveStatus = nodeStatusDrained
+	}
 	now := s.now().UTC()
 	if err := s.nodes.UpdateHeartbeat(ctx, caller.NodeID, domain.Node{
-		Status:   statusValue,
+		Status:   effectiveStatus,
 		Hostname: strings.TrimSpace(req.GetHostname()),
 		Arch:     strings.TrimSpace(req.GetArch()),
 		OS:       strings.TrimSpace(req.GetOs()),
@@ -395,8 +431,8 @@ func (s NodeService) HeartbeatNode(ctx context.Context, req *deployerv1.Heartbea
 		}
 		return nil, status.Error(codes.Internal, "update heartbeat")
 	}
-	if previous.Status != statusValue {
-		switch statusValue {
+	if previous.Status != effectiveStatus {
+		switch effectiveStatus {
 		case nodeStatusOnline:
 			recordEvent(ctx, s.events, domain.Event{
 				Type:         domain.EventTypeNodeOnline,
@@ -416,6 +452,147 @@ func (s NodeService) HeartbeatNode(ctx context.Context, req *deployerv1.Heartbea
 		}
 	}
 	return &deployerv1.HeartbeatNodeResponse{AcceptedAt: formatProtoTime(now)}, nil
+}
+
+func (s NodeService) DrainNode(ctx context.Context, req *deployerv1.DrainNodeRequest) (*deployerv1.DrainNodeResponse, error) {
+	if err := requireCaller(ctx, CallerAdmin); err != nil {
+		return nil, err
+	}
+	node, err := s.findNode(ctx, req.GetNodeRef())
+	if err != nil {
+		return nil, err
+	}
+	if node.Status == nodeStatusRemoved {
+		return nil, status.Error(codes.FailedPrecondition, "removed node cannot be drained")
+	}
+	if s.runtime != nil {
+		if err := s.runtime.CordonNode(ctx, node.Name); err != nil {
+			return nil, status.Error(codes.Internal, "cordon Kubernetes node")
+		}
+	}
+	if node.Status != nodeStatusDrained {
+		node.Status = nodeStatusDrained
+		node.UpdatedAt = s.now().UTC()
+		if err := s.nodes.UpdateStatus(ctx, node.ID, node.Status, node.UpdatedAt); err != nil {
+			return nil, status.Error(codes.Internal, "mark node drained")
+		}
+	}
+	nodeProto, err := s.nodeWithReadiness(ctx, node)
+	if err != nil {
+		return nil, err
+	}
+	return &deployerv1.DrainNodeResponse{Node: nodeProto}, nil
+}
+
+func (s NodeService) UncordonNode(ctx context.Context, req *deployerv1.UncordonNodeRequest) (*deployerv1.UncordonNodeResponse, error) {
+	if err := requireCaller(ctx, CallerAdmin); err != nil {
+		return nil, err
+	}
+	node, err := s.findNode(ctx, req.GetNodeRef())
+	if err != nil {
+		return nil, err
+	}
+	if node.Status == nodeStatusRemoved {
+		return nil, status.Error(codes.FailedPrecondition, "removed node cannot be uncordoned")
+	}
+	if s.runtime != nil {
+		if err := s.runtime.UncordonNode(ctx, node.Name); err != nil {
+			return nil, status.Error(codes.Internal, "uncordon Kubernetes node")
+		}
+	}
+	now := s.now().UTC()
+	nextStatus := nodeStatusOffline
+	if node.LastSeenAt != nil && now.Sub(*node.LastSeenAt) < s.offlineAfter {
+		nextStatus = nodeStatusOnline
+	}
+	if node.Status != nextStatus {
+		node.Status = nextStatus
+		node.UpdatedAt = now
+		if err := s.nodes.UpdateStatus(ctx, node.ID, node.Status, now); err != nil {
+			return nil, status.Error(codes.Internal, "mark node schedulable")
+		}
+	}
+	nodeProto, err := s.nodeWithReadiness(ctx, node)
+	if err != nil {
+		return nil, err
+	}
+	return &deployerv1.UncordonNodeResponse{Node: nodeProto}, nil
+}
+
+func (s NodeService) RemoveNode(ctx context.Context, req *deployerv1.RemoveNodeRequest) (*deployerv1.RemoveNodeResponse, error) {
+	if err := requireCaller(ctx, CallerAdmin); err != nil {
+		return nil, err
+	}
+	node, err := s.findNode(ctx, req.GetNodeRef())
+	if err != nil {
+		return nil, err
+	}
+	if node.Status != nodeStatusRemoved {
+		now := s.now().UTC()
+		if err := s.agentTokens.RevokeByNodeID(ctx, node.ID, now); err != nil {
+			return nil, status.Error(codes.Internal, "revoke node identity")
+		}
+		if err := s.nodes.SetWireGuard(ctx, node.ID, "", "", now); err != nil {
+			return nil, status.Error(codes.Internal, "disable WireGuard peer")
+		}
+		if err := s.nodes.UpdateStatus(ctx, node.ID, nodeStatusRemoved, now); err != nil {
+			return nil, status.Error(codes.Internal, "mark node removed")
+		}
+		node.Status = nodeStatusRemoved
+		node.WireGuardIP = ""
+		node.WireGuardPublicKey = ""
+		node.UpdatedAt = now
+		recordEvent(ctx, s.events, domain.Event{
+			Type:         domain.EventTypeNodeRemoved,
+			Severity:     domain.EventSeverityInfo,
+			Message:      fmt.Sprintf("node %s was removed", node.Name),
+			NodeID:       node.ID,
+			MetadataJSON: metadataJSON(map[string]any{"node_name": node.Name}),
+		})
+	}
+	if s.runtime != nil {
+		if err := s.runtime.RemoveNode(ctx, node.Name); err != nil {
+			return nil, status.Error(codes.Internal, "remove Kubernetes node")
+		}
+	}
+	nodeProto, err := s.nodeWithReadiness(ctx, node)
+	if err != nil {
+		return nil, err
+	}
+	return &deployerv1.RemoveNodeResponse{Node: nodeProto}, nil
+}
+
+func (s NodeService) findNode(ctx context.Context, ref string) (domain.Node, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return domain.Node{}, status.Error(codes.InvalidArgument, "node reference is required")
+	}
+	node, err := s.nodes.FindByName(ctx, ref)
+	if errors.Is(err, db.ErrNotFound) {
+		node, err = s.nodes.FindByID(ctx, ref)
+	}
+	if errors.Is(err, db.ErrNotFound) {
+		return domain.Node{}, status.Error(codes.NotFound, "node not found")
+	}
+	if err != nil {
+		return domain.Node{}, status.Error(codes.Internal, "get node")
+	}
+	return node, nil
+}
+
+func (s NodeService) nodeWithReadiness(ctx context.Context, node domain.Node) (*deployerv1.Node, error) {
+	nodeProto := protoNode(node)
+	if s.runtime == nil {
+		return nodeProto, nil
+	}
+	state, message, schedulable, err := s.runtime.NodeReadiness(ctx, node.Name)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "read Kubernetes node readiness")
+	}
+	nodeProto.KubernetesStatus = state
+	nodeProto.KubernetesMessage = message
+	nodeProto.Schedulable = schedulable && node.Status != nodeStatusDrained && node.Status != nodeStatusRemoved
+	return nodeProto, nil
 }
 
 func MarkOfflineNodes(ctx context.Context, nodes NodeRepository, events EventRecorder, now time.Time, offlineAfter time.Duration) error {
@@ -444,14 +621,14 @@ func MarkOfflineNodes(ctx context.Context, nodes NodeRepository, events EventRec
 	return nil
 }
 
-func RunNodeOfflineMonitor(ctx context.Context, nodes NodeRepository, events EventRecorder, logger *slog.Logger) {
+func RunNodeOfflineMonitor(ctx context.Context, nodes NodeRepository, events EventRecorder, logger *slog.Logger, offlineAfter time.Duration, interval time.Duration) {
 	check := func() {
-		if err := MarkOfflineNodes(ctx, nodes, events, time.Now().UTC(), defaultNodeOfflineAfter); err != nil && ctx.Err() == nil {
+		if err := MarkOfflineNodes(ctx, nodes, events, time.Now().UTC(), offlineAfter); err != nil && ctx.Err() == nil {
 			logger.WarnContext(ctx, "mark offline nodes", "error", err)
 		}
 	}
 	check()
-	ticker := time.NewTicker(defaultNodeMonitorInterval)
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -489,6 +666,7 @@ func protoNode(node domain.Node) *deployerv1.Node {
 		Kernel:             node.Kernel,
 		WireguardIp:        node.WireGuardIP,
 		WireguardPublicKey: node.WireGuardPublicKey,
+		Schedulable:        node.Status != nodeStatusDrained && node.Status != nodeStatusRemoved,
 	}
 }
 

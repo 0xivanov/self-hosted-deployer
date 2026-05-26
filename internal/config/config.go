@@ -31,6 +31,8 @@ type ServerConfig struct {
 	EventRetentionMaxAge   string
 	EventRetentionMaxCount string
 	EventCleanupInterval   string
+	NodeOfflineAfter       string
+	NodeMonitorInterval    string
 }
 
 func LoadServer() ServerConfig {
@@ -55,6 +57,8 @@ func LoadServer() ServerConfig {
 		EventRetentionMaxAge:   envOrDefault("DEPLOYER_EVENT_RETENTION_MAX_AGE", "720h"),
 		EventRetentionMaxCount: envOrDefault("DEPLOYER_EVENT_RETENTION_MAX_COUNT", "10000"),
 		EventCleanupInterval:   envOrDefault("DEPLOYER_EVENT_CLEANUP_INTERVAL", "1h"),
+		NodeOfflineAfter:       envOrDefault("DEPLOYER_NODE_OFFLINE_AFTER", "2m"),
+		NodeMonitorInterval:    envOrDefault("DEPLOYER_NODE_MONITOR_INTERVAL", "30s"),
 	}
 }
 
@@ -82,6 +86,9 @@ func (c ServerConfig) Validate() error {
 		errs = append(errs, err)
 	}
 	if _, err := c.EventRetention(); err != nil {
+		errs = append(errs, err)
+	}
+	if _, err := c.NodeMonitor(); err != nil {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
@@ -115,6 +122,31 @@ type EventRetentionConfig struct {
 	MaxAge          time.Duration
 	MaxCount        int
 	CleanupInterval time.Duration
+}
+
+type NodeMonitorConfig struct {
+	OfflineAfter time.Duration
+	Interval     time.Duration
+}
+
+func (c ServerConfig) NodeMonitor() (NodeMonitorConfig, error) {
+	offlineValue := c.NodeOfflineAfter
+	if offlineValue == "" {
+		offlineValue = "2m"
+	}
+	intervalValue := c.NodeMonitorInterval
+	if intervalValue == "" {
+		intervalValue = "30s"
+	}
+	offlineAfter, err := time.ParseDuration(offlineValue)
+	if err != nil || offlineAfter <= 0 {
+		return NodeMonitorConfig{}, errors.New("DEPLOYER_NODE_OFFLINE_AFTER must be a positive duration")
+	}
+	interval, err := time.ParseDuration(intervalValue)
+	if err != nil || interval <= 0 {
+		return NodeMonitorConfig{}, errors.New("DEPLOYER_NODE_MONITOR_INTERVAL must be a positive duration")
+	}
+	return NodeMonitorConfig{OfflineAfter: offlineAfter, Interval: interval}, nil
 }
 
 func (c ServerConfig) EventRetention() (EventRetentionConfig, error) {

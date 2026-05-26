@@ -61,6 +61,7 @@ func serve() int {
 	}
 	runtime := server.Runtime{
 		Apps:            ingressController,
+		Nodes:           ingressController,
 		SecretCipher:    secretCipher,
 		RouteTLSEnabled: ingressController.TLSEnabled(),
 	}

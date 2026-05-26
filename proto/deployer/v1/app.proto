@@ -99,6 +99,11 @@ message GetAppStatusResponse {
   App app = 1;
   Deployment latest_deployment = 2;
   repeated Route routes = 3;
+  string runtime_status = 4;
+  int32 desired_replicas = 5;
+  int32 available_replicas = 6;
+  repeated string running_nodes = 7;
+  repeated string warnings = 8;
 }
 
 message GetDeploymentLogsRequest {

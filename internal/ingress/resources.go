@@ -3,6 +3,7 @@ package ingress
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
@@ -160,6 +161,9 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 	cfg.Normalize()
 	labels := appLabels(cfg.Name)
 	replicas := int32(cfg.Deploy.Replicas)
+	if cfg.Resilience.Mode == appconfig.ResilienceResilient && replicas < 2 {
+		replicas = 2
+	}
 	port := int32(cfg.Service.Port)
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
@@ -193,13 +197,38 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 	if arch := placementArchitecture(cfg.Placement.Arch); arch != "" {
 		deployment.Spec.Template.Spec.NodeSelector = map[string]string{"kubernetes.io/arch": arch}
 	}
-	if cfg.Placement.Spread {
+	if cfg.Resilience.Mode == appconfig.ResiliencePinned {
+		if len(cfg.Placement.Prefer) != 1 {
+			return nil, fmt.Errorf("pinned resilience requires exactly one preferred node selector")
+		}
+		if deployment.Spec.Template.Spec.NodeSelector == nil {
+			deployment.Spec.Template.Spec.NodeSelector = map[string]string{}
+		}
+		for key, value := range cfg.Placement.Prefer[0] {
+			deployment.Spec.Template.Spec.NodeSelector[key] = value
+		}
+	}
+	if cfg.Placement.Spread || cfg.Resilience.Mode == appconfig.ResilienceResilient {
+		whenUnsatisfiable := corev1.ScheduleAnyway
+		if cfg.Resilience.Mode == appconfig.ResilienceResilient {
+			whenUnsatisfiable = corev1.DoNotSchedule
+		}
 		deployment.Spec.Template.Spec.TopologySpreadConstraints = []corev1.TopologySpreadConstraint{{
 			MaxSkew:           1,
 			TopologyKey:       "kubernetes.io/hostname",
-			WhenUnsatisfiable: corev1.ScheduleAnyway,
+			WhenUnsatisfiable: whenUnsatisfiable,
 			LabelSelector:     &metav1.LabelSelector{MatchLabels: labels},
 		}}
+	}
+	if cfg.Resilience.Mode == appconfig.ResilienceFallback {
+		deployment.Spec.Template.Spec.Affinity = &corev1.Affinity{
+			NodeAffinity: &corev1.NodeAffinity{
+				PreferredDuringSchedulingIgnoredDuringExecution: append(
+					preferredSchedulingTerms(cfg.Placement.Prefer, 100),
+					preferredSchedulingTerms(cfg.Placement.Fallback, 50)...,
+				),
+			},
+		}
 	}
 	if len(cfg.Secrets) > 0 {
 		if strings.TrimSpace(secretRevision) == "" {
@@ -217,6 +246,32 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 		}
 	}
 	return deployment, nil
+}
+
+func preferredSchedulingTerms(selectors []map[string]string, weight int32) []corev1.PreferredSchedulingTerm {
+	terms := make([]corev1.PreferredSchedulingTerm, 0, len(selectors))
+	for _, selector := range selectors {
+		keys := make([]string, 0, len(selector))
+		for key := range selector {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		requirements := make([]corev1.NodeSelectorRequirement, 0, len(keys))
+		for _, key := range keys {
+			requirements = append(requirements, corev1.NodeSelectorRequirement{
+				Key:      key,
+				Operator: corev1.NodeSelectorOpIn,
+				Values:   []string{selector[key]},
+			})
+		}
+		if len(requirements) > 0 {
+			terms = append(terms, corev1.PreferredSchedulingTerm{
+				Weight:     weight,
+				Preference: corev1.NodeSelectorTerm{MatchExpressions: requirements},
+			})
+		}
+	}
+	return terms
 }
 
 func secretForApp(cfg appconfig.Config, namespace string, secretValues map[string]string) (*corev1.Secret, error) {

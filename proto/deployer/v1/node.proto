@@ -10,6 +10,9 @@ service NodeService {
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
   rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
   rpc HeartbeatNode(HeartbeatNodeRequest) returns (HeartbeatNodeResponse);
+  rpc DrainNode(DrainNodeRequest) returns (DrainNodeResponse);
+  rpc UncordonNode(UncordonNodeRequest) returns (UncordonNodeResponse);
+  rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse);
 }
 
 message Node {
@@ -26,6 +29,9 @@ message Node {
   string kernel = 11;
   string wireguard_ip = 12;
   string wireguard_public_key = 13;
+  string kubernetes_status = 14;
+  string kubernetes_message = 15;
+  bool schedulable = 16;
 }
 
 message CreateJoinTokenRequest {
@@ -83,4 +89,28 @@ message HeartbeatNodeRequest {
 
 message HeartbeatNodeResponse {
   string accepted_at = 1;
+}
+
+message DrainNodeRequest {
+  string node_ref = 1;
+}
+
+message DrainNodeResponse {
+  Node node = 1;
+}
+
+message UncordonNodeRequest {
+  string node_ref = 1;
+}
+
+message UncordonNodeResponse {
+  Node node = 1;
+}
+
+message RemoveNodeRequest {
+  string node_ref = 1;
+}
+
+message RemoveNodeResponse {
+  Node node = 1;
 }

@@ -53,6 +53,9 @@ type NodeInfo struct {
 	Kernel             string            `json:"kernel,omitempty"`
 	WireGuardIP        string            `json:"wireguard_ip,omitempty"`
 	WireGuardPublicKey string            `json:"wireguard_public_key,omitempty"`
+	KubernetesStatus   string            `json:"kubernetes_status,omitempty"`
+	KubernetesMessage  string            `json:"kubernetes_message,omitempty"`
+	Schedulable        bool              `json:"schedulable"`
 }
 
 type JoinTokenResult struct {
@@ -138,6 +141,17 @@ type AppInspectResult struct {
 	App         AppInfo          `json:"app"`
 	Deployments []DeploymentInfo `json:"deployments"`
 	Routes      []RouteInfo      `json:"routes"`
+}
+
+type AppStatusResult struct {
+	App               AppInfo        `json:"app"`
+	LatestDeployment  DeploymentInfo `json:"latest_deployment"`
+	Routes            []RouteInfo    `json:"routes"`
+	RuntimeStatus     string         `json:"runtime_status"`
+	DesiredReplicas   int            `json:"desired_replicas"`
+	AvailableReplicas int            `json:"available_replicas"`
+	RunningNodes      []string       `json:"running_nodes"`
+	Warnings          []string       `json:"warnings"`
 }
 
 func NewPlatformClient(serverURL string, token string) (*PlatformClient, *grpc.ClientConn, error) {
@@ -244,6 +258,39 @@ func (c *PlatformClient) GetNode(ctx context.Context, ref string) (NodeInfo, err
 	return nodeInfo(response.GetNode()), nil
 }
 
+func (c *PlatformClient) DrainNode(ctx context.Context, ref string) (NodeInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	response, err := c.nodeClient.DrainNode(ctx, &deployerv1.DrainNodeRequest{NodeRef: ref})
+	if err != nil {
+		return NodeInfo{}, DecodeRPCError(err)
+	}
+	return nodeInfo(response.GetNode()), nil
+}
+
+func (c *PlatformClient) UncordonNode(ctx context.Context, ref string) (NodeInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	response, err := c.nodeClient.UncordonNode(ctx, &deployerv1.UncordonNodeRequest{NodeRef: ref})
+	if err != nil {
+		return NodeInfo{}, DecodeRPCError(err)
+	}
+	return nodeInfo(response.GetNode()), nil
+}
+
+func (c *PlatformClient) RemoveNode(ctx context.Context, ref string) (NodeInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	response, err := c.nodeClient.RemoveNode(ctx, &deployerv1.RemoveNodeRequest{NodeRef: ref})
+	if err != nil {
+		return NodeInfo{}, DecodeRPCError(err)
+	}
+	return nodeInfo(response.GetNode()), nil
+}
+
 func (c *PlatformClient) JoinNode(ctx context.Context, joinToken string, hostname string, arch string, publicKey string) (JoinResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
@@ -339,6 +386,33 @@ func (c *PlatformClient) InspectApp(ctx context.Context, name string) (AppInspec
 	}
 	for _, deployment := range response.GetDeployments() {
 		result.Deployments = append(result.Deployments, deploymentInfo(deployment))
+	}
+	for _, route := range response.GetRoutes() {
+		result.Routes = append(result.Routes, routeInfo(route))
+	}
+	return result, nil
+}
+
+func (c *PlatformClient) GetAppStatus(ctx context.Context, name string) (AppStatusResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	response, err := c.appClient.GetAppStatus(ctx, &deployerv1.GetAppStatusRequest{Name: name})
+	if err != nil {
+		return AppStatusResult{}, DecodeRPCError(err)
+	}
+	app, err := appInfo(response.GetApp())
+	if err != nil {
+		return AppStatusResult{}, err
+	}
+	result := AppStatusResult{
+		App:               app,
+		LatestDeployment:  deploymentInfo(response.GetLatestDeployment()),
+		RuntimeStatus:     response.GetRuntimeStatus(),
+		DesiredReplicas:   int(response.GetDesiredReplicas()),
+		AvailableReplicas: int(response.GetAvailableReplicas()),
+		RunningNodes:      append([]string(nil), response.GetRunningNodes()...),
+		Warnings:          append([]string(nil), response.GetWarnings()...),
 	}
 	for _, route := range response.GetRoutes() {
 		result.Routes = append(result.Routes, routeInfo(route))
@@ -487,6 +561,9 @@ func nodeInfo(node *deployerv1.Node) NodeInfo {
 		Kernel:             node.GetKernel(),
 		WireGuardIP:        node.GetWireguardIp(),
 		WireGuardPublicKey: node.GetWireguardPublicKey(),
+		KubernetesStatus:   node.GetKubernetesStatus(),
+		KubernetesMessage:  node.GetKubernetesMessage(),
+		Schedulable:        node.GetSchedulable(),
 	}
 }
 

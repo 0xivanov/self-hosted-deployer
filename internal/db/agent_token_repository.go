@@ -49,3 +49,8 @@ func (r *AgentTokenRepository) FindByHash(ctx context.Context, tokenHash string)
 func (r *AgentTokenRepository) MarkUsed(ctx context.Context, tokenHash string, usedAt time.Time) error {
 	return mapRowsAffected(r.db.conn.ExecContext(ctx, `UPDATE agent_tokens SET last_used_at = ? WHERE token_hash = ?`, formatTime(usedAt), tokenHash))
 }
+
+func (r *AgentTokenRepository) RevokeByNodeID(ctx context.Context, nodeID string, revokedAt time.Time) error {
+	_, err := r.db.conn.ExecContext(ctx, `UPDATE agent_tokens SET revoked_at = ? WHERE node_id = ? AND revoked_at IS NULL`, formatTime(revokedAt), nodeID)
+	return err
+}

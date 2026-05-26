@@ -33,6 +33,7 @@ type Repositories struct {
 type Runtime struct {
 	Apps            AppRuntime
 	Ingress         IngressRuntime
+	Nodes           NodeRuntime
 	SecretCipher    SecretCipher
 	RouteTLSEnabled bool
 }
@@ -41,6 +42,10 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	retention, err := cfg.EventRetention()
 	if err != nil {
 		return fmt.Errorf("configure event retention: %w", err)
+	}
+	nodeMonitor, err := cfg.NodeMonitor()
+	if err != nil {
+		return fmt.Errorf("configure node monitor: %w", err)
 	}
 	grpcListener, err := net.Listen("tcp", cfg.GRPCListenAddress)
 	if err != nil {
@@ -91,6 +96,8 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		AgentTokens:  repos.AgentTokens,
 		TokenHashKey: cfg.TokenHashKey,
 		Events:       eventRecorder,
+		Runtime:      runtime.Nodes,
+		OfflineAfter: nodeMonitor.OfflineAfter,
 	}))
 	appRuntime := runtime.Apps
 	if appRuntime == nil {
@@ -137,7 +144,7 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 
 	errs := make(chan error, 2)
 	go RunEventRetention(ctx, repos.Events, retention, logger)
-	go RunNodeOfflineMonitor(ctx, repos.Nodes, eventRecorder, logger)
+	go RunNodeOfflineMonitor(ctx, repos.Nodes, eventRecorder, logger, nodeMonitor.OfflineAfter, nodeMonitor.Interval)
 	go func() {
 		logger.Info("grpc server listening", "address", grpcListener.Addr().String())
 		if err := grpcServer.Serve(grpcListener); err != nil {

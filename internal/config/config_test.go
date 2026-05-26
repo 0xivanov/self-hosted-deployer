@@ -137,6 +137,26 @@ func TestServerConfigEventRetention(t *testing.T) {
 	}
 }
 
+func TestServerConfigNodeMonitor(t *testing.T) {
+	got, err := (ServerConfig{}).NodeMonitor()
+	if err != nil {
+		t.Fatalf("default node monitor: %v", err)
+	}
+	if got.OfflineAfter != 2*time.Minute || got.Interval != 30*time.Second {
+		t.Fatalf("unexpected node monitor defaults: %#v", got)
+	}
+	got, err = (ServerConfig{NodeOfflineAfter: "45s", NodeMonitorInterval: "5s"}).NodeMonitor()
+	if err != nil {
+		t.Fatalf("custom node monitor: %v", err)
+	}
+	if got.OfflineAfter != 45*time.Second || got.Interval != 5*time.Second {
+		t.Fatalf("unexpected custom node monitor: %#v", got)
+	}
+	if _, err := (ServerConfig{NodeOfflineAfter: "never"}).NodeMonitor(); err == nil {
+		t.Fatal("expected invalid offline threshold to fail")
+	}
+}
+
 func TestAgentConfigValidate(t *testing.T) {
 	cfg := AgentConfig{
 		ServerURL:               "https://deploy.example.com",

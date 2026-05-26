@@ -104,6 +104,13 @@ func TestHubPeerConfigIsDeterministic(t *testing.T) {
 			Name:        "pi-pending",
 			WireGuardIP: "10.8.0.4",
 		},
+		{
+			ID:                 "node-removed",
+			Name:               "pi-removed",
+			Status:             "removed",
+			WireGuardIP:        "10.8.0.5",
+			WireGuardPublicKey: validPublicKey,
+		},
 	})
 	if err != nil {
 		t.Fatalf("render hub peer config: %v", err)

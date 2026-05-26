@@ -822,12 +822,17 @@ func (x *GetAppStatusRequest) GetName() string {
 }
 
 type GetAppStatusResponse struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	App              *App                   `protobuf:"bytes,1,opt,name=app,proto3" json:"app,omitempty"`
-	LatestDeployment *Deployment            `protobuf:"bytes,2,opt,name=latest_deployment,json=latestDeployment,proto3" json:"latest_deployment,omitempty"`
-	Routes           []*Route               `protobuf:"bytes,3,rep,name=routes,proto3" json:"routes,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	App               *App                   `protobuf:"bytes,1,opt,name=app,proto3" json:"app,omitempty"`
+	LatestDeployment  *Deployment            `protobuf:"bytes,2,opt,name=latest_deployment,json=latestDeployment,proto3" json:"latest_deployment,omitempty"`
+	Routes            []*Route               `protobuf:"bytes,3,rep,name=routes,proto3" json:"routes,omitempty"`
+	RuntimeStatus     string                 `protobuf:"bytes,4,opt,name=runtime_status,json=runtimeStatus,proto3" json:"runtime_status,omitempty"`
+	DesiredReplicas   int32                  `protobuf:"varint,5,opt,name=desired_replicas,json=desiredReplicas,proto3" json:"desired_replicas,omitempty"`
+	AvailableReplicas int32                  `protobuf:"varint,6,opt,name=available_replicas,json=availableReplicas,proto3" json:"available_replicas,omitempty"`
+	RunningNodes      []string               `protobuf:"bytes,7,rep,name=running_nodes,json=runningNodes,proto3" json:"running_nodes,omitempty"`
+	Warnings          []string               `protobuf:"bytes,8,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GetAppStatusResponse) Reset() {
@@ -877,6 +882,41 @@ func (x *GetAppStatusResponse) GetLatestDeployment() *Deployment {
 func (x *GetAppStatusResponse) GetRoutes() []*Route {
 	if x != nil {
 		return x.Routes
+	}
+	return nil
+}
+
+func (x *GetAppStatusResponse) GetRuntimeStatus() string {
+	if x != nil {
+		return x.RuntimeStatus
+	}
+	return ""
+}
+
+func (x *GetAppStatusResponse) GetDesiredReplicas() int32 {
+	if x != nil {
+		return x.DesiredReplicas
+	}
+	return 0
+}
+
+func (x *GetAppStatusResponse) GetAvailableReplicas() int32 {
+	if x != nil {
+		return x.AvailableReplicas
+	}
+	return 0
+}
+
+func (x *GetAppStatusResponse) GetRunningNodes() []string {
+	if x != nil {
+		return x.RunningNodes
+	}
+	return nil
+}
+
+func (x *GetAppStatusResponse) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
 	}
 	return nil
 }
@@ -1218,11 +1258,16 @@ const file_deployer_v1_app_proto_rawDesc = "" +
 	"\vdeployments\x18\x02 \x03(\v2\x17.deployer.v1.DeploymentR\vdeployments\x12*\n" +
 	"\x06routes\x18\x03 \x03(\v2\x12.deployer.v1.RouteR\x06routes\")\n" +
 	"\x13GetAppStatusRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xac\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xee\x02\n" +
 	"\x14GetAppStatusResponse\x12\"\n" +
 	"\x03app\x18\x01 \x01(\v2\x10.deployer.v1.AppR\x03app\x12D\n" +
 	"\x11latest_deployment\x18\x02 \x01(\v2\x17.deployer.v1.DeploymentR\x10latestDeployment\x12*\n" +
-	"\x06routes\x18\x03 \x03(\v2\x12.deployer.v1.RouteR\x06routes\"y\n" +
+	"\x06routes\x18\x03 \x03(\v2\x12.deployer.v1.RouteR\x06routes\x12%\n" +
+	"\x0eruntime_status\x18\x04 \x01(\tR\rruntimeStatus\x12)\n" +
+	"\x10desired_replicas\x18\x05 \x01(\x05R\x0fdesiredReplicas\x12-\n" +
+	"\x12available_replicas\x18\x06 \x01(\x05R\x11availableReplicas\x12#\n" +
+	"\rrunning_nodes\x18\a \x03(\tR\frunningNodes\x12\x1a\n" +
+	"\bwarnings\x18\b \x03(\tR\bwarnings\"y\n" +
 	"\x18GetDeploymentLogsRequest\x12\x19\n" +
 	"\bapp_name\x18\x01 \x01(\tR\aappName\x12#\n" +
 	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentId\x12\x1d\n" +

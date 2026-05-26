@@ -1,17 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"strings"
 
 	clicore "github.com/0xivanov/self-hosted-deployer/internal/cli"
 )
 
 func (a cliApp) nodes(args []string, opts cliOptions) int {
 	if len(args) == 0 {
-		fmt.Fprintln(a.stderr, "usage: deployer nodes <add|list|inspect>")
+		fmt.Fprintln(a.stderr, "usage: deployer nodes <add|list|inspect|drain|uncordon|remove>")
 		return 2
 	}
 	resolved, err := resolveRuntimeOptions(opts)
@@ -34,9 +36,15 @@ func (a cliApp) nodes(args []string, opts cliOptions) int {
 		return a.nodesList(args[1:], resolved, client)
 	case "inspect":
 		return a.nodesInspect(args[1:], resolved, client)
+	case "drain":
+		return a.nodesDrain(args[1:], resolved, client)
+	case "uncordon":
+		return a.nodesUncordon(args[1:], resolved, client)
+	case "remove":
+		return a.nodesRemove(args[1:], resolved, client)
 	default:
 		fmt.Fprintf(a.stderr, "unknown nodes command %q\n", args[0])
-		fmt.Fprintln(a.stderr, "usage: deployer nodes <add|list|inspect>")
+		fmt.Fprintln(a.stderr, "usage: deployer nodes <add|list|inspect|drain|uncordon|remove>")
 		return 2
 	}
 }
@@ -137,6 +145,9 @@ func (a cliApp) nodesInspect(args []string, opts runtimeOptions, client platform
 		clicore.Field{Name: "ID", Value: node.ID},
 		clicore.Field{Name: "Name", Value: node.Name},
 		clicore.Field{Name: "Status", Value: node.Status},
+		clicore.Field{Name: "Kubernetes readiness", Value: valueOrDash(node.KubernetesStatus)},
+		clicore.Field{Name: "Kubernetes message", Value: valueOrDash(node.KubernetesMessage)},
+		clicore.Field{Name: "Schedulable", Value: fmt.Sprintf("%t", node.Schedulable)},
 		clicore.Field{Name: "Hostname", Value: valueOrDash(node.Hostname)},
 		clicore.Field{Name: "Arch", Value: valueOrDash(node.Arch)},
 		clicore.Field{Name: "WireGuard IP", Value: valueOrDash(node.WireGuardIP)},
@@ -146,5 +157,77 @@ func (a cliApp) nodesInspect(args []string, opts runtimeOptions, client platform
 		clicore.Field{Name: "Last seen", Value: valueOrDash(node.LastSeenAt)},
 		clicore.Field{Name: "Labels", Value: renderLabels(node.Labels)},
 	)
+	return 0
+}
+
+func (a cliApp) nodesDrain(args []string, opts runtimeOptions, client platformClient) int {
+	if len(args) != 1 {
+		fmt.Fprintln(a.stderr, "usage: deployer nodes drain <name-or-id>")
+		return 2
+	}
+	node, err := client.DrainNode(context.Background(), args[0])
+	if err != nil {
+		fmt.Fprintln(a.stderr, err)
+		return 1
+	}
+	return a.renderNodeMutation(opts, node, "drained")
+}
+
+func (a cliApp) nodesUncordon(args []string, opts runtimeOptions, client platformClient) int {
+	if len(args) != 1 {
+		fmt.Fprintln(a.stderr, "usage: deployer nodes uncordon <name-or-id>")
+		return 2
+	}
+	node, err := client.UncordonNode(context.Background(), args[0])
+	if err != nil {
+		fmt.Fprintln(a.stderr, err)
+		return 1
+	}
+	return a.renderNodeMutation(opts, node, "uncordoned")
+}
+
+func (a cliApp) nodesRemove(args []string, opts runtimeOptions, client platformClient) int {
+	flags := flag.NewFlagSet("nodes remove", flag.ContinueOnError)
+	flags.SetOutput(a.stderr)
+	var yes bool
+	flags.BoolVar(&yes, "yes", false, "remove without confirmation")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 1 {
+		fmt.Fprintln(a.stderr, "usage: deployer nodes remove [--yes] <name-or-id>")
+		return 2
+	}
+	ref := flags.Arg(0)
+	if !yes {
+		fmt.Fprintf(a.stderr, "Remove node %s and revoke its identity? [y/N]: ", ref)
+		answer, err := bufio.NewReader(a.stdin).ReadString('\n')
+		if err != nil {
+			fmt.Fprintln(a.stderr)
+			fmt.Fprintln(a.stderr, "node removal cancelled")
+			return 1
+		}
+		if !strings.EqualFold(strings.TrimSpace(answer), "y") && !strings.EqualFold(strings.TrimSpace(answer), "yes") {
+			fmt.Fprintln(a.stderr, "Node removal cancelled.")
+			return 0
+		}
+	}
+	node, err := client.RemoveNode(context.Background(), ref)
+	if err != nil {
+		fmt.Fprintln(a.stderr, err)
+		return 1
+	}
+	return a.renderNodeMutation(opts, node, "removed")
+}
+
+func (a cliApp) renderNodeMutation(opts runtimeOptions, node clicore.NodeInfo, action string) int {
+	if opts.output == clicore.OutputJSON {
+		if err := clicore.RenderJSON(a.stdout, node); err != nil {
+			fmt.Fprintf(a.stderr, "render node: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	fmt.Fprintf(a.stdout, "Node %s %s (status: %s).\n", node.Name, action, node.Status)
 	return 0
 }

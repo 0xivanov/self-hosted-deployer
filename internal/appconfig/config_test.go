@@ -55,6 +55,9 @@ placement:
 	if cfg.State.Mode != DefaultStateMode {
 		t.Fatalf("expected default state mode, got %q", cfg.State.Mode)
 	}
+	if cfg.Resilience.Mode != DefaultResilienceMode {
+		t.Fatalf("expected default resilience mode, got %q", cfg.Resilience.Mode)
+	}
 }
 
 func TestParseAllowsAppWithoutRoutingDomain(t *testing.T) {
@@ -127,6 +130,16 @@ func TestValidateIdentifiesExactFields(t *testing.T) {
 			want: "state.mode must be one of stateless, stateful, cache",
 		},
 		{
+			name: "bad resilience mode",
+			body: validYAML + "\nresilience:\n  mode: impossible\n",
+			want: "resilience.mode must be one of basic, resilient, fallback, pinned",
+		},
+		{
+			name: "unsafe stateful failover",
+			body: strings.Replace(validYAML, "mode: stateless", "mode: stateful", 1) + "\nresilience:\n  mode: resilient\n",
+			want: "allowUnsafeStatefulFailover",
+		},
+		{
 			name: "bad secret environment name",
 			body: strings.Replace(validYAML, "DATABASE_URL", "database-url", 1),
 			want: "must be a valid environment variable name",
@@ -145,5 +158,20 @@ func TestValidateIdentifiesExactFields(t *testing.T) {
 				t.Fatalf("expected %q, got %v", tt.want, err)
 			}
 		})
+	}
+}
+
+func TestParseAllowsExplicitStatefulFailoverOverride(t *testing.T) {
+	body := strings.Replace(validYAML, "mode: stateless", "mode: stateful", 1) + `
+resilience:
+  mode: fallback
+  allowUnsafeStatefulFailover: true
+`
+	cfg, err := Parse([]byte(body))
+	if err != nil {
+		t.Fatalf("parse explicitly allowed failover: %v", err)
+	}
+	if cfg.Resilience.Mode != ResilienceFallback || !cfg.Resilience.AllowUnsafeStatefulFailover {
+		t.Fatalf("unexpected resilience config: %#v", cfg.Resilience)
 	}
 }

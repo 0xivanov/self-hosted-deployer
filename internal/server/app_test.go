@@ -109,6 +109,35 @@ func TestAppServiceDeployUpdateListInspectAndDelete(t *testing.T) {
 	}
 }
 
+func TestAppServiceStatusReportsResilienceWarnings(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	runtime := &recordingAppRuntime{
+		status:            "degraded",
+		desiredReplicas:   2,
+		availableReplicas: 1,
+		runningNodes:      []string{"pi-kitchen"},
+	}
+	service := NewAppService(AppServiceConfig{
+		Apps:        db.NewAppRepository(database),
+		Deployments: db.NewDeploymentRepository(database),
+		Routes:      db.NewRouteRepository(database),
+		Runtime:     runtime,
+	})
+	yaml := testAppYAML("ivan/my-api:1.0.0", 1) + "resilience:\n  mode: resilient\n"
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: yaml}); err != nil {
+		t.Fatalf("deploy resilient app: %v", err)
+	}
+	got, err := service.GetAppStatus(ctx, &deployerv1.GetAppStatusRequest{Name: "my-api"})
+	if err != nil {
+		t.Fatalf("get app status: %v", err)
+	}
+	if got.GetRuntimeStatus() != "degraded" || got.GetDesiredReplicas() != 2 || got.GetAvailableReplicas() != 1 ||
+		len(got.GetRunningNodes()) != 1 || len(got.GetWarnings()) != 2 {
+		t.Fatalf("unexpected resilience status: %#v", got)
+	}
+}
+
 func TestAppServiceRequiresAdminCaller(t *testing.T) {
 	service := NewAppService(AppServiceConfig{})
 	_, err := service.ListApps(context.Background(), &deployerv1.ListAppsRequest{})
@@ -445,6 +474,7 @@ type recordingAppRuntime struct {
 	status            string
 	desiredReplicas   int32
 	availableReplicas int32
+	runningNodes      []string
 	err               error
 }
 
@@ -466,6 +496,10 @@ func (r *recordingAppRuntime) Status(context.Context, string) (string, error) {
 
 func (r *recordingAppRuntime) StatusDetails(context.Context, string) (string, int32, int32, error) {
 	return r.status, r.desiredReplicas, r.availableReplicas, r.err
+}
+
+func (r *recordingAppRuntime) RuntimeStatus(context.Context, string) (string, int32, int32, []string, error) {
+	return r.status, r.desiredReplicas, r.availableReplicas, append([]string(nil), r.runningNodes...), r.err
 }
 
 type failingRouteRepository struct {

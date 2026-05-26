@@ -56,6 +56,10 @@ type DetailedAppRuntime interface {
 	StatusDetails(ctx context.Context, appName string) (state string, desiredReplicas int32, availableReplicas int32, err error)
 }
 
+type ReportingAppRuntime interface {
+	RuntimeStatus(ctx context.Context, appName string) (state string, desiredReplicas int32, availableReplicas int32, runningNodes []string, err error)
+}
+
 type IngressRuntime = AppRuntime
 
 type AppServiceConfig struct {
@@ -314,7 +318,37 @@ func (s AppService) GetAppStatus(ctx context.Context, req *deployerv1.GetAppStat
 	for _, route := range routes {
 		response.Routes = append(response.Routes, protoRoute(route))
 	}
+	response.DesiredReplicas = appProto.GetReplicas()
+	if runtime, ok := s.runtime.(ReportingAppRuntime); ok {
+		runtimeStatus, desired, available, nodes, err := runtime.RuntimeStatus(ctx, app.Name)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "read app runtime status")
+		}
+		response.RuntimeStatus = runtimeStatus
+		response.DesiredReplicas = desired
+		response.AvailableReplicas = available
+		response.RunningNodes = nodes
+		cfg, err := appconfig.FromJSON(app.DesiredStateJSON)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "decode desired state")
+		}
+		response.Warnings = runtimeWarnings(cfg, runtimeStatus, desired, available, nodes)
+	}
 	return response, nil
+}
+
+func runtimeWarnings(cfg appconfig.Config, state string, desired int32, available int32, runningNodes []string) []string {
+	warnings := []string{}
+	if desired > available {
+		warnings = append(warnings, fmt.Sprintf("only %d of %d desired replicas are available", available, desired))
+	}
+	if cfg.Resilience.Mode == appconfig.ResilienceResilient && desired >= 2 && len(runningNodes) < 2 {
+		warnings = append(warnings, "resilient replicas are not spread across two nodes")
+	}
+	if cfg.Resilience.Mode == appconfig.ResilienceFallback && state != "healthy" {
+		warnings = append(warnings, "fallback capacity is not currently satisfying desired availability")
+	}
+	return warnings
 }
 
 func (s AppService) ListRoutes(ctx context.Context, _ *deployerv1.ListRoutesRequest) (*deployerv1.ListRoutesResponse, error) {

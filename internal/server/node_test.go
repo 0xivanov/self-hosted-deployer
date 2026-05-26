@@ -339,6 +339,84 @@ func TestNodeServiceDoesNotConsumeJoinTokenWhenAgentTokenStoreFails(t *testing.T
 	}
 }
 
+func TestNodeServiceDrainUncordonAndRemoveLifecycle(t *testing.T) {
+	ctx := context.Background()
+	adminCtx := WithCaller(ctx, Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	agentTokens := db.NewAgentTokenRepository(database)
+	events := &recordingEventRecorder{}
+	runtime := &recordingNodeRuntime{readiness: "ready", schedulable: true}
+	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
+	if err := nodes.Create(ctx, domain.Node{
+		ID:                 "node-live",
+		Name:               "pi-kitchen",
+		Status:             nodeStatusOnline,
+		LabelsJSON:         "{}",
+		WireGuardIP:        "10.8.0.2",
+		WireGuardPublicKey: validWireGuardPublicKey,
+		LastSeenAt:         &now,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+	if err := agentTokens.Create(ctx, domain.AgentToken{TokenHash: "agent-hash", NodeID: "node-live", CreatedAt: now}); err != nil {
+		t.Fatalf("create agent token: %v", err)
+	}
+	service := NewNodeService(NodeServiceConfig{
+		Nodes:        nodes,
+		AgentTokens:  agentTokens,
+		Runtime:      runtime,
+		Events:       events,
+		OfflineAfter: 2 * time.Minute,
+	})
+	service.now = func() time.Time { return now.Add(time.Minute) }
+
+	drained, err := service.DrainNode(adminCtx, &deployerv1.DrainNodeRequest{NodeRef: "pi-kitchen"})
+	if err != nil || drained.GetNode().GetStatus() != nodeStatusDrained || runtime.cordons != 1 {
+		t.Fatalf("unexpected drain response=%#v runtime=%#v err=%v", drained, runtime, err)
+	}
+	if _, err := service.HeartbeatNode(WithCaller(ctx, Caller{Kind: CallerAgent, NodeID: "node-live"}), &deployerv1.HeartbeatNodeRequest{Status: nodeStatusOnline}); err != nil {
+		t.Fatalf("heartbeat drained node: %v", err)
+	}
+	stored, _ := nodes.FindByID(ctx, "node-live")
+	if stored.Status != nodeStatusDrained {
+		t.Fatalf("heartbeat must retain drained state: %#v", stored)
+	}
+	uncordoned, err := service.UncordonNode(adminCtx, &deployerv1.UncordonNodeRequest{NodeRef: "pi-kitchen"})
+	if err != nil || uncordoned.GetNode().GetStatus() != nodeStatusOnline || runtime.uncordons != 1 {
+		t.Fatalf("unexpected uncordon response=%#v runtime=%#v err=%v", uncordoned, runtime, err)
+	}
+	removed, err := service.RemoveNode(adminCtx, &deployerv1.RemoveNodeRequest{NodeRef: "pi-kitchen"})
+	if err != nil || removed.GetNode().GetStatus() != nodeStatusRemoved || runtime.removals != 1 {
+		t.Fatalf("unexpected remove response=%#v runtime=%#v err=%v", removed, runtime, err)
+	}
+	stored, _ = nodes.FindByID(ctx, "node-live")
+	if stored.WireGuardIP != "" || stored.WireGuardPublicKey != "" {
+		t.Fatalf("removed node retained WireGuard metadata: %#v", stored)
+	}
+	token, err := agentTokens.FindByHash(ctx, "agent-hash")
+	if err != nil || token.RevokedAt == nil {
+		t.Fatalf("removed node token not revoked: %#v err=%v", token, err)
+	}
+	if _, err := service.HeartbeatNode(WithCaller(ctx, Caller{Kind: CallerAgent, NodeID: "node-live"}), &deployerv1.HeartbeatNodeRequest{}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("removed node heartbeat should fail, got %v", err)
+	}
+	if _, err := service.RemoveNode(adminCtx, &deployerv1.RemoveNodeRequest{NodeRef: "pi-kitchen"}); err != nil {
+		t.Fatalf("repeat removal should be idempotent: %v", err)
+	}
+	removedEvents := 0
+	for _, event := range events.events {
+		if event.Type == domain.EventTypeNodeRemoved {
+			removedEvents++
+		}
+	}
+	if removedEvents != 1 {
+		t.Fatalf("expected one removal event, got %#v", events.events)
+	}
+}
+
 const validWireGuardPublicKey = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
 
 type failingJoinTokenRepository struct {
@@ -361,6 +439,40 @@ type failingAgentTokenRepository struct {
 	err error
 }
 
+type recordingNodeRuntime struct {
+	readiness   string
+	schedulable bool
+	cordons     int
+	uncordons   int
+	removals    int
+}
+
+func (r *recordingNodeRuntime) NodeReadiness(context.Context, string) (string, string, bool, error) {
+	if r.removals > 0 {
+		return "missing", "Kubernetes node was not found", false, nil
+	}
+	return r.readiness, "", r.schedulable && r.cordons == r.uncordons, nil
+}
+
+func (r *recordingNodeRuntime) CordonNode(context.Context, string) error {
+	r.cordons++
+	return nil
+}
+
+func (r *recordingNodeRuntime) UncordonNode(context.Context, string) error {
+	r.uncordons++
+	return nil
+}
+
+func (r *recordingNodeRuntime) RemoveNode(context.Context, string) error {
+	r.removals++
+	return nil
+}
+
 func (r failingAgentTokenRepository) Create(context.Context, domain.AgentToken) error {
+	return r.err
+}
+
+func (r failingAgentTokenRepository) RevokeByNodeID(context.Context, string, time.Time) error {
 	return r.err
 }
