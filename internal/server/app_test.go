@@ -35,7 +35,7 @@ func TestAppServiceDeployUpdateListInspectAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("deploy app: %v", err)
 	}
-	if first.GetApp().GetName() != "my-api" || first.GetDeployment().GetStatus() != "pending" {
+	if first.GetApp().GetName() != "my-api" || first.GetDeployment().GetStatus() != "healthy" {
 		t.Fatalf("unexpected deploy response: %#v", first)
 	}
 
@@ -303,7 +303,7 @@ func TestAppServiceRecordsResourceApplyFailure(t *testing.T) {
 	})
 
 	_, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 2)})
-	if status.Code(err) != codes.Internal {
+	if status.Code(err) != codes.Internal || !strings.Contains(err.Error(), "apply failed") {
 		t.Fatalf("expected resource apply failure, got %v", err)
 	}
 	app, err := apps.FindByName(ctx, "my-api")

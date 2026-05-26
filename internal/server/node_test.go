@@ -393,8 +393,12 @@ func TestNodeServiceDrainUncordonAndRemoveLifecycle(t *testing.T) {
 		t.Fatalf("unexpected remove response=%#v runtime=%#v err=%v", removed, runtime, err)
 	}
 	stored, _ = nodes.FindByID(ctx, "node-live")
-	if stored.WireGuardIP != "" || stored.WireGuardPublicKey != "" {
-		t.Fatalf("removed node retained WireGuard metadata: %#v", stored)
+	if stored.WireGuardIP != "10.8.0.2" || stored.WireGuardPublicKey != "" {
+		t.Fatalf("removed node must reserve its WireGuard address without retaining a peer key: %#v", stored)
+	}
+	nextIP, err := service.allocateWireGuardIP(ctx)
+	if err != nil || nextIP != "10.8.0.3" {
+		t.Fatalf("removed node WireGuard address must not be reused, got %q: %v", nextIP, err)
 	}
 	token, err := agentTokens.FindByHash(ctx, "agent-hash")
 	if err != nil || token.RevokedAt == nil {

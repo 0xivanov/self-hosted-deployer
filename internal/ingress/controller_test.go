@@ -2,6 +2,7 @@ package ingress
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
@@ -16,7 +17,7 @@ import (
 )
 
 func TestControllerReconcilesAndDeletesAppResources(t *testing.T) {
-	clientset := fake.NewSimpleClientset()
+	clientset := fake.NewSimpleClientset(testReadyWorker())
 	controller := &Controller{
 		namespace:   DefaultNamespace,
 		tls:         TLSConfig{}.WithDefaults(),
@@ -24,6 +25,7 @@ func TestControllerReconcilesAndDeletesAppResources(t *testing.T) {
 		ingresses:   clientset.NetworkingV1().Ingresses(DefaultNamespace),
 		services:    clientset.CoreV1().Services(DefaultNamespace),
 		appSecrets:  clientset.CoreV1().Secrets(DefaultNamespace),
+		nodes:       clientset.CoreV1().Nodes(),
 		deployments: clientset.AppsV1().Deployments(DefaultNamespace),
 	}
 	cfg := testAppConfig()
@@ -103,7 +105,7 @@ func TestControllerReconcilesAndDeletesAppResources(t *testing.T) {
 }
 
 func TestControllerCreatesIssuerAndTLSIngress(t *testing.T) {
-	clientset := fake.NewSimpleClientset()
+	clientset := fake.NewSimpleClientset(testReadyWorker())
 	dynamicClient := dynamicfake.NewSimpleDynamicClient(k8sruntime.NewScheme())
 	controller := &Controller{
 		namespace:   DefaultNamespace,
@@ -112,6 +114,7 @@ func TestControllerCreatesIssuerAndTLSIngress(t *testing.T) {
 		ingresses:   clientset.NetworkingV1().Ingresses(DefaultNamespace),
 		services:    clientset.CoreV1().Services(DefaultNamespace),
 		appSecrets:  clientset.CoreV1().Secrets(DefaultNamespace),
+		nodes:       clientset.CoreV1().Nodes(),
 		deployments: clientset.AppsV1().Deployments(DefaultNamespace),
 		issuers:     dynamicClient.Resource(clusterIssuerResource),
 	}
@@ -138,7 +141,7 @@ func TestControllerCreatesIssuerAndTLSIngress(t *testing.T) {
 }
 
 func TestControllerAppliesReferencedSecretsBeforeDeploymentAndRestartsOnChange(t *testing.T) {
-	clientset := fake.NewSimpleClientset()
+	clientset := fake.NewSimpleClientset(testReadyWorker())
 	controller := &Controller{
 		namespace:   DefaultNamespace,
 		tls:         TLSConfig{}.WithDefaults(),
@@ -146,6 +149,7 @@ func TestControllerAppliesReferencedSecretsBeforeDeploymentAndRestartsOnChange(t
 		ingresses:   clientset.NetworkingV1().Ingresses(DefaultNamespace),
 		services:    clientset.CoreV1().Services(DefaultNamespace),
 		appSecrets:  clientset.CoreV1().Secrets(DefaultNamespace),
+		nodes:       clientset.CoreV1().Nodes(),
 		deployments: clientset.AppsV1().Deployments(DefaultNamespace),
 	}
 	cfg := testAppConfig()
@@ -189,6 +193,38 @@ func TestControllerAppliesReferencedSecretsBeforeDeploymentAndRestartsOnChange(t
 	deployment, err = controller.deployments.Get(context.Background(), cfg.Name, metav1.GetOptions{})
 	if err != nil || deployment.Spec.Template.Annotations[secretHashAnnotation] == originalHash {
 		t.Fatalf("expected changed secret hash annotation, got %#v: %v", deployment, err)
+	}
+}
+
+func TestControllerRejectsAppWithoutMatchingReadyWorker(t *testing.T) {
+	tests := []struct {
+		name string
+		node *corev1.Node
+	}{
+		{name: "missing worker"},
+		{name: "cordoned worker", node: func() *corev1.Node {
+			node := testReadyWorker()
+			node.Spec.Unschedulable = true
+			return node
+		}()},
+		{name: "wrong architecture", node: func() *corev1.Node {
+			node := testReadyWorker()
+			node.Labels["kubernetes.io/arch"] = "amd64"
+			return node
+		}()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientset := fake.NewSimpleClientset()
+			if tt.node != nil {
+				clientset = fake.NewSimpleClientset(tt.node)
+			}
+			controller := &Controller{nodes: clientset.CoreV1().Nodes()}
+			err := controller.Reconcile(context.Background(), testAppConfig(), nil, "")
+			if err == nil || !strings.Contains(err.Error(), "no ready schedulable Kubernetes worker") {
+				t.Fatalf("expected ready worker rejection, got %v", err)
+			}
+		})
 	}
 }
 
@@ -255,7 +291,8 @@ func TestDeploymentMapsResiliencePolicies(t *testing.T) {
 			t.Fatalf("render fallback deployment: %v", err)
 		}
 		terms := deployment.Spec.Template.Spec.Affinity.NodeAffinity.PreferredDuringSchedulingIgnoredDuringExecution
-		if len(terms) != 2 || terms[0].Weight != 100 || terms[1].Weight != 50 {
+		if len(terms) != 2 || terms[0].Weight != 100 || terms[1].Weight != 50 ||
+			terms[0].Preference.MatchExpressions[0].Key != "deployer.io/location" {
 			t.Fatalf("unexpected fallback affinity: %#v", terms)
 		}
 	})
@@ -263,12 +300,12 @@ func TestDeploymentMapsResiliencePolicies(t *testing.T) {
 	t.Run("pinned requires selected node labels", func(t *testing.T) {
 		cfg := testAppConfig()
 		cfg.Resilience.Mode = appconfig.ResiliencePinned
-		cfg.Placement.Prefer = []map[string]string{{"kubernetes.io/hostname": "pi-kitchen"}}
+		cfg.Placement.Prefer = []map[string]string{{"location": "home"}}
 		deployment, err := deploymentForApp(cfg, DefaultNamespace, "")
 		if err != nil {
 			t.Fatalf("render pinned deployment: %v", err)
 		}
-		if deployment.Spec.Template.Spec.NodeSelector["kubernetes.io/hostname"] != "pi-kitchen" {
+		if deployment.Spec.Template.Spec.NodeSelector["deployer.io/location"] != "home" {
 			t.Fatalf("unexpected pinned selector: %#v", deployment.Spec.Template.Spec.NodeSelector)
 		}
 	})
@@ -338,5 +375,17 @@ func testAppConfig() appconfig.Config {
 		Deploy:    appconfig.DeployConfig{Replicas: 2},
 		Placement: appconfig.PlacementConfig{Arch: "linux/arm64", Spread: true},
 		State:     appconfig.StateConfig{Mode: "stateless"},
+	}
+}
+
+func testReadyWorker() *corev1.Node {
+	return &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "worker-home",
+			Labels: map[string]string{"kubernetes.io/arch": "arm64", "deployer.io/location": "home"},
+		},
+		Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{{
+			Type: corev1.NodeReady, Status: corev1.ConditionTrue,
+		}}},
 	}
 }

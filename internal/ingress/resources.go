@@ -205,7 +205,7 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 			deployment.Spec.Template.Spec.NodeSelector = map[string]string{}
 		}
 		for key, value := range cfg.Placement.Prefer[0] {
-			deployment.Spec.Template.Spec.NodeSelector[key] = value
+			deployment.Spec.Template.Spec.NodeSelector[placementLabelKey(key)] = value
 		}
 	}
 	if cfg.Placement.Spread || cfg.Resilience.Mode == appconfig.ResilienceResilient {
@@ -259,7 +259,7 @@ func preferredSchedulingTerms(selectors []map[string]string, weight int32) []cor
 		requirements := make([]corev1.NodeSelectorRequirement, 0, len(keys))
 		for _, key := range keys {
 			requirements = append(requirements, corev1.NodeSelectorRequirement{
-				Key:      key,
+				Key:      placementLabelKey(key),
 				Operator: corev1.NodeSelectorOpIn,
 				Values:   []string{selector[key]},
 			})
@@ -329,4 +329,15 @@ func placementArchitecture(placement string) string {
 		return parts[1]
 	}
 	return strings.TrimSpace(placement)
+}
+
+func placementLabelKey(key string) string {
+	switch strings.TrimSpace(key) {
+	case "arch":
+		return "kubernetes.io/arch"
+	case "location", "role", "node-id":
+		return "deployer.io/" + strings.TrimSpace(key)
+	default:
+		return strings.TrimSpace(key)
+	}
 }

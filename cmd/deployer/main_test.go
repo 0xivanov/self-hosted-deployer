@@ -510,7 +510,7 @@ func TestAppStatusAndNodeRemoveCommands(t *testing.T) {
 			RuntimeStatus:     "degraded",
 			DesiredReplicas:   2,
 			AvailableReplicas: 1,
-			Routes:            []clicore.RouteInfo{{Domain: "api.example.com"}},
+			Routes:            []clicore.RouteInfo{{Domain: "api.example.com", Status: "healthy"}},
 			RunningNodes:      []string{"pi-kitchen"},
 			Warnings:          []string{"resilient replicas are not spread across two nodes"},
 		},
@@ -524,7 +524,8 @@ func TestAppStatusAndNodeRemoveCommands(t *testing.T) {
 	if code := app.run(args); code != 0 {
 		t.Fatalf("expected app status success, got %d: %s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "pi-kitchen") || !strings.Contains(stdout.String(), "WARNING") {
+	if !strings.Contains(stdout.String(), "pi-kitchen") || !strings.Contains(stdout.String(), "ROUTE HEALTH") ||
+		!strings.Contains(stdout.String(), "healthy") || !strings.Contains(stdout.String(), "WARNING") {
 		t.Fatalf("expected app runtime status output, got %q", stdout.String())
 	}
 	stdout.Reset()

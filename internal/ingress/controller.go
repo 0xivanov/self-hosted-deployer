@@ -95,6 +95,9 @@ func (c *Controller) TLSEnabled() bool {
 }
 
 func (c *Controller) Reconcile(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string) error {
+	if err := c.ensureSchedulableWorker(ctx, cfg); err != nil {
+		return err
+	}
 	if err := c.reconcileAppResources(ctx, cfg, secretValues, secretRevision); err != nil {
 		return err
 	}

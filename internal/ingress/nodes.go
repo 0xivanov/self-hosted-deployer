@@ -6,10 +6,52 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func (c *Controller) ensureSchedulableWorker(ctx context.Context, cfg appconfig.Config) error {
+	if c.nodes == nil {
+		return fmt.Errorf("Kubernetes node client is not configured")
+	}
+	nodes, err := c.nodes.List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("list Kubernetes nodes for placement: %w", err)
+	}
+	for _, node := range nodes.Items {
+		if node.Spec.Unschedulable || !readyForScheduling(node) || !matchesPlacement(node, cfg) {
+			continue
+		}
+		return nil
+	}
+	return fmt.Errorf("no ready schedulable Kubernetes worker matches placement architecture %q", cfg.Placement.Arch)
+}
+
+func readyForScheduling(node corev1.Node) bool {
+	for _, condition := range node.Status.Conditions {
+		if condition.Type == corev1.NodeReady {
+			return condition.Status == corev1.ConditionTrue
+		}
+	}
+	return false
+}
+
+func matchesPlacement(node corev1.Node, cfg appconfig.Config) bool {
+	if arch := placementArchitecture(cfg.Placement.Arch); arch != "" && node.Labels["kubernetes.io/arch"] != arch {
+		return false
+	}
+	if cfg.Resilience.Mode != appconfig.ResiliencePinned || len(cfg.Placement.Prefer) != 1 {
+		return true
+	}
+	for key, value := range cfg.Placement.Prefer[0] {
+		if node.Labels[placementLabelKey(key)] != value {
+			return false
+		}
+	}
+	return true
+}
 
 func (c *Controller) NodeReadiness(ctx context.Context, nodeName string) (string, string, bool, error) {
 	if c.nodes == nil {

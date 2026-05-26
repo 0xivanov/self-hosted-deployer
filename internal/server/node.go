@@ -532,14 +532,13 @@ func (s NodeService) RemoveNode(ctx context.Context, req *deployerv1.RemoveNodeR
 		if err := s.agentTokens.RevokeByNodeID(ctx, node.ID, now); err != nil {
 			return nil, status.Error(codes.Internal, "revoke node identity")
 		}
-		if err := s.nodes.SetWireGuard(ctx, node.ID, "", "", now); err != nil {
+		if err := s.nodes.SetWireGuard(ctx, node.ID, node.WireGuardIP, "", now); err != nil {
 			return nil, status.Error(codes.Internal, "disable WireGuard peer")
 		}
 		if err := s.nodes.UpdateStatus(ctx, node.ID, nodeStatusRemoved, now); err != nil {
 			return nil, status.Error(codes.Internal, "mark node removed")
 		}
 		node.Status = nodeStatusRemoved
-		node.WireGuardIP = ""
 		node.WireGuardPublicKey = ""
 		node.UpdatedAt = now
 		recordEvent(ctx, s.events, domain.Event{

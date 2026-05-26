@@ -36,11 +36,13 @@ func (a cliApp) appStatus(args []string, opts cliOptions) int {
 		return 0
 	}
 	route := "-"
+	routeHealth := "-"
 	if len(result.Routes) > 0 {
 		route = result.Routes[0].Domain
+		routeHealth = valueOrDash(result.Routes[0].Status)
 	}
-	fmt.Fprintf(a.stdout, "%-18s %-28s %-9s %-9s %s\n", "APP", "IMAGE", "HEALTHY", "DESIRED", "ROUTE")
-	fmt.Fprintf(a.stdout, "%-18s %-28s %-9d %-9d %s\n", result.App.Name, result.App.Image, result.AvailableReplicas, result.DesiredReplicas, route)
+	fmt.Fprintf(a.stdout, "%-18s %-28s %-9s %-9s %-28s %s\n", "APP", "IMAGE", "HEALTHY", "DESIRED", "ROUTE", "ROUTE HEALTH")
+	fmt.Fprintf(a.stdout, "%-18s %-28s %-9d %-9d %-28s %s\n", result.App.Name, result.App.Image, result.AvailableReplicas, result.DesiredReplicas, route, routeHealth)
 	fmt.Fprintln(a.stdout, "\nREPLICAS")
 	for _, node := range result.RunningNodes {
 		fmt.Fprintf(a.stdout, "%s\t%s\n", node, result.RuntimeStatus)

@@ -17,6 +17,7 @@ import (
 
 const (
 	deploymentStatusPending = "pending"
+	deploymentStatusHealthy = "healthy"
 	deploymentStatusFailed  = "failed"
 	routeStatusPending      = "pending"
 )
@@ -182,13 +183,17 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if s.runtime != nil {
 		if err := s.runtime.Reconcile(ctx, cfg, secretValues, secretRevision); err != nil {
 			s.recordFailedDeployment(ctx, app, deployment, cfg, err, now)
-			return nil, status.Error(codes.Internal, "apply app resources")
+			return nil, status.Errorf(codes.Internal, "apply app resources: %v", err)
 		}
 	}
 	if err := s.syncRoute(ctx, app, cfg, now); err != nil {
 		s.recordFailedDeployment(ctx, app, deployment, cfg, err, now)
 		return nil, err
 	}
+	if err := s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusHealthy, "", now); err != nil {
+		return nil, status.Error(codes.Internal, "mark deployment healthy")
+	}
+	deployment.Status = deploymentStatusHealthy
 	s.recordDeployEvent(ctx, domain.EventTypeAppDeploySucceeded, domain.EventSeverityInfo, "deployment applied", app, deployment, cfg, "")
 
 	appProto, err := protoApp(app)
