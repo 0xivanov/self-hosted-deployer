@@ -52,3 +52,15 @@ func readCredential(path string) (string, error) {
 	}
 	return token, nil
 }
+
+func readWireGuardPrivateKey(path string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read WireGuard private key: %w", err)
+	}
+	key := strings.TrimSpace(string(data))
+	if key == "" {
+		return "", errors.New("WireGuard private key is empty")
+	}
+	return key, nil
+}

@@ -1,6 +1,8 @@
 package wireguard
 
 import (
+	"context"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -129,4 +131,76 @@ AllowedIPs = 10.8.0.3/32
 	if config != want {
 		t.Fatalf("unexpected peer config:\n%s", config)
 	}
+}
+
+func TestRenderNodeConfigIncludesPrivateNetworkPeerSettings(t *testing.T) {
+	config, err := RenderNodeConfig(NodeConfig{
+		PrivateKey:   validPublicKey,
+		Address:      "10.8.0.2",
+		HubPublicKey: validPublicKey,
+		Endpoint:     "deploy.example.com:51820",
+	})
+	if err != nil {
+		t.Fatalf("render node config: %v", err)
+	}
+	for _, want := range []string{
+		"Address = 10.8.0.2/32",
+		"Endpoint = deploy.example.com:51820",
+		"AllowedIPs = 10.8.0.0/24",
+		"PersistentKeepalive = 25",
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("expected config to contain %q, got:\n%s", want, config)
+		}
+	}
+}
+
+func TestHubControllerAppliesAndRemovesPeers(t *testing.T) {
+	runner := &recordingHubRunner{peers: validPublicKey + "\noldpeer\n"}
+	controller := HubController{Interface: "wg0", Runner: runner}
+	if err := controller.SyncPeers(context.Background(), []domain.Node{{
+		Name:               "pi-kitchen",
+		WireGuardIP:        "10.8.0.2",
+		WireGuardPublicKey: validPublicKey,
+	}}); err != nil {
+		t.Fatalf("sync peers: %v", err)
+	}
+	want := [][]string{
+		{"wg", "set", "wg0", "peer", "oldpeer", "remove"},
+		{"wg", "set", "wg0", "peer", validPublicKey, "allowed-ips", "10.8.0.2/32"},
+	}
+	if !reflect.DeepEqual(runner.runs, want) {
+		t.Fatalf("unexpected hub commands: %#v", runner.runs)
+	}
+}
+
+func TestHubControllerRejectsInvalidPeerAddressBeforeApplying(t *testing.T) {
+	runner := &recordingHubRunner{}
+	controller := HubController{Interface: "wg0", Runner: runner}
+	err := controller.SyncPeers(context.Background(), []domain.Node{{
+		Name:               "pi-kitchen",
+		WireGuardIP:        "invalid",
+		WireGuardPublicKey: validPublicKey,
+	}})
+	if err == nil || !strings.Contains(err.Error(), "invalid WireGuard IP") || len(runner.runs) != 0 {
+		t.Fatalf("expected peer IP validation before apply, err=%v commands=%#v", err, runner.runs)
+	}
+}
+
+type recordingHubRunner struct {
+	peers string
+	runs  [][]string
+}
+
+func (r *recordingHubRunner) Output(_ context.Context, name string, args ...string) ([]byte, error) {
+	if name != "wg" || !reflect.DeepEqual(args, []string{"show", "wg0", "peers"}) {
+		return nil, nil
+	}
+	return []byte(r.peers), nil
+}
+
+func (r *recordingHubRunner) Run(_ context.Context, name string, args ...string) error {
+	command := append([]string{name}, args...)
+	r.runs = append(r.runs, command)
+	return nil
 }

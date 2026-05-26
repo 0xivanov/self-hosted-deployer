@@ -65,6 +65,7 @@ func usage(w io.Writer, flags *flag.FlagSet) {
 	fmt.Fprintln(w, "  apps       List and inspect app desired state")
 	fmt.Fprintln(w, "  deploy     Submit deployer.yaml desired state")
 	fmt.Fprintln(w, "  status     Show live app replica and route health")
+	fmt.Fprintln(w, "  logs       Stream recent application pod logs")
 	fmt.Fprintln(w, "  login      Save CLI access to the control plane")
 	fmt.Fprintln(w, "  nodes      Add, inspect, drain, and remove enrolled nodes")
 	fmt.Fprintln(w, "  routes     List and inspect public routes")

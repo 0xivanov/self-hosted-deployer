@@ -195,6 +195,31 @@ func TestAuthenticatorAllowsAgentTokenForHeartbeatAndAttachesNode(t *testing.T) 
 	}
 }
 
+func TestAuthenticatorAllowsAgentTokenForWorkerBootstrap(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDB(t)
+	repos := newTestTokenRepositories(database)
+	rawToken, tokenHash := createToken(t, security.AgentTokenPrefix, "hash-key")
+	if err := repos.AgentTokens.Create(ctx, domain.AgentToken{
+		TokenHash: tokenHash, NodeID: "node-1", CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create agent token: %v", err)
+	}
+	auth := NewAuthenticator(repos.Auth(), "hash-key")
+	_, err := auth.UnaryInterceptor()(withBearer(ctx, rawToken), nil, &grpc.UnaryServerInfo{
+		FullMethod: "/deployer.v1.NodeService/GetWorkerBootstrap",
+	}, func(ctx context.Context, req any) (any, error) {
+		caller, ok := CallerFromContext(ctx)
+		if !ok || caller.Kind != CallerAgent || caller.NodeID != "node-1" {
+			t.Fatalf("unexpected worker bootstrap caller: %#v", caller)
+		}
+		return nil, nil
+	})
+	if err != nil {
+		t.Fatalf("authenticate worker bootstrap: %v", err)
+	}
+}
+
 func TestAuthenticatorTreatsJoinNodeAsPublic(t *testing.T) {
 	auth := NewAuthenticator(newTestTokenRepositories(openTestDB(t)).Auth(), "hash-key")
 	_, err := auth.UnaryInterceptor()(context.Background(), nil, &grpc.UnaryServerInfo{

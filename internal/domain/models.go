@@ -38,6 +38,7 @@ type Node struct {
 	Kernel             string
 	WireGuardIP        string
 	WireGuardPublicKey string
+	VPNStatus          string
 	LastSeenAt         *time.Time
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
@@ -92,20 +93,21 @@ const (
 type EventType string
 
 const (
-	EventTypeNodeJoined         EventType = "node.joined"
-	EventTypeNodeOnline         EventType = "node.online"
-	EventTypeNodeOffline        EventType = "node.offline"
-	EventTypeNodeRemoved        EventType = "node.removed"
-	EventTypeAppDeployStarted   EventType = "app.deploy.started"
-	EventTypeAppDeploySucceeded EventType = "app.deploy.succeeded"
-	EventTypeAppDeployFailed    EventType = "app.deploy.failed"
-	EventTypeAppHealthDegraded  EventType = "app.health.degraded"
-	EventTypeAppHealthRecovered EventType = "app.health.recovered"
-	EventTypeRouteDegraded      EventType = "route.degraded"
-	EventTypeRouteRecovered     EventType = "route.recovered"
-	EventTypeSecretCreated      EventType = "secret.created"
-	EventTypeSecretUpdated      EventType = "secret.updated"
-	EventTypeSecretDeleted      EventType = "secret.deleted"
+	EventTypeNodeJoined                   EventType = "node.joined"
+	EventTypeNodeOnline                   EventType = "node.online"
+	EventTypeNodeOffline                  EventType = "node.offline"
+	EventTypeNodeRemoved                  EventType = "node.removed"
+	EventTypeNodeWorkerBootstrapRequested EventType = "node.worker.bootstrap.requested"
+	EventTypeAppDeployStarted             EventType = "app.deploy.started"
+	EventTypeAppDeploySucceeded           EventType = "app.deploy.succeeded"
+	EventTypeAppDeployFailed              EventType = "app.deploy.failed"
+	EventTypeAppHealthDegraded            EventType = "app.health.degraded"
+	EventTypeAppHealthRecovered           EventType = "app.health.recovered"
+	EventTypeRouteDegraded                EventType = "route.degraded"
+	EventTypeRouteRecovered               EventType = "route.recovered"
+	EventTypeSecretCreated                EventType = "secret.created"
+	EventTypeSecretUpdated                EventType = "secret.updated"
+	EventTypeSecretDeleted                EventType = "secret.deleted"
 )
 
 type Event struct {

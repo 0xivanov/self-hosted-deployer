@@ -56,6 +56,7 @@ type NodeInfo struct {
 	KubernetesStatus   string            `json:"kubernetes_status,omitempty"`
 	KubernetesMessage  string            `json:"kubernetes_message,omitempty"`
 	Schedulable        bool              `json:"schedulable"`
+	VPNStatus          string            `json:"vpn_status,omitempty"`
 }
 
 type JoinTokenResult struct {
@@ -79,6 +80,18 @@ type Heartbeat struct {
 	OS              string
 	Kernel          string
 	ResourceSummary string
+	VPNStatus       string
+}
+
+type WorkerBootstrap struct {
+	NodeName              string `json:"node_name"`
+	WireGuardIP           string `json:"wireguard_ip"`
+	WireGuardSubnet       string `json:"wireguard_subnet"`
+	WireGuardHubIP        string `json:"wireguard_hub_ip"`
+	WireGuardHubPublicKey string `json:"wireguard_hub_public_key"`
+	WireGuardEndpoint     string `json:"wireguard_endpoint"`
+	K3sURL                string `json:"k3s_url"`
+	K3sToken              string `json:"-"`
 }
 
 type AppInfo struct {
@@ -324,8 +337,29 @@ func (c *PlatformClient) Heartbeat(ctx context.Context, heartbeat Heartbeat) err
 		Os:              heartbeat.OS,
 		Kernel:          heartbeat.Kernel,
 		ResourceSummary: heartbeat.ResourceSummary,
+		VpnStatus:       heartbeat.VPNStatus,
 	})
 	return DecodeRPCError(err)
+}
+
+func (c *PlatformClient) GetWorkerBootstrap(ctx context.Context) (WorkerBootstrap, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	response, err := c.nodeClient.GetWorkerBootstrap(ctx, &deployerv1.GetWorkerBootstrapRequest{})
+	if err != nil {
+		return WorkerBootstrap{}, DecodeRPCError(err)
+	}
+	return WorkerBootstrap{
+		NodeName:              response.GetNodeName(),
+		WireGuardIP:           response.GetWireguardIp(),
+		WireGuardSubnet:       response.GetWireguardSubnet(),
+		WireGuardHubIP:        response.GetWireguardHubIp(),
+		WireGuardHubPublicKey: response.GetWireguardHubPublicKey(),
+		WireGuardEndpoint:     response.GetWireguardEndpoint(),
+		K3sURL:                response.GetK3SUrl(),
+		K3sToken:              response.GetK3SToken(),
+	}, nil
 }
 
 func (c *PlatformClient) DeployApp(ctx context.Context, deployerYAML string) (DeployResult, error) {
@@ -418,6 +452,37 @@ func (c *PlatformClient) GetAppStatus(ctx context.Context, name string) (AppStat
 		result.Routes = append(result.Routes, routeInfo(route))
 	}
 	return result, nil
+}
+
+func (c *PlatformClient) StreamLogs(ctx context.Context, appName string, tailLines int32, follow bool, receive func(string) error) error {
+	requestCtx := c.withBearer(ctx)
+	var cancel context.CancelFunc
+	if !follow {
+		requestCtx, cancel = context.WithTimeout(requestCtx, c.timeout)
+		defer cancel()
+	}
+	stream, err := c.appClient.GetDeploymentLogs(requestCtx, &deployerv1.GetDeploymentLogsRequest{
+		AppName:   appName,
+		TailLines: tailLines,
+		Follow:    follow,
+	})
+	if err != nil {
+		return DecodeRPCError(err)
+	}
+	for {
+		response, err := stream.Recv()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return DecodeRPCError(err)
+		}
+		for _, line := range response.GetLines() {
+			if err := receive(line); err != nil {
+				return err
+			}
+		}
+	}
 }
 
 func (c *PlatformClient) ListRoutes(ctx context.Context) ([]RouteInfo, error) {
@@ -564,6 +629,7 @@ func nodeInfo(node *deployerv1.Node) NodeInfo {
 		KubernetesStatus:   node.GetKubernetesStatus(),
 		KubernetesMessage:  node.GetKubernetesMessage(),
 		Schedulable:        node.GetSchedulable(),
+		VPNStatus:          node.GetVpnStatus(),
 	}
 }
 

@@ -23,21 +23,21 @@ func (r *NodeRepository) Create(ctx context.Context, node domain.Node) error {
 	if node.LabelsJSON == "" {
 		node.LabelsJSON = "{}"
 	}
-	_, err := r.db.conn.ExecContext(ctx, `INSERT INTO nodes (id, name, status, labels_json, hostname, arch, os, kernel, wireguard_ip, wireguard_public_key, last_seen_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		node.ID, node.Name, node.Status, node.LabelsJSON, node.Hostname, node.Arch, node.OS, node.Kernel, node.WireGuardIP, node.WireGuardPublicKey, formatOptionalTime(node.LastSeenAt), formatTime(node.CreatedAt), formatTime(node.UpdatedAt))
+	_, err := r.db.conn.ExecContext(ctx, `INSERT INTO nodes (id, name, status, labels_json, hostname, arch, os, kernel, wireguard_ip, wireguard_public_key, vpn_status, last_seen_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		node.ID, node.Name, node.Status, node.LabelsJSON, node.Hostname, node.Arch, node.OS, node.Kernel, node.WireGuardIP, node.WireGuardPublicKey, node.VPNStatus, formatOptionalTime(node.LastSeenAt), formatTime(node.CreatedAt), formatTime(node.UpdatedAt))
 	return err
 }
 
 func (r *NodeRepository) FindByID(ctx context.Context, nodeID string) (domain.Node, error) {
-	return r.findOne(ctx, `SELECT id, name, status, labels_json, hostname, arch, os, kernel, wireguard_ip, wireguard_public_key, last_seen_at, created_at, updated_at FROM nodes WHERE id = ?`, nodeID)
+	return r.findOne(ctx, `SELECT id, name, status, labels_json, hostname, arch, os, kernel, wireguard_ip, wireguard_public_key, vpn_status, last_seen_at, created_at, updated_at FROM nodes WHERE id = ?`, nodeID)
 }
 
 func (r *NodeRepository) FindByName(ctx context.Context, name string) (domain.Node, error) {
-	return r.findOne(ctx, `SELECT id, name, status, labels_json, hostname, arch, os, kernel, wireguard_ip, wireguard_public_key, last_seen_at, created_at, updated_at FROM nodes WHERE name = ?`, name)
+	return r.findOne(ctx, `SELECT id, name, status, labels_json, hostname, arch, os, kernel, wireguard_ip, wireguard_public_key, vpn_status, last_seen_at, created_at, updated_at FROM nodes WHERE name = ?`, name)
 }
 
 func (r *NodeRepository) List(ctx context.Context) ([]domain.Node, error) {
-	rows, err := r.db.conn.QueryContext(ctx, `SELECT id, name, status, labels_json, hostname, arch, os, kernel, wireguard_ip, wireguard_public_key, last_seen_at, created_at, updated_at FROM nodes ORDER BY name`)
+	rows, err := r.db.conn.QueryContext(ctx, `SELECT id, name, status, labels_json, hostname, arch, os, kernel, wireguard_ip, wireguard_public_key, vpn_status, last_seen_at, created_at, updated_at FROM nodes ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
@@ -67,11 +67,11 @@ func (r *NodeRepository) UpdateLastSeen(ctx context.Context, nodeID string, seen
 
 func (r *NodeRepository) UpdateHeartbeat(ctx context.Context, nodeID string, heartbeat domain.Node, seenAt time.Time) error {
 	if heartbeat.LabelsJSON != "" {
-		return mapRowsAffected(r.db.conn.ExecContext(ctx, `UPDATE nodes SET status = ?, labels_json = ?, hostname = ?, arch = ?, os = ?, kernel = ?, last_seen_at = ?, updated_at = ? WHERE id = ?`,
-			heartbeat.Status, heartbeat.LabelsJSON, heartbeat.Hostname, heartbeat.Arch, heartbeat.OS, heartbeat.Kernel, formatTime(seenAt), formatTime(seenAt), nodeID))
+		return mapRowsAffected(r.db.conn.ExecContext(ctx, `UPDATE nodes SET status = ?, labels_json = ?, hostname = ?, arch = ?, os = ?, kernel = ?, vpn_status = ?, last_seen_at = ?, updated_at = ? WHERE id = ?`,
+			heartbeat.Status, heartbeat.LabelsJSON, heartbeat.Hostname, heartbeat.Arch, heartbeat.OS, heartbeat.Kernel, heartbeat.VPNStatus, formatTime(seenAt), formatTime(seenAt), nodeID))
 	}
-	return mapRowsAffected(r.db.conn.ExecContext(ctx, `UPDATE nodes SET status = ?, hostname = ?, arch = ?, os = ?, kernel = ?, last_seen_at = ?, updated_at = ? WHERE id = ?`,
-		heartbeat.Status, heartbeat.Hostname, heartbeat.Arch, heartbeat.OS, heartbeat.Kernel, formatTime(seenAt), formatTime(seenAt), nodeID))
+	return mapRowsAffected(r.db.conn.ExecContext(ctx, `UPDATE nodes SET status = ?, hostname = ?, arch = ?, os = ?, kernel = ?, vpn_status = ?, last_seen_at = ?, updated_at = ? WHERE id = ?`,
+		heartbeat.Status, heartbeat.Hostname, heartbeat.Arch, heartbeat.OS, heartbeat.Kernel, heartbeat.VPNStatus, formatTime(seenAt), formatTime(seenAt), nodeID))
 }
 
 func (r *NodeRepository) SetWireGuard(ctx context.Context, nodeID string, wireGuardIP string, publicKey string, updatedAt time.Time) error {
@@ -96,7 +96,7 @@ func scanNode(scanner nodeScanner) (domain.Node, error) {
 	var node domain.Node
 	var createdAt, updatedAt string
 	var lastSeenAt sql.NullString
-	err := scanner.Scan(&node.ID, &node.Name, &node.Status, &node.LabelsJSON, &node.Hostname, &node.Arch, &node.OS, &node.Kernel, &node.WireGuardIP, &node.WireGuardPublicKey, &lastSeenAt, &createdAt, &updatedAt)
+	err := scanner.Scan(&node.ID, &node.Name, &node.Status, &node.LabelsJSON, &node.Hostname, &node.Arch, &node.OS, &node.Kernel, &node.WireGuardIP, &node.WireGuardPublicKey, &node.VPNStatus, &lastSeenAt, &createdAt, &updatedAt)
 	if err != nil {
 		return domain.Node{}, err
 	}

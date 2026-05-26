@@ -39,6 +39,7 @@ type Node struct {
 	KubernetesStatus   string                 `protobuf:"bytes,14,opt,name=kubernetes_status,json=kubernetesStatus,proto3" json:"kubernetes_status,omitempty"`
 	KubernetesMessage  string                 `protobuf:"bytes,15,opt,name=kubernetes_message,json=kubernetesMessage,proto3" json:"kubernetes_message,omitempty"`
 	Schedulable        bool                   `protobuf:"varint,16,opt,name=schedulable,proto3" json:"schedulable,omitempty"`
+	VpnStatus          string                 `protobuf:"bytes,17,opt,name=vpn_status,json=vpnStatus,proto3" json:"vpn_status,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -183,6 +184,13 @@ func (x *Node) GetSchedulable() bool {
 		return x.Schedulable
 	}
 	return false
+}
+
+func (x *Node) GetVpnStatus() string {
+	if x != nil {
+		return x.VpnStatus
+	}
+	return ""
 }
 
 type CreateJoinTokenRequest struct {
@@ -641,6 +649,7 @@ type HeartbeatNodeRequest struct {
 	Os              string                 `protobuf:"bytes,4,opt,name=os,proto3" json:"os,omitempty"`
 	Kernel          string                 `protobuf:"bytes,5,opt,name=kernel,proto3" json:"kernel,omitempty"`
 	ResourceSummary string                 `protobuf:"bytes,6,opt,name=resource_summary,json=resourceSummary,proto3" json:"resource_summary,omitempty"`
+	VpnStatus       string                 `protobuf:"bytes,7,opt,name=vpn_status,json=vpnStatus,proto3" json:"vpn_status,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -717,6 +726,13 @@ func (x *HeartbeatNodeRequest) GetResourceSummary() string {
 	return ""
 }
 
+func (x *HeartbeatNodeRequest) GetVpnStatus() string {
+	if x != nil {
+		return x.VpnStatus
+	}
+	return ""
+}
+
 type HeartbeatNodeResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AcceptedAt    string                 `protobuf:"bytes,1,opt,name=accepted_at,json=acceptedAt,proto3" json:"accepted_at,omitempty"`
@@ -761,6 +777,142 @@ func (x *HeartbeatNodeResponse) GetAcceptedAt() string {
 	return ""
 }
 
+type GetWorkerBootstrapRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetWorkerBootstrapRequest) Reset() {
+	*x = GetWorkerBootstrapRequest{}
+	mi := &file_deployer_v1_node_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWorkerBootstrapRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWorkerBootstrapRequest) ProtoMessage() {}
+
+func (x *GetWorkerBootstrapRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_deployer_v1_node_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWorkerBootstrapRequest.ProtoReflect.Descriptor instead.
+func (*GetWorkerBootstrapRequest) Descriptor() ([]byte, []int) {
+	return file_deployer_v1_node_proto_rawDescGZIP(), []int{11}
+}
+
+type GetWorkerBootstrapResponse struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	NodeName              string                 `protobuf:"bytes,1,opt,name=node_name,json=nodeName,proto3" json:"node_name,omitempty"`
+	WireguardIp           string                 `protobuf:"bytes,2,opt,name=wireguard_ip,json=wireguardIp,proto3" json:"wireguard_ip,omitempty"`
+	WireguardSubnet       string                 `protobuf:"bytes,3,opt,name=wireguard_subnet,json=wireguardSubnet,proto3" json:"wireguard_subnet,omitempty"`
+	WireguardHubIp        string                 `protobuf:"bytes,4,opt,name=wireguard_hub_ip,json=wireguardHubIp,proto3" json:"wireguard_hub_ip,omitempty"`
+	WireguardHubPublicKey string                 `protobuf:"bytes,5,opt,name=wireguard_hub_public_key,json=wireguardHubPublicKey,proto3" json:"wireguard_hub_public_key,omitempty"`
+	WireguardEndpoint     string                 `protobuf:"bytes,6,opt,name=wireguard_endpoint,json=wireguardEndpoint,proto3" json:"wireguard_endpoint,omitempty"`
+	K3SUrl                string                 `protobuf:"bytes,7,opt,name=k3s_url,json=k3sUrl,proto3" json:"k3s_url,omitempty"`
+	K3SToken              string                 `protobuf:"bytes,8,opt,name=k3s_token,json=k3sToken,proto3" json:"k3s_token,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *GetWorkerBootstrapResponse) Reset() {
+	*x = GetWorkerBootstrapResponse{}
+	mi := &file_deployer_v1_node_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetWorkerBootstrapResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetWorkerBootstrapResponse) ProtoMessage() {}
+
+func (x *GetWorkerBootstrapResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_deployer_v1_node_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetWorkerBootstrapResponse.ProtoReflect.Descriptor instead.
+func (*GetWorkerBootstrapResponse) Descriptor() ([]byte, []int) {
+	return file_deployer_v1_node_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetWorkerBootstrapResponse) GetNodeName() string {
+	if x != nil {
+		return x.NodeName
+	}
+	return ""
+}
+
+func (x *GetWorkerBootstrapResponse) GetWireguardIp() string {
+	if x != nil {
+		return x.WireguardIp
+	}
+	return ""
+}
+
+func (x *GetWorkerBootstrapResponse) GetWireguardSubnet() string {
+	if x != nil {
+		return x.WireguardSubnet
+	}
+	return ""
+}
+
+func (x *GetWorkerBootstrapResponse) GetWireguardHubIp() string {
+	if x != nil {
+		return x.WireguardHubIp
+	}
+	return ""
+}
+
+func (x *GetWorkerBootstrapResponse) GetWireguardHubPublicKey() string {
+	if x != nil {
+		return x.WireguardHubPublicKey
+	}
+	return ""
+}
+
+func (x *GetWorkerBootstrapResponse) GetWireguardEndpoint() string {
+	if x != nil {
+		return x.WireguardEndpoint
+	}
+	return ""
+}
+
+func (x *GetWorkerBootstrapResponse) GetK3SUrl() string {
+	if x != nil {
+		return x.K3SUrl
+	}
+	return ""
+}
+
+func (x *GetWorkerBootstrapResponse) GetK3SToken() string {
+	if x != nil {
+		return x.K3SToken
+	}
+	return ""
+}
+
 type DrainNodeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	NodeRef       string                 `protobuf:"bytes,1,opt,name=node_ref,json=nodeRef,proto3" json:"node_ref,omitempty"`
@@ -770,7 +922,7 @@ type DrainNodeRequest struct {
 
 func (x *DrainNodeRequest) Reset() {
 	*x = DrainNodeRequest{}
-	mi := &file_deployer_v1_node_proto_msgTypes[11]
+	mi := &file_deployer_v1_node_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -782,7 +934,7 @@ func (x *DrainNodeRequest) String() string {
 func (*DrainNodeRequest) ProtoMessage() {}
 
 func (x *DrainNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_node_proto_msgTypes[11]
+	mi := &file_deployer_v1_node_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -795,7 +947,7 @@ func (x *DrainNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DrainNodeRequest.ProtoReflect.Descriptor instead.
 func (*DrainNodeRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_node_proto_rawDescGZIP(), []int{11}
+	return file_deployer_v1_node_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DrainNodeRequest) GetNodeRef() string {
@@ -814,7 +966,7 @@ type DrainNodeResponse struct {
 
 func (x *DrainNodeResponse) Reset() {
 	*x = DrainNodeResponse{}
-	mi := &file_deployer_v1_node_proto_msgTypes[12]
+	mi := &file_deployer_v1_node_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -826,7 +978,7 @@ func (x *DrainNodeResponse) String() string {
 func (*DrainNodeResponse) ProtoMessage() {}
 
 func (x *DrainNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_node_proto_msgTypes[12]
+	mi := &file_deployer_v1_node_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -839,7 +991,7 @@ func (x *DrainNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DrainNodeResponse.ProtoReflect.Descriptor instead.
 func (*DrainNodeResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_node_proto_rawDescGZIP(), []int{12}
+	return file_deployer_v1_node_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DrainNodeResponse) GetNode() *Node {
@@ -858,7 +1010,7 @@ type UncordonNodeRequest struct {
 
 func (x *UncordonNodeRequest) Reset() {
 	*x = UncordonNodeRequest{}
-	mi := &file_deployer_v1_node_proto_msgTypes[13]
+	mi := &file_deployer_v1_node_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -870,7 +1022,7 @@ func (x *UncordonNodeRequest) String() string {
 func (*UncordonNodeRequest) ProtoMessage() {}
 
 func (x *UncordonNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_node_proto_msgTypes[13]
+	mi := &file_deployer_v1_node_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -883,7 +1035,7 @@ func (x *UncordonNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UncordonNodeRequest.ProtoReflect.Descriptor instead.
 func (*UncordonNodeRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_node_proto_rawDescGZIP(), []int{13}
+	return file_deployer_v1_node_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *UncordonNodeRequest) GetNodeRef() string {
@@ -902,7 +1054,7 @@ type UncordonNodeResponse struct {
 
 func (x *UncordonNodeResponse) Reset() {
 	*x = UncordonNodeResponse{}
-	mi := &file_deployer_v1_node_proto_msgTypes[14]
+	mi := &file_deployer_v1_node_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -914,7 +1066,7 @@ func (x *UncordonNodeResponse) String() string {
 func (*UncordonNodeResponse) ProtoMessage() {}
 
 func (x *UncordonNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_node_proto_msgTypes[14]
+	mi := &file_deployer_v1_node_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -927,7 +1079,7 @@ func (x *UncordonNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UncordonNodeResponse.ProtoReflect.Descriptor instead.
 func (*UncordonNodeResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_node_proto_rawDescGZIP(), []int{14}
+	return file_deployer_v1_node_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *UncordonNodeResponse) GetNode() *Node {
@@ -946,7 +1098,7 @@ type RemoveNodeRequest struct {
 
 func (x *RemoveNodeRequest) Reset() {
 	*x = RemoveNodeRequest{}
-	mi := &file_deployer_v1_node_proto_msgTypes[15]
+	mi := &file_deployer_v1_node_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -958,7 +1110,7 @@ func (x *RemoveNodeRequest) String() string {
 func (*RemoveNodeRequest) ProtoMessage() {}
 
 func (x *RemoveNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_node_proto_msgTypes[15]
+	mi := &file_deployer_v1_node_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -971,7 +1123,7 @@ func (x *RemoveNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveNodeRequest.ProtoReflect.Descriptor instead.
 func (*RemoveNodeRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_node_proto_rawDescGZIP(), []int{15}
+	return file_deployer_v1_node_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *RemoveNodeRequest) GetNodeRef() string {
@@ -990,7 +1142,7 @@ type RemoveNodeResponse struct {
 
 func (x *RemoveNodeResponse) Reset() {
 	*x = RemoveNodeResponse{}
-	mi := &file_deployer_v1_node_proto_msgTypes[16]
+	mi := &file_deployer_v1_node_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1002,7 +1154,7 @@ func (x *RemoveNodeResponse) String() string {
 func (*RemoveNodeResponse) ProtoMessage() {}
 
 func (x *RemoveNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_node_proto_msgTypes[16]
+	mi := &file_deployer_v1_node_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1015,7 +1167,7 @@ func (x *RemoveNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveNodeResponse.ProtoReflect.Descriptor instead.
 func (*RemoveNodeResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_node_proto_rawDescGZIP(), []int{16}
+	return file_deployer_v1_node_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *RemoveNodeResponse) GetNode() *Node {
@@ -1029,7 +1181,7 @@ var File_deployer_v1_node_proto protoreflect.FileDescriptor
 
 const file_deployer_v1_node_proto_rawDesc = "" +
 	"\n" +
-	"\x16deployer/v1/node.proto\x12\vdeployer.v1\"\xbf\x04\n" +
+	"\x16deployer/v1/node.proto\x12\vdeployer.v1\"\xde\x04\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -1050,7 +1202,9 @@ const file_deployer_v1_node_proto_rawDesc = "" +
 	"\x14wireguard_public_key\x18\r \x01(\tR\x12wireguardPublicKey\x12+\n" +
 	"\x11kubernetes_status\x18\x0e \x01(\tR\x10kubernetesStatus\x12-\n" +
 	"\x12kubernetes_message\x18\x0f \x01(\tR\x11kubernetesMessage\x12 \n" +
-	"\vschedulable\x18\x10 \x01(\bR\vschedulable\x1a9\n" +
+	"\vschedulable\x18\x10 \x01(\bR\vschedulable\x12\x1d\n" +
+	"\n" +
+	"vpn_status\x18\x11 \x01(\tR\tvpnStatus\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xda\x01\n" +
@@ -1091,17 +1245,29 @@ const file_deployer_v1_node_proto_rawDesc = "" +
 	"\x0eGetNodeRequest\x12\x19\n" +
 	"\bnode_ref\x18\x01 \x01(\tR\anodeRef\"8\n" +
 	"\x0fGetNodeResponse\x12%\n" +
-	"\x04node\x18\x01 \x01(\v2\x11.deployer.v1.NodeR\x04node\"\xb1\x01\n" +
+	"\x04node\x18\x01 \x01(\v2\x11.deployer.v1.NodeR\x04node\"\xd0\x01\n" +
 	"\x14HeartbeatNodeRequest\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x12\n" +
 	"\x04arch\x18\x03 \x01(\tR\x04arch\x12\x0e\n" +
 	"\x02os\x18\x04 \x01(\tR\x02os\x12\x16\n" +
 	"\x06kernel\x18\x05 \x01(\tR\x06kernel\x12)\n" +
-	"\x10resource_summary\x18\x06 \x01(\tR\x0fresourceSummary\"8\n" +
+	"\x10resource_summary\x18\x06 \x01(\tR\x0fresourceSummary\x12\x1d\n" +
+	"\n" +
+	"vpn_status\x18\a \x01(\tR\tvpnStatus\"8\n" +
 	"\x15HeartbeatNodeResponse\x12\x1f\n" +
 	"\vaccepted_at\x18\x01 \x01(\tR\n" +
-	"acceptedAt\"-\n" +
+	"acceptedAt\"\x1b\n" +
+	"\x19GetWorkerBootstrapRequest\"\xcf\x02\n" +
+	"\x1aGetWorkerBootstrapResponse\x12\x1b\n" +
+	"\tnode_name\x18\x01 \x01(\tR\bnodeName\x12!\n" +
+	"\fwireguard_ip\x18\x02 \x01(\tR\vwireguardIp\x12)\n" +
+	"\x10wireguard_subnet\x18\x03 \x01(\tR\x0fwireguardSubnet\x12(\n" +
+	"\x10wireguard_hub_ip\x18\x04 \x01(\tR\x0ewireguardHubIp\x127\n" +
+	"\x18wireguard_hub_public_key\x18\x05 \x01(\tR\x15wireguardHubPublicKey\x12-\n" +
+	"\x12wireguard_endpoint\x18\x06 \x01(\tR\x11wireguardEndpoint\x12\x17\n" +
+	"\ak3s_url\x18\a \x01(\tR\x06k3sUrl\x12\x1b\n" +
+	"\tk3s_token\x18\b \x01(\tR\bk3sToken\"-\n" +
 	"\x10DrainNodeRequest\x12\x19\n" +
 	"\bnode_ref\x18\x01 \x01(\tR\anodeRef\":\n" +
 	"\x11DrainNodeResponse\x12%\n" +
@@ -1113,13 +1279,14 @@ const file_deployer_v1_node_proto_rawDesc = "" +
 	"\x11RemoveNodeRequest\x12\x19\n" +
 	"\bnode_ref\x18\x01 \x01(\tR\anodeRef\";\n" +
 	"\x12RemoveNodeResponse\x12%\n" +
-	"\x04node\x18\x01 \x01(\v2\x11.deployer.v1.NodeR\x04node2\x8e\x05\n" +
+	"\x04node\x18\x01 \x01(\v2\x11.deployer.v1.NodeR\x04node2\xf5\x05\n" +
 	"\vNodeService\x12\\\n" +
 	"\x0fCreateJoinToken\x12#.deployer.v1.CreateJoinTokenRequest\x1a$.deployer.v1.CreateJoinTokenResponse\x12G\n" +
 	"\bJoinNode\x12\x1c.deployer.v1.JoinNodeRequest\x1a\x1d.deployer.v1.JoinNodeResponse\x12J\n" +
 	"\tListNodes\x12\x1d.deployer.v1.ListNodesRequest\x1a\x1e.deployer.v1.ListNodesResponse\x12D\n" +
 	"\aGetNode\x12\x1b.deployer.v1.GetNodeRequest\x1a\x1c.deployer.v1.GetNodeResponse\x12V\n" +
-	"\rHeartbeatNode\x12!.deployer.v1.HeartbeatNodeRequest\x1a\".deployer.v1.HeartbeatNodeResponse\x12J\n" +
+	"\rHeartbeatNode\x12!.deployer.v1.HeartbeatNodeRequest\x1a\".deployer.v1.HeartbeatNodeResponse\x12e\n" +
+	"\x12GetWorkerBootstrap\x12&.deployer.v1.GetWorkerBootstrapRequest\x1a'.deployer.v1.GetWorkerBootstrapResponse\x12J\n" +
 	"\tDrainNode\x12\x1d.deployer.v1.DrainNodeRequest\x1a\x1e.deployer.v1.DrainNodeResponse\x12S\n" +
 	"\fUncordonNode\x12 .deployer.v1.UncordonNodeRequest\x1a!.deployer.v1.UncordonNodeResponse\x12M\n" +
 	"\n" +
@@ -1137,31 +1304,33 @@ func file_deployer_v1_node_proto_rawDescGZIP() []byte {
 	return file_deployer_v1_node_proto_rawDescData
 }
 
-var file_deployer_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_deployer_v1_node_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
 var file_deployer_v1_node_proto_goTypes = []any{
-	(*Node)(nil),                    // 0: deployer.v1.Node
-	(*CreateJoinTokenRequest)(nil),  // 1: deployer.v1.CreateJoinTokenRequest
-	(*CreateJoinTokenResponse)(nil), // 2: deployer.v1.CreateJoinTokenResponse
-	(*JoinNodeRequest)(nil),         // 3: deployer.v1.JoinNodeRequest
-	(*JoinNodeResponse)(nil),        // 4: deployer.v1.JoinNodeResponse
-	(*ListNodesRequest)(nil),        // 5: deployer.v1.ListNodesRequest
-	(*ListNodesResponse)(nil),       // 6: deployer.v1.ListNodesResponse
-	(*GetNodeRequest)(nil),          // 7: deployer.v1.GetNodeRequest
-	(*GetNodeResponse)(nil),         // 8: deployer.v1.GetNodeResponse
-	(*HeartbeatNodeRequest)(nil),    // 9: deployer.v1.HeartbeatNodeRequest
-	(*HeartbeatNodeResponse)(nil),   // 10: deployer.v1.HeartbeatNodeResponse
-	(*DrainNodeRequest)(nil),        // 11: deployer.v1.DrainNodeRequest
-	(*DrainNodeResponse)(nil),       // 12: deployer.v1.DrainNodeResponse
-	(*UncordonNodeRequest)(nil),     // 13: deployer.v1.UncordonNodeRequest
-	(*UncordonNodeResponse)(nil),    // 14: deployer.v1.UncordonNodeResponse
-	(*RemoveNodeRequest)(nil),       // 15: deployer.v1.RemoveNodeRequest
-	(*RemoveNodeResponse)(nil),      // 16: deployer.v1.RemoveNodeResponse
-	nil,                             // 17: deployer.v1.Node.LabelsEntry
-	nil,                             // 18: deployer.v1.CreateJoinTokenRequest.LabelsEntry
+	(*Node)(nil),                       // 0: deployer.v1.Node
+	(*CreateJoinTokenRequest)(nil),     // 1: deployer.v1.CreateJoinTokenRequest
+	(*CreateJoinTokenResponse)(nil),    // 2: deployer.v1.CreateJoinTokenResponse
+	(*JoinNodeRequest)(nil),            // 3: deployer.v1.JoinNodeRequest
+	(*JoinNodeResponse)(nil),           // 4: deployer.v1.JoinNodeResponse
+	(*ListNodesRequest)(nil),           // 5: deployer.v1.ListNodesRequest
+	(*ListNodesResponse)(nil),          // 6: deployer.v1.ListNodesResponse
+	(*GetNodeRequest)(nil),             // 7: deployer.v1.GetNodeRequest
+	(*GetNodeResponse)(nil),            // 8: deployer.v1.GetNodeResponse
+	(*HeartbeatNodeRequest)(nil),       // 9: deployer.v1.HeartbeatNodeRequest
+	(*HeartbeatNodeResponse)(nil),      // 10: deployer.v1.HeartbeatNodeResponse
+	(*GetWorkerBootstrapRequest)(nil),  // 11: deployer.v1.GetWorkerBootstrapRequest
+	(*GetWorkerBootstrapResponse)(nil), // 12: deployer.v1.GetWorkerBootstrapResponse
+	(*DrainNodeRequest)(nil),           // 13: deployer.v1.DrainNodeRequest
+	(*DrainNodeResponse)(nil),          // 14: deployer.v1.DrainNodeResponse
+	(*UncordonNodeRequest)(nil),        // 15: deployer.v1.UncordonNodeRequest
+	(*UncordonNodeResponse)(nil),       // 16: deployer.v1.UncordonNodeResponse
+	(*RemoveNodeRequest)(nil),          // 17: deployer.v1.RemoveNodeRequest
+	(*RemoveNodeResponse)(nil),         // 18: deployer.v1.RemoveNodeResponse
+	nil,                                // 19: deployer.v1.Node.LabelsEntry
+	nil,                                // 20: deployer.v1.CreateJoinTokenRequest.LabelsEntry
 }
 var file_deployer_v1_node_proto_depIdxs = []int32{
-	17, // 0: deployer.v1.Node.labels:type_name -> deployer.v1.Node.LabelsEntry
-	18, // 1: deployer.v1.CreateJoinTokenRequest.labels:type_name -> deployer.v1.CreateJoinTokenRequest.LabelsEntry
+	19, // 0: deployer.v1.Node.labels:type_name -> deployer.v1.Node.LabelsEntry
+	20, // 1: deployer.v1.CreateJoinTokenRequest.labels:type_name -> deployer.v1.CreateJoinTokenRequest.LabelsEntry
 	0,  // 2: deployer.v1.ListNodesResponse.nodes:type_name -> deployer.v1.Node
 	0,  // 3: deployer.v1.GetNodeResponse.node:type_name -> deployer.v1.Node
 	0,  // 4: deployer.v1.DrainNodeResponse.node:type_name -> deployer.v1.Node
@@ -1172,19 +1341,21 @@ var file_deployer_v1_node_proto_depIdxs = []int32{
 	5,  // 9: deployer.v1.NodeService.ListNodes:input_type -> deployer.v1.ListNodesRequest
 	7,  // 10: deployer.v1.NodeService.GetNode:input_type -> deployer.v1.GetNodeRequest
 	9,  // 11: deployer.v1.NodeService.HeartbeatNode:input_type -> deployer.v1.HeartbeatNodeRequest
-	11, // 12: deployer.v1.NodeService.DrainNode:input_type -> deployer.v1.DrainNodeRequest
-	13, // 13: deployer.v1.NodeService.UncordonNode:input_type -> deployer.v1.UncordonNodeRequest
-	15, // 14: deployer.v1.NodeService.RemoveNode:input_type -> deployer.v1.RemoveNodeRequest
-	2,  // 15: deployer.v1.NodeService.CreateJoinToken:output_type -> deployer.v1.CreateJoinTokenResponse
-	4,  // 16: deployer.v1.NodeService.JoinNode:output_type -> deployer.v1.JoinNodeResponse
-	6,  // 17: deployer.v1.NodeService.ListNodes:output_type -> deployer.v1.ListNodesResponse
-	8,  // 18: deployer.v1.NodeService.GetNode:output_type -> deployer.v1.GetNodeResponse
-	10, // 19: deployer.v1.NodeService.HeartbeatNode:output_type -> deployer.v1.HeartbeatNodeResponse
-	12, // 20: deployer.v1.NodeService.DrainNode:output_type -> deployer.v1.DrainNodeResponse
-	14, // 21: deployer.v1.NodeService.UncordonNode:output_type -> deployer.v1.UncordonNodeResponse
-	16, // 22: deployer.v1.NodeService.RemoveNode:output_type -> deployer.v1.RemoveNodeResponse
-	15, // [15:23] is the sub-list for method output_type
-	7,  // [7:15] is the sub-list for method input_type
+	11, // 12: deployer.v1.NodeService.GetWorkerBootstrap:input_type -> deployer.v1.GetWorkerBootstrapRequest
+	13, // 13: deployer.v1.NodeService.DrainNode:input_type -> deployer.v1.DrainNodeRequest
+	15, // 14: deployer.v1.NodeService.UncordonNode:input_type -> deployer.v1.UncordonNodeRequest
+	17, // 15: deployer.v1.NodeService.RemoveNode:input_type -> deployer.v1.RemoveNodeRequest
+	2,  // 16: deployer.v1.NodeService.CreateJoinToken:output_type -> deployer.v1.CreateJoinTokenResponse
+	4,  // 17: deployer.v1.NodeService.JoinNode:output_type -> deployer.v1.JoinNodeResponse
+	6,  // 18: deployer.v1.NodeService.ListNodes:output_type -> deployer.v1.ListNodesResponse
+	8,  // 19: deployer.v1.NodeService.GetNode:output_type -> deployer.v1.GetNodeResponse
+	10, // 20: deployer.v1.NodeService.HeartbeatNode:output_type -> deployer.v1.HeartbeatNodeResponse
+	12, // 21: deployer.v1.NodeService.GetWorkerBootstrap:output_type -> deployer.v1.GetWorkerBootstrapResponse
+	14, // 22: deployer.v1.NodeService.DrainNode:output_type -> deployer.v1.DrainNodeResponse
+	16, // 23: deployer.v1.NodeService.UncordonNode:output_type -> deployer.v1.UncordonNodeResponse
+	18, // 24: deployer.v1.NodeService.RemoveNode:output_type -> deployer.v1.RemoveNodeResponse
+	16, // [16:25] is the sub-list for method output_type
+	7,  // [7:16] is the sub-list for method input_type
 	7,  // [7:7] is the sub-list for extension type_name
 	7,  // [7:7] is the sub-list for extension extendee
 	0,  // [0:7] is the sub-list for field type_name
@@ -1201,7 +1372,7 @@ func file_deployer_v1_node_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_deployer_v1_node_proto_rawDesc), len(file_deployer_v1_node_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   19,
+			NumMessages:   21,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

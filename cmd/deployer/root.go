@@ -64,6 +64,8 @@ func (a cliApp) dispatch(args []string, opts cliOptions) int {
 		return a.apps(args[1:], opts)
 	case "status":
 		return a.appStatus(args[1:], opts)
+	case "logs":
+		return a.logs(args[1:], opts)
 	case "server":
 		return a.server(args[1:], opts)
 	case "nodes":

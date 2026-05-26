@@ -169,9 +169,10 @@ func isPublicMethod(fullMethod string) bool {
 }
 
 func isAdminOnlyMethod(fullMethod string) bool {
-	return !strings.HasPrefix(fullMethod, "/deployer.v1.NodeService/HeartbeatNode")
+	return !isAgentOnlyMethod(fullMethod)
 }
 
 func isAgentOnlyMethod(fullMethod string) bool {
-	return fullMethod == "/deployer.v1.NodeService/HeartbeatNode"
+	return fullMethod == "/deployer.v1.NodeService/HeartbeatNode" ||
+		fullMethod == "/deployer.v1.NodeService/GetWorkerBootstrap"
 }

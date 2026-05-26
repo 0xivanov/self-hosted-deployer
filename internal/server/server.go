@@ -34,8 +34,15 @@ type Runtime struct {
 	Apps            AppRuntime
 	Ingress         IngressRuntime
 	Nodes           NodeRuntime
+	Readiness       ReadinessRuntime
+	WireGuardPeers  PeerSynchronizer
+	WorkerJoin      WorkerJoinMaterialProvider
 	SecretCipher    SecretCipher
 	RouteTLSEnabled bool
+}
+
+type ReadinessRuntime interface {
+	Ready(ctx context.Context) error
 }
 
 func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, repos Repositories, runtime Runtime) error {
@@ -97,6 +104,13 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		TokenHashKey: cfg.TokenHashKey,
 		Events:       eventRecorder,
 		Runtime:      runtime.Nodes,
+		Peers:        runtime.WireGuardPeers,
+		WorkerJoin:   runtime.WorkerJoin,
+		Network: WorkerNetworkConfig{
+			HubIP:        cfg.K3sWireGuardIP,
+			HubPublicKey: cfg.WireGuardHubPublicKey,
+			Endpoint:     cfg.WireGuardEndpoint,
+		},
 		OfflineAfter: nodeMonitor.OfflineAfter,
 	}))
 	appRuntime := runtime.Apps
@@ -134,6 +148,12 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		if err := repos.Health.Ping(r.Context()); err != nil {
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
+		}
+		if runtime.Readiness != nil {
+			if err := runtime.Readiness.Ready(r.Context()); err != nil {
+				http.Error(w, "not ready", http.StatusServiceUnavailable)
+				return
+			}
 		}
 		writePlainText(logger, w, http.StatusOK, "ready\n")
 	})

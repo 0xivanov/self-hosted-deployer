@@ -28,6 +28,10 @@ type ServerConfig struct {
 	K3sConfigPath          string
 	K3sWireGuardIP         string
 	K3sInstallerURL        string
+	K3sNodeTokenPath       string
+	WireGuardInterface     string
+	WireGuardHubPublicKey  string
+	WireGuardEndpoint      string
 	EventRetentionMaxAge   string
 	EventRetentionMaxCount string
 	EventCleanupInterval   string
@@ -54,6 +58,10 @@ func LoadServer() ServerConfig {
 		K3sConfigPath:          envOrDefault("DEPLOYER_K3S_CONFIG_PATH", "/etc/rancher/k3s/config.yaml"),
 		K3sWireGuardIP:         os.Getenv("DEPLOYER_K3S_WIREGUARD_IP"),
 		K3sInstallerURL:        envOrDefault("DEPLOYER_K3S_INSTALLER_URL", "https://get.k3s.io"),
+		K3sNodeTokenPath:       envOrDefault("DEPLOYER_K3S_NODE_TOKEN_PATH", "/var/lib/rancher/k3s/server/node-token"),
+		WireGuardInterface:     envOrDefault("DEPLOYER_WIREGUARD_INTERFACE", "wg0"),
+		WireGuardHubPublicKey:  os.Getenv("DEPLOYER_WIREGUARD_HUB_PUBLIC_KEY"),
+		WireGuardEndpoint:      os.Getenv("DEPLOYER_WIREGUARD_ENDPOINT"),
 		EventRetentionMaxAge:   envOrDefault("DEPLOYER_EVENT_RETENTION_MAX_AGE", "720h"),
 		EventRetentionMaxCount: envOrDefault("DEPLOYER_EVENT_RETENTION_MAX_COUNT", "10000"),
 		EventCleanupInterval:   envOrDefault("DEPLOYER_EVENT_CLEANUP_INTERVAL", "1h"),
@@ -182,6 +190,10 @@ type AgentConfig struct {
 	NodeCredentialPath      string
 	WireGuardInterface      string
 	WireGuardPrivateKeyPath string
+	WireGuardConfigPath     string
+	WireGuardHubIP          string
+	K3sConfigPath           string
+	K3sInstallerURL         string
 }
 
 func LoadAgent() AgentConfig {
@@ -190,6 +202,10 @@ func LoadAgent() AgentConfig {
 		NodeCredentialPath:      envOrDefault("DEPLOYER_AGENT_CREDENTIAL_PATH", "/etc/deployer/agent/token"),
 		WireGuardInterface:      envOrDefault("DEPLOYER_WIREGUARD_INTERFACE", "wg0"),
 		WireGuardPrivateKeyPath: envOrDefault("DEPLOYER_WIREGUARD_PRIVATE_KEY_PATH", "/etc/deployer/wireguard/privatekey"),
+		WireGuardConfigPath:     envOrDefault("DEPLOYER_WIREGUARD_CONFIG_PATH", "/etc/wireguard/wg0.conf"),
+		WireGuardHubIP:          envOrDefault("DEPLOYER_WIREGUARD_HUB_IP", "10.8.0.1"),
+		K3sConfigPath:           envOrDefault("DEPLOYER_K3S_CONFIG_PATH", "/etc/rancher/k3s/config.yaml"),
+		K3sInstallerURL:         envOrDefault("DEPLOYER_K3S_INSTALLER_URL", "https://get.k3s.io"),
 	}
 }
 
@@ -206,6 +222,12 @@ func (c AgentConfig) Validate() error {
 	}
 	if c.WireGuardPrivateKeyPath == "" {
 		errs = append(errs, errors.New("DEPLOYER_WIREGUARD_PRIVATE_KEY_PATH is required"))
+	}
+	if c.WireGuardConfigPath == "" {
+		errs = append(errs, errors.New("DEPLOYER_WIREGUARD_CONFIG_PATH is required"))
+	}
+	if c.K3sConfigPath == "" {
+		errs = append(errs, errors.New("DEPLOYER_K3S_CONFIG_PATH is required"))
 	}
 	return errors.Join(errs...)
 }

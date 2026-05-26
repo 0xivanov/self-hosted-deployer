@@ -56,11 +56,12 @@ func TestNodeRepositoryCreateListFindAndUpdate(t *testing.T) {
 
 	seenAt := now.Add(time.Minute)
 	if err := repo.UpdateHeartbeat(ctx, "node-1", domain.Node{
-		Status:   "online",
-		Hostname: "pi-kitchen.local",
-		Arch:     "linux/arm64",
-		OS:       "linux",
-		Kernel:   "6.6",
+		Status:    "online",
+		Hostname:  "pi-kitchen.local",
+		Arch:      "linux/arm64",
+		OS:        "linux",
+		Kernel:    "6.6",
+		VPNStatus: "connected",
 	}, seenAt); err != nil {
 		t.Fatalf("update heartbeat: %v", err)
 	}
@@ -74,6 +75,9 @@ func TestNodeRepositoryCreateListFindAndUpdate(t *testing.T) {
 	}
 	if updated.Hostname != "pi-kitchen.local" || updated.Arch != "linux/arm64" || updated.OS != "linux" || updated.Kernel != "6.6" {
 		t.Fatalf("metadata fields were not updated: %#v", updated)
+	}
+	if updated.VPNStatus != "connected" {
+		t.Fatalf("vpn status was not updated: %#v", updated)
 	}
 	if updated.WireGuardIP != "10.8.0.2" || updated.WireGuardPublicKey == "" {
 		t.Fatalf("heartbeat should not clear WireGuard metadata: %#v", updated)

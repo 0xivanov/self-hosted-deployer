@@ -160,6 +160,9 @@ func (c *Controller) deleteAppSecret(ctx context.Context, appName string) error 
 func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision string) (*appsv1.Deployment, error) {
 	cfg.Normalize()
 	labels := appLabels(cfg.Name)
+	podLabels := appLabels(cfg.Name)
+	podLabels["deployer.io/state-mode"] = cfg.State.Mode
+	podLabels["deployer.io/resilience-mode"] = cfg.Resilience.Mode
 	replicas := int32(cfg.Deploy.Replicas)
 	if cfg.Resilience.Mode == appconfig.ResilienceResilient && replicas < 2 {
 		replicas = 2
@@ -175,7 +178,7 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				ObjectMeta: metav1.ObjectMeta{Labels: podLabels},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
 						Name:  cfg.Name,

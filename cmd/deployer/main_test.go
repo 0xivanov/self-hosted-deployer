@@ -501,6 +501,24 @@ func TestEventsListsFilteredDiagnosticsAndSupportsJSON(t *testing.T) {
 	}
 }
 
+func TestLogsStreamsRecentLinesAndPassesFollowOptions(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	client := &recordingAppClient{logLines: []string{"booted", "ready"}}
+	app := newCLIApp(strings.NewReader(""), &stdout, &stderr)
+	app.newPlatformClient = func(string, string) (platformClient, func() error, error) {
+		return client, func() error { return nil }, nil
+	}
+	args := []string{"--server", "localhost:7443", "--token", "dep_admin_test", "logs", "--tail", "25", "--follow", "my-api"}
+	if code := app.run(args); code != 0 {
+		t.Fatalf("expected logs success, got %d: %s", code, stderr.String())
+	}
+	if client.logAppName != "my-api" || client.logTailLines != 25 || !client.logFollow ||
+		stdout.String() != "booted\nready\n" {
+		t.Fatalf("unexpected logs request/output client=%#v stdout=%q", client, stdout.String())
+	}
+}
+
 func TestAppStatusAndNodeRemoveCommands(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -603,6 +621,10 @@ func (c recordingClient) GetAppStatus(context.Context, string) (clicore.AppStatu
 	return clicore.AppStatusResult{}, c.err
 }
 
+func (c recordingClient) StreamLogs(context.Context, string, int32, bool, func(string) error) error {
+	return c.err
+}
+
 func (c recordingClient) ListRoutes(context.Context) ([]clicore.RouteInfo, error) {
 	return nil, c.err
 }
@@ -647,6 +669,10 @@ type recordingAppClient struct {
 	events               []clicore.EventInfo
 	eventFilter          clicore.EventFilter
 	appStatus            clicore.AppStatusResult
+	logLines             []string
+	logAppName           string
+	logTailLines         int32
+	logFollow            bool
 	nodeMutation         clicore.NodeInfo
 	removedNodeRef       string
 	err                  error
@@ -696,6 +722,18 @@ func (c *recordingAppClient) InspectApp(context.Context, string) (clicore.AppIns
 
 func (c *recordingAppClient) GetAppStatus(context.Context, string) (clicore.AppStatusResult, error) {
 	return c.appStatus, c.err
+}
+
+func (c *recordingAppClient) StreamLogs(_ context.Context, appName string, tailLines int32, follow bool, receive func(string) error) error {
+	c.logAppName = appName
+	c.logTailLines = tailLines
+	c.logFollow = follow
+	for _, line := range c.logLines {
+		if err := receive(line); err != nil {
+			return err
+		}
+	}
+	return c.err
 }
 
 func (c *recordingAppClient) ListRoutes(context.Context) ([]clicore.RouteInfo, error) {

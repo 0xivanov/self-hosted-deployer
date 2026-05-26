@@ -2,12 +2,15 @@ package ingress
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
+	"github.com/0xivanov/self-hosted-deployer/internal/domain"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -27,6 +30,54 @@ func (c *Controller) ensureSchedulableWorker(ctx context.Context, cfg appconfig.
 		return nil
 	}
 	return fmt.Errorf("no ready schedulable Kubernetes worker matches placement architecture %q", cfg.Placement.Arch)
+}
+
+func (c *Controller) SyncNodeLabels(ctx context.Context, platformNode domain.Node) error {
+	if c.nodes == nil {
+		return fmt.Errorf("Kubernetes node client is not configured")
+	}
+	node, err := c.nodes.Get(ctx, platformNode.Name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get Kubernetes Node %q for labels: %w", platformNode.Name, err)
+	}
+	var labels map[string]string
+	if err := json.Unmarshal([]byte(platformNode.LabelsJSON), &labels); err != nil {
+		return fmt.Errorf("decode node labels: %w", err)
+	}
+	if node.Labels == nil {
+		node.Labels = map[string]string{}
+	}
+	changed := setLabel(node.Labels, "deployer.io/node-id", platformNode.ID)
+	for _, key := range []string{"location", "role"} {
+		value, ok := labels[key]
+		if ok && strings.TrimSpace(value) != "" {
+			changed = setLabel(node.Labels, "deployer.io/"+key, strings.TrimSpace(value)) || changed
+		} else if _, ok := node.Labels["deployer.io/"+key]; ok {
+			delete(node.Labels, "deployer.io/"+key)
+			changed = true
+		}
+	}
+	if arch := placementArchitecture(platformNode.Arch); arch != "" {
+		changed = setLabel(node.Labels, "kubernetes.io/arch", arch) || changed
+	}
+	if !changed {
+		return nil
+	}
+	if _, err := c.nodes.Update(ctx, node, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update Kubernetes Node %q labels: %w", platformNode.Name, err)
+	}
+	return nil
+}
+
+func setLabel(labels map[string]string, key string, value string) bool {
+	if labels[key] == value {
+		return false
+	}
+	labels[key] = value
+	return true
 }
 
 func readyForScheduling(node corev1.Node) bool {
@@ -82,8 +133,48 @@ func (c *Controller) NodeReadiness(ctx context.Context, nodeName string) (string
 	return "unknown", "Kubernetes Node has no Ready condition", schedulable, nil
 }
 
+func (c *Controller) Ready(ctx context.Context) error {
+	if c.nodes == nil {
+		return fmt.Errorf("Kubernetes node client is not configured")
+	}
+	if _, err := c.nodes.List(ctx, metav1.ListOptions{Limit: 1}); err != nil {
+		return fmt.Errorf("check Kubernetes API readiness: %w", err)
+	}
+	return nil
+}
+
 func (c *Controller) CordonNode(ctx context.Context, nodeName string) error {
 	return c.setNodeUnschedulable(ctx, nodeName, true)
+}
+
+func (c *Controller) DrainNode(ctx context.Context, nodeName string) error {
+	if err := c.CordonNode(ctx, nodeName); err != nil {
+		return err
+	}
+	if c.pods == nil || c.evictions == nil {
+		return fmt.Errorf("Kubernetes pod eviction client is not configured")
+	}
+	pods, err := c.pods.List(ctx, metav1.ListOptions{FieldSelector: "spec.nodeName=" + nodeName})
+	if err != nil {
+		return fmt.Errorf("list Pods on Kubernetes Node %q: %w", nodeName, err)
+	}
+	for _, pod := range pods.Items {
+		stateMode := pod.Labels["deployer.io/state-mode"]
+		resilienceMode := pod.Labels["deployer.io/resilience-mode"]
+		if stateMode == "" || stateMode == "stateful" || resilienceMode == appconfig.ResiliencePinned {
+			continue
+		}
+		err := c.evictions.Evict(ctx, &policyv1.Eviction{
+			ObjectMeta: metav1.ObjectMeta{Name: pod.Name, Namespace: pod.Namespace},
+		})
+		if apierrors.IsNotFound(err) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("evict Pod %q from Kubernetes Node %q: %w", pod.Name, nodeName, err)
+		}
+	}
+	return nil
 }
 
 func (c *Controller) UncordonNode(ctx context.Context, nodeName string) error {

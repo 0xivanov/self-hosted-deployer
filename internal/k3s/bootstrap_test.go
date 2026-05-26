@@ -148,6 +148,55 @@ func TestBootstrapRequiresLinuxRoot(t *testing.T) {
 	}
 }
 
+func TestWorkerJoinProviderReadsServerToken(t *testing.T) {
+	provider := WorkerJoinProvider{
+		WireGuardIP: "10.8.0.1",
+		ReadFile: func(path string) ([]byte, error) {
+			if path != DefaultNodeTokenPath {
+				t.Fatalf("unexpected token path %q", path)
+			}
+			return []byte("worker-token\n"), nil
+		},
+	}
+	url, token, err := provider.WorkerJoinMaterial(context.Background())
+	if err != nil {
+		t.Fatalf("read worker join material: %v", err)
+	}
+	if url != "https://10.8.0.1:6443" || token != "worker-token" {
+		t.Fatalf("unexpected worker join material url=%q token=%q", url, token)
+	}
+}
+
+func TestBootstrapWorkerWritesRestrictedConfigAndRunsAgentInstaller(t *testing.T) {
+	files := &fakeFiles{statErr: os.ErrNotExist}
+	runner := &fakeRunner{}
+	bootstrapper := Bootstrapper{
+		Runtime:    fakeRuntime{goos: "linux", euid: 0, lookPath: exec.ErrNotFound},
+		Files:      files,
+		Runner:     runner,
+		HTTPClient: fakeHTTPClient{body: "#!/bin/sh\n"},
+	}
+	err := bootstrapper.BootstrapWorker(context.Background(), WorkerConfig{
+		ServerURL:    "https://10.8.0.1:6443",
+		Token:        "worker-secret",
+		NodeName:     "pi-kitchen",
+		NodeIP:       "10.8.0.2",
+		ConfigPath:   "/tmp/rancher/k3s/config.yaml",
+		InstallerURL: "https://example.test/k3s.sh",
+	})
+	if err != nil {
+		t.Fatalf("bootstrap worker: %v", err)
+	}
+	if files.writePerm != 0o600 || !strings.Contains(string(files.writeData), "node-name: pi-kitchen") ||
+		!strings.Contains(string(files.writeData), "token: worker-secret") {
+		t.Fatalf("unexpected worker config write: perm=%o data=%q", files.writePerm, files.writeData)
+	}
+	if len(runner.calls) != 1 || !strings.Contains(strings.Join(runner.calls[0].env, "\n"), "INSTALL_K3S_EXEC=agent --config /tmp/rancher/k3s/config.yaml") ||
+		!strings.Contains(strings.Join(runner.calls[0].env, "\n"), "K3S_URL=https://10.8.0.1:6443") {
+		t.Fatalf("unexpected worker installer call: %#v", runner.calls)
+	}
+}
+
 type fakeRuntime struct {
 	goos     string
 	euid     int

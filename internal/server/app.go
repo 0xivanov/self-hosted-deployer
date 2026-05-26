@@ -61,6 +61,10 @@ type ReportingAppRuntime interface {
 	RuntimeStatus(ctx context.Context, appName string) (state string, desiredReplicas int32, availableReplicas int32, runningNodes []string, err error)
 }
 
+type LoggingAppRuntime interface {
+	StreamLogs(ctx context.Context, appName string, tailLines int32, follow bool, send func(string) error) error
+}
+
 type IngressRuntime = AppRuntime
 
 type AppServiceConfig struct {
@@ -340,6 +344,41 @@ func (s AppService) GetAppStatus(ctx context.Context, req *deployerv1.GetAppStat
 		response.Warnings = runtimeWarnings(cfg, runtimeStatus, desired, available, nodes)
 	}
 	return response, nil
+}
+
+func (s AppService) GetDeploymentLogs(req *deployerv1.GetDeploymentLogsRequest, stream deployerv1.AppService_GetDeploymentLogsServer) error {
+	ctx := stream.Context()
+	if err := requireCaller(ctx, CallerAdmin); err != nil {
+		return err
+	}
+	name := strings.TrimSpace(req.GetAppName())
+	if name == "" {
+		return status.Error(codes.InvalidArgument, "app name is required")
+	}
+	if req.GetTailLines() < 0 {
+		return status.Error(codes.InvalidArgument, "tail lines cannot be negative")
+	}
+	app, err := s.apps.FindActiveByName(ctx, name)
+	if errors.Is(err, db.ErrNotFound) {
+		return status.Error(codes.NotFound, "app not found")
+	}
+	if err != nil {
+		return status.Error(codes.Internal, "get app")
+	}
+	runtime, ok := s.runtime.(LoggingAppRuntime)
+	if !ok {
+		return status.Error(codes.FailedPrecondition, "app log runtime is not configured")
+	}
+	err = runtime.StreamLogs(ctx, app.Name, req.GetTailLines(), req.GetFollow(), func(line string) error {
+		return stream.Send(&deployerv1.GetDeploymentLogsResponse{Lines: []string{line}})
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return status.FromContextError(ctx.Err()).Err()
+		}
+		return status.Errorf(codes.Internal, "stream app logs: %v", err)
+	}
+	return nil
 }
 
 func runtimeWarnings(cfg appconfig.Config, state string, desired int32, available int32, runningNodes []string) []string {

@@ -12,6 +12,7 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/domain"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"github.com/0xivanov/self-hosted-deployer/internal/security"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -135,6 +136,31 @@ func TestAppServiceStatusReportsResilienceWarnings(t *testing.T) {
 	if got.GetRuntimeStatus() != "degraded" || got.GetDesiredReplicas() != 2 || got.GetAvailableReplicas() != 1 ||
 		len(got.GetRunningNodes()) != 1 || len(got.GetWarnings()) != 2 {
 		t.Fatalf("unexpected resilience status: %#v", got)
+	}
+}
+
+func TestAppServiceStreamsDeploymentLogsForExistingApp(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	runtime := &recordingAppRuntime{logLines: []string{"booted", "ready"}}
+	service := NewAppService(AppServiceConfig{
+		Apps:        db.NewAppRepository(database),
+		Deployments: db.NewDeploymentRepository(database),
+		Routes:      db.NewRouteRepository(database),
+		Runtime:     runtime,
+	})
+	if _, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 1)}); err != nil {
+		t.Fatalf("deploy loggable app: %v", err)
+	}
+	stream := &recordingAppLogStream{ctx: ctx}
+	if err := service.GetDeploymentLogs(&deployerv1.GetDeploymentLogsRequest{
+		AppName: "my-api", TailLines: 25, Follow: true,
+	}, stream); err != nil {
+		t.Fatalf("stream app logs: %v", err)
+	}
+	if runtime.logAppName != "my-api" || runtime.logTailLines != 25 || !runtime.logFollow ||
+		len(stream.lines) != 2 || stream.lines[1] != "ready" {
+		t.Fatalf("unexpected logs runtime=%#v lines=%#v", runtime, stream.lines)
 	}
 }
 
@@ -475,6 +501,10 @@ type recordingAppRuntime struct {
 	desiredReplicas   int32
 	availableReplicas int32
 	runningNodes      []string
+	logLines          []string
+	logAppName        string
+	logTailLines      int32
+	logFollow         bool
 	err               error
 }
 
@@ -500,6 +530,33 @@ func (r *recordingAppRuntime) StatusDetails(context.Context, string) (string, in
 
 func (r *recordingAppRuntime) RuntimeStatus(context.Context, string) (string, int32, int32, []string, error) {
 	return r.status, r.desiredReplicas, r.availableReplicas, append([]string(nil), r.runningNodes...), r.err
+}
+
+func (r *recordingAppRuntime) StreamLogs(_ context.Context, appName string, tailLines int32, follow bool, send func(string) error) error {
+	r.logAppName = appName
+	r.logTailLines = tailLines
+	r.logFollow = follow
+	for _, line := range r.logLines {
+		if err := send(line); err != nil {
+			return err
+		}
+	}
+	return r.err
+}
+
+type recordingAppLogStream struct {
+	grpc.ServerStream
+	ctx   context.Context
+	lines []string
+}
+
+func (s *recordingAppLogStream) Context() context.Context {
+	return s.ctx
+}
+
+func (s *recordingAppLogStream) Send(response *deployerv1.GetDeploymentLogsResponse) error {
+	s.lines = append(s.lines, response.GetLines()...)
+	return nil
 }
 
 type failingRouteRepository struct {

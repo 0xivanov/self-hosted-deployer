@@ -58,6 +58,29 @@ type NodeRuntime interface {
 	RemoveNode(ctx context.Context, nodeName string) error
 }
 
+type NodeDrainRuntime interface {
+	DrainNode(ctx context.Context, nodeName string) error
+}
+
+type NodeLabelSyncRuntime interface {
+	SyncNodeLabels(ctx context.Context, node domain.Node) error
+}
+
+type PeerSynchronizer interface {
+	SyncPeers(ctx context.Context, nodes []domain.Node) error
+}
+
+type WorkerJoinMaterialProvider interface {
+	WorkerJoinMaterial(ctx context.Context) (serverURL string, token string, err error)
+}
+
+type WorkerNetworkConfig struct {
+	Subnet       string
+	HubIP        string
+	HubPublicKey string
+	Endpoint     string
+}
+
 type NodeServiceConfig struct {
 	Nodes        NodeRepository
 	JoinTokens   consumableJoinTokenRepository
@@ -65,6 +88,9 @@ type NodeServiceConfig struct {
 	TokenHashKey string
 	Events       EventRecorder
 	Runtime      NodeRuntime
+	Peers        PeerSynchronizer
+	WorkerJoin   WorkerJoinMaterialProvider
+	Network      WorkerNetworkConfig
 	OfflineAfter time.Duration
 }
 
@@ -76,6 +102,9 @@ type NodeService struct {
 	hashKey      []byte
 	events       EventRecorder
 	runtime      NodeRuntime
+	peers        PeerSynchronizer
+	workerJoin   WorkerJoinMaterialProvider
+	network      WorkerNetworkConfig
 	offlineAfter time.Duration
 	now          func() time.Time
 }
@@ -92,6 +121,9 @@ func NewNodeService(cfg NodeServiceConfig) NodeService {
 		hashKey:      []byte(cfg.TokenHashKey),
 		events:       cfg.Events,
 		runtime:      cfg.Runtime,
+		peers:        cfg.Peers,
+		workerJoin:   cfg.WorkerJoin,
+		network:      cfg.Network,
 		offlineAfter: offlineAfter,
 		now:          time.Now,
 	}
@@ -414,22 +446,39 @@ func (s NodeService) HeartbeatNode(ctx context.Context, req *deployerv1.Heartbea
 	if statusValue != nodeStatusOnline && statusValue != nodeStatusOffline {
 		return nil, status.Error(codes.InvalidArgument, "status must be online or offline")
 	}
+	vpnStatus := strings.TrimSpace(req.GetVpnStatus())
+	if vpnStatus != "" && vpnStatus != "connected" && vpnStatus != "disconnected" && vpnStatus != "unknown" {
+		return nil, status.Error(codes.InvalidArgument, "vpn_status must be connected, disconnected, or unknown")
+	}
 	effectiveStatus := statusValue
 	if previous.Status == nodeStatusDrained {
 		effectiveStatus = nodeStatusDrained
 	}
 	now := s.now().UTC()
 	if err := s.nodes.UpdateHeartbeat(ctx, caller.NodeID, domain.Node{
-		Status:   effectiveStatus,
-		Hostname: strings.TrimSpace(req.GetHostname()),
-		Arch:     strings.TrimSpace(req.GetArch()),
-		OS:       strings.TrimSpace(req.GetOs()),
-		Kernel:   strings.TrimSpace(req.GetKernel()),
+		Status:    effectiveStatus,
+		Hostname:  strings.TrimSpace(req.GetHostname()),
+		Arch:      strings.TrimSpace(req.GetArch()),
+		OS:        strings.TrimSpace(req.GetOs()),
+		Kernel:    strings.TrimSpace(req.GetKernel()),
+		VPNStatus: vpnStatus,
 	}, now); err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			return nil, status.Error(codes.NotFound, "node not found")
 		}
 		return nil, status.Error(codes.Internal, "update heartbeat")
+	}
+	current := previous
+	current.Status = effectiveStatus
+	current.Hostname = strings.TrimSpace(req.GetHostname())
+	current.Arch = strings.TrimSpace(req.GetArch())
+	current.OS = strings.TrimSpace(req.GetOs())
+	current.Kernel = strings.TrimSpace(req.GetKernel())
+	current.VPNStatus = vpnStatus
+	if labelRuntime, ok := s.runtime.(NodeLabelSyncRuntime); ok {
+		if err := labelRuntime.SyncNodeLabels(ctx, current); err != nil {
+			return nil, status.Error(codes.Internal, "sync Kubernetes node labels")
+		}
 	}
 	if previous.Status != effectiveStatus {
 		switch effectiveStatus {
@@ -454,6 +503,65 @@ func (s NodeService) HeartbeatNode(ctx context.Context, req *deployerv1.Heartbea
 	return &deployerv1.HeartbeatNodeResponse{AcceptedAt: formatProtoTime(now)}, nil
 }
 
+func (s NodeService) GetWorkerBootstrap(ctx context.Context, _ *deployerv1.GetWorkerBootstrapRequest) (*deployerv1.GetWorkerBootstrapResponse, error) {
+	caller, ok := CallerFromContext(ctx)
+	if !ok || caller.Kind != CallerAgent {
+		return nil, status.Error(codes.PermissionDenied, "agent token is required")
+	}
+	node, err := s.nodes.FindByID(ctx, caller.NodeID)
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, status.Error(codes.NotFound, "node not found")
+	}
+	if err != nil {
+		return nil, status.Error(codes.Internal, "get bootstrap node")
+	}
+	if node.Status == nodeStatusRemoved {
+		return nil, status.Error(codes.PermissionDenied, "node has been removed")
+	}
+	if strings.TrimSpace(node.WireGuardIP) == "" || s.peers == nil {
+		return nil, status.Error(codes.FailedPrecondition, "WireGuard peer synchronization is not configured")
+	}
+	knownNodes, err := s.nodes.List(ctx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "list WireGuard peers")
+	}
+	if err := s.peers.SyncPeers(ctx, knownNodes); err != nil {
+		return nil, status.Error(codes.Internal, "synchronize WireGuard hub peers")
+	}
+	if s.workerJoin == nil || strings.TrimSpace(s.network.HubIP) == "" ||
+		strings.TrimSpace(s.network.HubPublicKey) == "" || strings.TrimSpace(s.network.Endpoint) == "" {
+		return nil, status.Error(codes.FailedPrecondition, "worker bootstrap configuration is incomplete")
+	}
+	if err := wireguard.ValidatePublicKey(s.network.HubPublicKey); err != nil {
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+	k3sURL, k3sToken, err := s.workerJoin.WorkerJoinMaterial(ctx)
+	if err != nil {
+		return nil, status.Error(codes.FailedPrecondition, "k3s worker join material is unavailable")
+	}
+	subnet := strings.TrimSpace(s.network.Subnet)
+	if subnet == "" {
+		subnet = wireguard.DefaultSubnet
+	}
+	recordEvent(ctx, s.events, domain.Event{
+		Type:         domain.EventTypeNodeWorkerBootstrapRequested,
+		Severity:     domain.EventSeverityInfo,
+		Message:      fmt.Sprintf("node %s requested worker bootstrap material", node.Name),
+		NodeID:       node.ID,
+		MetadataJSON: metadataJSON(map[string]any{"node_name": node.Name}),
+	})
+	return &deployerv1.GetWorkerBootstrapResponse{
+		NodeName:              node.Name,
+		WireguardIp:           node.WireGuardIP,
+		WireguardSubnet:       subnet,
+		WireguardHubIp:        strings.TrimSpace(s.network.HubIP),
+		WireguardHubPublicKey: strings.TrimSpace(s.network.HubPublicKey),
+		WireguardEndpoint:     strings.TrimSpace(s.network.Endpoint),
+		K3SUrl:                k3sURL,
+		K3SToken:              k3sToken,
+	}, nil
+}
+
 func (s NodeService) DrainNode(ctx context.Context, req *deployerv1.DrainNodeRequest) (*deployerv1.DrainNodeResponse, error) {
 	if err := requireCaller(ctx, CallerAdmin); err != nil {
 		return nil, err
@@ -466,8 +574,14 @@ func (s NodeService) DrainNode(ctx context.Context, req *deployerv1.DrainNodeReq
 		return nil, status.Error(codes.FailedPrecondition, "removed node cannot be drained")
 	}
 	if s.runtime != nil {
-		if err := s.runtime.CordonNode(ctx, node.Name); err != nil {
-			return nil, status.Error(codes.Internal, "cordon Kubernetes node")
+		var err error
+		if runtime, ok := s.runtime.(NodeDrainRuntime); ok {
+			err = runtime.DrainNode(ctx, node.Name)
+		} else {
+			err = s.runtime.CordonNode(ctx, node.Name)
+		}
+		if err != nil {
+			return nil, status.Error(codes.Internal, "drain Kubernetes node")
 		}
 	}
 	if node.Status != nodeStatusDrained {
@@ -552,6 +666,15 @@ func (s NodeService) RemoveNode(ctx context.Context, req *deployerv1.RemoveNodeR
 	if s.runtime != nil {
 		if err := s.runtime.RemoveNode(ctx, node.Name); err != nil {
 			return nil, status.Error(codes.Internal, "remove Kubernetes node")
+		}
+	}
+	if s.peers != nil {
+		nodes, err := s.nodes.List(ctx)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "list WireGuard peers")
+		}
+		if err := s.peers.SyncPeers(ctx, nodes); err != nil {
+			return nil, status.Error(codes.Internal, "synchronize WireGuard hub peers")
 		}
 	}
 	nodeProto, err := s.nodeWithReadiness(ctx, node)
@@ -666,6 +789,7 @@ func protoNode(node domain.Node) *deployerv1.Node {
 		WireguardIp:        node.WireGuardIP,
 		WireguardPublicKey: node.WireGuardPublicKey,
 		Schedulable:        node.Status != nodeStatusDrained && node.Status != nodeStatusRemoved,
+		VpnStatus:          node.VPNStatus,
 	}
 }
 

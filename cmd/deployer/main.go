@@ -43,6 +43,7 @@ type platformClient interface {
 	ListApps(ctx context.Context) ([]clicore.AppInfo, error)
 	InspectApp(ctx context.Context, name string) (clicore.AppInspectResult, error)
 	GetAppStatus(ctx context.Context, name string) (clicore.AppStatusResult, error)
+	StreamLogs(ctx context.Context, appName string, tailLines int32, follow bool, receive func(string) error) error
 	ListRoutes(ctx context.Context) ([]clicore.RouteInfo, error)
 	InspectRoute(ctx context.Context, domain string) (clicore.RouteInfo, error)
 	SetSecret(ctx context.Context, appName string, name string, value string) error

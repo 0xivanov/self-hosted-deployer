@@ -6,14 +6,17 @@ import (
 	"testing"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
+	"github.com/0xivanov/self-hosted-deployer/internal/domain"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestControllerReconcilesAndDeletesAppResources(t *testing.T) {
@@ -326,27 +329,66 @@ func TestControllerManagesNodeReadinessAndReportsRunningNodes(t *testing.T) {
 			Status:     appsv1.DeploymentStatus{AvailableReplicas: 2},
 		},
 		&corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-api-1", Namespace: DefaultNamespace, Labels: map[string]string{"deployer.io/app": "my-api"}},
-			Spec:       corev1.PodSpec{NodeName: "pi-kitchen"},
-			Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+			ObjectMeta: metav1.ObjectMeta{Name: "my-api-1", Namespace: DefaultNamespace, Labels: map[string]string{
+				"deployer.io/app": "my-api", "deployer.io/state-mode": "stateless", "deployer.io/resilience-mode": "basic",
+			}},
+			Spec:   corev1.PodSpec{NodeName: "pi-kitchen"},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "db-pinned-1", Namespace: DefaultNamespace, Labels: map[string]string{
+				"deployer.io/app": "db", "deployer.io/state-mode": "stateful", "deployer.io/resilience-mode": appconfig.ResiliencePinned,
+			}},
+			Spec: corev1.PodSpec{NodeName: "pi-kitchen"},
 		},
 	)
 	controller := &Controller{
 		namespace:   DefaultNamespace,
 		nodes:       clientset.CoreV1().Nodes(),
 		pods:        clientset.CoreV1().Pods(DefaultNamespace),
+		evictions:   clientset.PolicyV1().Evictions(DefaultNamespace),
 		deployments: clientset.AppsV1().Deployments(DefaultNamespace),
+	}
+	if err := controller.Ready(context.Background()); err != nil {
+		t.Fatalf("controller readiness: %v", err)
 	}
 	state, message, schedulable, err := controller.NodeReadiness(context.Background(), "pi-kitchen")
 	if err != nil || state != "ready" || message != "kubelet ready" || !schedulable {
 		t.Fatalf("unexpected readiness state=%q message=%q schedulable=%t err=%v", state, message, schedulable, err)
 	}
-	if err := controller.CordonNode(context.Background(), "pi-kitchen"); err != nil {
-		t.Fatalf("cordon node: %v", err)
+	if err := controller.DrainNode(context.Background(), "pi-kitchen"); err != nil {
+		t.Fatalf("drain node: %v", err)
 	}
 	node, err := clientset.CoreV1().Nodes().Get(context.Background(), "pi-kitchen", metav1.GetOptions{})
 	if err != nil || !node.Spec.Unschedulable {
 		t.Fatalf("expected cordoned node: %#v err=%v", node, err)
+	}
+	var evicted []string
+	for _, action := range clientset.Actions() {
+		createAction, ok := action.(k8stesting.CreateAction)
+		if !ok || action.GetResource().Resource != "pods" || action.GetSubresource() != "eviction" {
+			continue
+		}
+		eviction, ok := createAction.GetObject().(*policyv1.Eviction)
+		if ok {
+			evicted = append(evicted, eviction.Name)
+		}
+	}
+	if len(evicted) != 1 || evicted[0] != "my-api-1" {
+		t.Fatalf("expected only movable stateless pod eviction, got %#v", evicted)
+	}
+	if err := controller.SyncNodeLabels(context.Background(), domain.Node{
+		ID:         "node-1",
+		Name:       "pi-kitchen",
+		Arch:       "linux/arm64",
+		LabelsJSON: `{"location":"home","role":"worker"}`,
+	}); err != nil {
+		t.Fatalf("sync node labels: %v", err)
+	}
+	node, err = clientset.CoreV1().Nodes().Get(context.Background(), "pi-kitchen", metav1.GetOptions{})
+	if err != nil || node.Labels["deployer.io/node-id"] != "node-1" ||
+		node.Labels["deployer.io/location"] != "home" || node.Labels["kubernetes.io/arch"] != "arm64" {
+		t.Fatalf("expected synchronized node labels: %#v err=%v", node, err)
 	}
 	if err := controller.UncordonNode(context.Background(), "pi-kitchen"); err != nil {
 		t.Fatalf("uncordon node: %v", err)
