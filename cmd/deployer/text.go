@@ -71,6 +71,7 @@ func usage(w io.Writer, flags *flag.FlagSet) {
 	fmt.Fprintln(w, "  routes     List and inspect public routes")
 	fmt.Fprintln(w, "  secrets    Set, list, and remove app secrets")
 	fmt.Fprintln(w, "  events     List and watch platform events")
+	fmt.Fprintln(w, "  doctor     Diagnose control plane, node, network, and ingress readiness")
 	fmt.Fprintln(w, "  server     Inspect the configured control plane")
 	fmt.Fprintln(w, "  version    Print version information")
 	fmt.Fprintln(w, "  help       Show help")

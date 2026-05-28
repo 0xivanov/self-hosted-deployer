@@ -17,6 +17,12 @@ make test
 make build
 ```
 
+Install the local CLI during development:
+
+```bash
+make install-cli
+```
+
 Run the binaries during development:
 
 ```bash
@@ -24,6 +30,21 @@ go run ./cmd/deployer --help
 go run ./cmd/deployer-server --help
 go run ./cmd/deployer-agent --help
 ```
+
+## Operations
+
+Phase 10 operational assets live under `deploy/`, `scripts/`, and `docs/`.
+
+```bash
+make build-arm64
+make release
+```
+
+- [Operations guide](docs/operations.md)
+- Systemd unit templates: `deploy/systemd/`
+- Environment examples: `deploy/env/`
+- Agent installer: `scripts/install-agent.sh`
+- MVP smoke test: `scripts/smoke-test.sh`
 
 ## Protobuf
 

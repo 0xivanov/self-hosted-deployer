@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -77,6 +78,55 @@ func TestBootstrapK3sCommandUsesInstallerPath(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(runner.calls[0].env, "\n"), "server --config /tmp/k3s/config.yaml") {
 		t.Fatalf("installer env missing config path: %#v", runner.calls[0].env)
+	}
+}
+
+func TestRunServerBootstrapWritesEnvAndInitializesAdmin(t *testing.T) {
+	oldRandom := randomReader
+	randomReader = strings.NewReader(strings.Repeat("a", 64))
+	defer func() {
+		randomReader = oldRandom
+	}()
+
+	dir := t.TempDir()
+	envFile := filepath.Join(dir, "server.env")
+	dbPath := filepath.Join(dir, "deployer.db")
+	result, err := runServerBootstrap(context.Background(), serverBootstrapOptions{
+		EnvFile:            envFile,
+		DatabaseURL:        "file:" + dbPath,
+		PublicBaseURL:      "https://deploy.example.com:7443",
+		GRPCAddress:        ":7443",
+		HTTPAddress:        ":7080",
+		KubeconfigPath:     "/etc/rancher/k3s/k3s.yaml",
+		IngressNamespace:   "deployer-apps",
+		K3sWireGuardIP:     "10.8.0.1",
+		WireGuardInterface: "wg0",
+		WireGuardEndpoint:  "deploy.example.com:51820",
+	})
+	if err != nil {
+		t.Fatalf("bootstrap server: %v", err)
+	}
+	data, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatalf("read env file: %v", err)
+	}
+	info, err := os.Stat(envFile)
+	if err != nil {
+		t.Fatalf("stat env file: %v", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("expected env file mode 0600, got %o", info.Mode().Perm())
+	}
+	if !strings.HasPrefix(result.AdminToken, "dep_admin_") || strings.Contains(string(data), result.AdminToken) {
+		t.Fatalf("expected one-time admin token outside env file, token=%q env=%q", result.AdminToken, string(data))
+	}
+	if !strings.Contains(string(data), "DEPLOYER_DATABASE_URL=file:"+dbPath) ||
+		!strings.Contains(string(data), "DEPLOYER_SECRET_KEY=") ||
+		!strings.Contains(string(data), "DEPLOYER_TOKEN_HASH_KEY=") {
+		t.Fatalf("unexpected env file contents:\n%s", string(data))
+	}
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatalf("expected database to be initialized: %v", err)
 	}
 }
 

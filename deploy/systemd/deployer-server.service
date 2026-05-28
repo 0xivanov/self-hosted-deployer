@@ -1,0 +1,15 @@
+[Unit]
+Description=Self-Hosted Deployer control plane
+Documentation=https://github.com/0xivanov/self-hosted-deployer
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/deployer/server.env
+ExecStart=/usr/local/bin/deployer-server
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

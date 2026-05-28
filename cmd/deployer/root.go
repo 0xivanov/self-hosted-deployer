@@ -76,6 +76,8 @@ func (a cliApp) dispatch(args []string, opts cliOptions) int {
 		return a.secrets(args[1:], opts)
 	case "events":
 		return a.events(args[1:], opts)
+	case "doctor":
+		return a.doctor(args[1:], opts)
 	case "help":
 		usage(a.stderr, rootFlags(a.stderr, &cliOptions{}))
 		return 0

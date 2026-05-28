@@ -244,6 +244,36 @@ func TestServerStatusMissingConfigIsActionable(t *testing.T) {
 	}
 }
 
+func TestDoctorReportsOperationalChecks(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	client := &recordingAppClient{
+		serverStatus: clicore.ServerStatus{Version: "dev", Commit: "abc123", Ready: true},
+		nodes: []clicore.NodeInfo{{
+			Name:             "pi-kitchen",
+			Status:           "online",
+			KubernetesStatus: "ready",
+			Schedulable:      true,
+			VPNStatus:        "connected",
+		}},
+		routes: []clicore.RouteInfo{{Domain: "api.example.com", Status: "healthy"}},
+	}
+	app := newCLIApp(strings.NewReader(""), &stdout, &stderr)
+	app.newPlatformClient = func(string, string) (platformClient, func() error, error) {
+		return client, func() error { return nil }, nil
+	}
+
+	code := app.run([]string{"--server", "localhost:7443", "--token", "dep_admin_test", "doctor"})
+	if code != 0 {
+		t.Fatalf("expected doctor success, got %d: %s", code, stderr.String())
+	}
+	for _, want := range []string{"control plane", "Kubernetes workers", "WireGuard connectivity", "ingress"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Fatalf("expected doctor output to contain %q, got %q", want, stdout.String())
+		}
+	}
+}
+
 func TestDeployDryRunReadsDefaultFileWithoutServerCall(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -654,6 +684,7 @@ func (c recordingClient) WatchEvents(context.Context, clicore.EventFilter, func(
 }
 
 type recordingAppClient struct {
+	serverStatus         clicore.ServerStatus
 	deployerYAML         string
 	deployResult         clicore.DeployResult
 	apps                 []clicore.AppInfo
@@ -668,6 +699,7 @@ type recordingAppClient struct {
 	deletedSecretName    string
 	events               []clicore.EventInfo
 	eventFilter          clicore.EventFilter
+	nodes                []clicore.NodeInfo
 	appStatus            clicore.AppStatusResult
 	logLines             []string
 	logAppName           string
@@ -679,7 +711,7 @@ type recordingAppClient struct {
 }
 
 func (c *recordingAppClient) Status(context.Context) (clicore.ServerStatus, error) {
-	return clicore.ServerStatus{}, c.err
+	return c.serverStatus, c.err
 }
 
 func (c *recordingAppClient) CreateJoinToken(context.Context, string, map[string]string) (clicore.JoinTokenResult, error) {
@@ -687,7 +719,7 @@ func (c *recordingAppClient) CreateJoinToken(context.Context, string, map[string
 }
 
 func (c *recordingAppClient) ListNodes(context.Context) ([]clicore.NodeInfo, error) {
-	return nil, c.err
+	return c.nodes, c.err
 }
 
 func (c *recordingAppClient) GetNode(context.Context, string) (clicore.NodeInfo, error) {
