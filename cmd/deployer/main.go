@@ -36,9 +36,14 @@ type platformClient interface {
 	CreateJoinToken(ctx context.Context, nodeName string, labels map[string]string) (clicore.JoinTokenResult, error)
 	ListNodes(ctx context.Context) ([]clicore.NodeInfo, error)
 	GetNode(ctx context.Context, ref string) (clicore.NodeInfo, error)
+	DrainNode(ctx context.Context, ref string) (clicore.NodeInfo, error)
+	UncordonNode(ctx context.Context, ref string) (clicore.NodeInfo, error)
+	RemoveNode(ctx context.Context, ref string) (clicore.NodeInfo, error)
 	DeployApp(ctx context.Context, deployerYAML string) (clicore.DeployResult, error)
 	ListApps(ctx context.Context) ([]clicore.AppInfo, error)
 	InspectApp(ctx context.Context, name string) (clicore.AppInspectResult, error)
+	GetAppStatus(ctx context.Context, name string) (clicore.AppStatusResult, error)
+	StreamLogs(ctx context.Context, appName string, tailLines int32, follow bool, receive func(string) error) error
 	ListRoutes(ctx context.Context) ([]clicore.RouteInfo, error)
 	InspectRoute(ctx context.Context, domain string) (clicore.RouteInfo, error)
 	SetSecret(ctx context.Context, appName string, name string, value string) error

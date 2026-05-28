@@ -33,14 +33,26 @@ type Repositories struct {
 type Runtime struct {
 	Apps            AppRuntime
 	Ingress         IngressRuntime
+	Nodes           NodeRuntime
+	Readiness       ReadinessRuntime
+	WireGuardPeers  PeerSynchronizer
+	WorkerJoin      WorkerJoinMaterialProvider
 	SecretCipher    SecretCipher
 	RouteTLSEnabled bool
+}
+
+type ReadinessRuntime interface {
+	Ready(ctx context.Context) error
 }
 
 func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, repos Repositories, runtime Runtime) error {
 	retention, err := cfg.EventRetention()
 	if err != nil {
 		return fmt.Errorf("configure event retention: %w", err)
+	}
+	nodeMonitor, err := cfg.NodeMonitor()
+	if err != nil {
+		return fmt.Errorf("configure node monitor: %w", err)
 	}
 	grpcListener, err := net.Listen("tcp", cfg.GRPCListenAddress)
 	if err != nil {
@@ -91,6 +103,15 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		AgentTokens:  repos.AgentTokens,
 		TokenHashKey: cfg.TokenHashKey,
 		Events:       eventRecorder,
+		Runtime:      runtime.Nodes,
+		Peers:        runtime.WireGuardPeers,
+		WorkerJoin:   runtime.WorkerJoin,
+		Network: WorkerNetworkConfig{
+			HubIP:        cfg.K3sWireGuardIP,
+			HubPublicKey: cfg.WireGuardHubPublicKey,
+			Endpoint:     cfg.WireGuardEndpoint,
+		},
+		OfflineAfter: nodeMonitor.OfflineAfter,
 	}))
 	appRuntime := runtime.Apps
 	if appRuntime == nil {
@@ -128,6 +149,12 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 			http.Error(w, "not ready", http.StatusServiceUnavailable)
 			return
 		}
+		if runtime.Readiness != nil {
+			if err := runtime.Readiness.Ready(r.Context()); err != nil {
+				http.Error(w, "not ready", http.StatusServiceUnavailable)
+				return
+			}
+		}
 		writePlainText(logger, w, http.StatusOK, "ready\n")
 	})
 	httpServer := &http.Server{
@@ -137,7 +164,7 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 
 	errs := make(chan error, 2)
 	go RunEventRetention(ctx, repos.Events, retention, logger)
-	go RunNodeOfflineMonitor(ctx, repos.Nodes, eventRecorder, logger)
+	go RunNodeOfflineMonitor(ctx, repos.Nodes, eventRecorder, logger, nodeMonitor.OfflineAfter, nodeMonitor.Interval)
 	go func() {
 		logger.Info("grpc server listening", "address", grpcListener.Addr().String())
 		if err := grpcServer.Serve(grpcListener); err != nil {

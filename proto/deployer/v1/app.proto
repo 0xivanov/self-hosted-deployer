@@ -11,7 +11,7 @@ service AppService {
   rpc DeleteApp(DeleteAppRequest) returns (DeleteAppResponse);
   rpc GetApp(GetAppRequest) returns (GetAppResponse);
   rpc GetAppStatus(GetAppStatusRequest) returns (GetAppStatusResponse);
-  rpc GetDeploymentLogs(GetDeploymentLogsRequest) returns (GetDeploymentLogsResponse);
+  rpc GetDeploymentLogs(GetDeploymentLogsRequest) returns (stream GetDeploymentLogsResponse);
   rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
   rpc InspectRoute(InspectRouteRequest) returns (InspectRouteResponse);
 }
@@ -99,12 +99,18 @@ message GetAppStatusResponse {
   App app = 1;
   Deployment latest_deployment = 2;
   repeated Route routes = 3;
+  string runtime_status = 4;
+  int32 desired_replicas = 5;
+  int32 available_replicas = 6;
+  repeated string running_nodes = 7;
+  repeated string warnings = 8;
 }
 
 message GetDeploymentLogsRequest {
   string app_name = 1;
   string deployment_id = 2;
   int32 tail_lines = 3;
+  bool follow = 4;
 }
 
 message GetDeploymentLogsResponse {

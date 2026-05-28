@@ -4,13 +4,17 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	clicore "github.com/0xivanov/self-hosted-deployer/internal/cli"
+	"github.com/0xivanov/self-hosted-deployer/internal/k3s"
 	"github.com/0xivanov/self-hosted-deployer/internal/wireguard"
 )
 
@@ -145,6 +149,59 @@ func TestRunStopsClearlyOnBadCredentials(t *testing.T) {
 	}
 }
 
+func TestJoinK3sConnectsWireGuardAndRunsWorkerBootstrap(t *testing.T) {
+	credentialPath := filepath.Join(t.TempDir(), "agent", "token")
+	privateKeyPath := filepath.Join(t.TempDir(), "wireguard", "privatekey")
+	configPath := filepath.Join(t.TempDir(), "wireguard", "wg0.conf")
+	if err := writeCredential(credentialPath, "dep_agent_saved"); err != nil {
+		t.Fatalf("write credential: %v", err)
+	}
+	if err := writeWireGuardPrivateKey(privateKeyPath, "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="); err != nil {
+		t.Fatalf("write WireGuard key: %v", err)
+	}
+	fake := &fakeAgentClient{bootstrap: clicore.WorkerBootstrap{
+		NodeName: "pi-kitchen", WireGuardIP: "10.8.0.2", WireGuardSubnet: "10.8.0.0/24",
+		WireGuardHubIP: "10.8.0.1", WireGuardHubPublicKey: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+		WireGuardEndpoint: "deploy.example.com:51820", K3sURL: "https://10.8.0.1:6443", K3sToken: "worker-token",
+	}}
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	restore := replaceAgentGlobals(&stdout, &stderr, fake)
+	defer restore()
+	var commands [][]string
+	runAgentCommand = func(_ context.Context, name string, args ...string) ([]byte, error) {
+		commands = append(commands, append([]string{name}, args...))
+		return []byte("up"), nil
+	}
+	files := &agentTestFiles{}
+	runner := &agentTestRunner{}
+	newAgentK3sBootstrapper = func() k3s.Bootstrapper {
+		return k3s.Bootstrapper{
+			Runtime: agentTestRuntime{}, Files: files, Runner: runner,
+			HTTPClient: agentTestHTTPClient{},
+		}
+	}
+	code := joinK3s([]string{
+		"--server", "localhost:7443", "--credential-path", credentialPath,
+		"--wireguard-private-key-path", privateKeyPath, "--wireguard-config-path", configPath,
+		"--k3s-config-path", "/tmp/k3s/config.yaml",
+	})
+	if code != 0 {
+		t.Fatalf("expected join-k3s success, got %d: %s", code, stderr.String())
+	}
+	wireGuardData, err := os.ReadFile(configPath)
+	if err != nil || !strings.Contains(string(wireGuardData), "PersistentKeepalive = 25") {
+		t.Fatalf("expected WireGuard config: data=%q err=%v", wireGuardData, err)
+	}
+	if len(commands) != 1 || commands[0][0] != "wg" || len(runner.calls) != 1 ||
+		!strings.Contains(strings.Join(runner.calls[0].env, "\n"), "K3S_TOKEN=worker-token") {
+		t.Fatalf("unexpected setup commands=%#v runner=%#v", commands, runner.calls)
+	}
+	if strings.Contains(stdout.String(), "worker-token") || strings.Contains(stderr.String(), "worker-token") {
+		t.Fatalf("worker token must not be printed: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
 func TestHeartbeatBackoffSequenceAndReset(t *testing.T) {
 	backoff := newBackoff(time.Second, 5*time.Second)
 	for _, want := range []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 5 * time.Second, 5 * time.Second} {
@@ -162,6 +219,9 @@ func replaceAgentGlobals(stdout *bytes.Buffer, stderr *bytes.Buffer, fake *fakeA
 	oldStdout := agentStdout
 	oldStderr := agentStderr
 	oldClient := newAgentClient
+	oldCommand := runAgentCommand
+	oldCheck := checkVPNConnectivity
+	oldBootstrapper := newAgentK3sBootstrapper
 	agentStdout = stdout
 	agentStderr = stderr
 	newAgentClient = func(serverURL string, token string) (agentClient, func() error, error) {
@@ -172,10 +232,14 @@ func replaceAgentGlobals(stdout *bytes.Buffer, stderr *bytes.Buffer, fake *fakeA
 			return nil
 		}, nil
 	}
+	checkVPNConnectivity = func(context.Context, string) error { return nil }
 	return func() {
 		agentStdout = oldStdout
 		agentStderr = oldStderr
 		newAgentClient = oldClient
+		runAgentCommand = oldCommand
+		checkVPNConnectivity = oldCheck
+		newAgentK3sBootstrapper = oldBootstrapper
 	}
 }
 
@@ -189,6 +253,7 @@ type fakeAgentClient struct {
 	joinErr      error
 	heartbeat    clicore.Heartbeat
 	heartbeatErr error
+	bootstrap    clicore.WorkerBootstrap
 }
 
 func (c *fakeAgentClient) JoinNode(_ context.Context, joinToken string, _ string, _ string, publicKey string) (clicore.JoinResult, error) {
@@ -203,4 +268,44 @@ func (c *fakeAgentClient) JoinNode(_ context.Context, joinToken string, _ string
 func (c *fakeAgentClient) Heartbeat(_ context.Context, heartbeat clicore.Heartbeat) error {
 	c.heartbeat = heartbeat
 	return c.heartbeatErr
+}
+
+func (c *fakeAgentClient) GetWorkerBootstrap(context.Context) (clicore.WorkerBootstrap, error) {
+	return c.bootstrap, nil
+}
+
+type agentTestRuntime struct{}
+
+func (agentTestRuntime) GOOS() string                    { return "linux" }
+func (agentTestRuntime) EUID() int                       { return 0 }
+func (agentTestRuntime) LookPath(string) (string, error) { return "", exec.ErrNotFound }
+
+type agentTestFiles struct {
+	data []byte
+}
+
+func (f *agentTestFiles) Stat(string) (os.FileInfo, error)   { return nil, os.ErrNotExist }
+func (f *agentTestFiles) MkdirAll(string, os.FileMode) error { return nil }
+func (f *agentTestFiles) WriteFile(_ string, data []byte, _ os.FileMode) error {
+	f.data = data
+	return nil
+}
+
+type agentTestRunner struct {
+	calls []agentRunnerCall
+}
+
+type agentRunnerCall struct {
+	env []string
+}
+
+func (r *agentTestRunner) Run(_ context.Context, _ string, _ []string, env []string, _ []byte) error {
+	r.calls = append(r.calls, agentRunnerCall{env: append([]string(nil), env...)})
+	return nil
+}
+
+type agentTestHTTPClient struct{}
+
+func (agentTestHTTPClient) Do(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Body: io.NopCloser(strings.NewReader("#!/bin/sh\n"))}, nil
 }

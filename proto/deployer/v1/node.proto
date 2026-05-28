@@ -10,6 +10,10 @@ service NodeService {
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
   rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
   rpc HeartbeatNode(HeartbeatNodeRequest) returns (HeartbeatNodeResponse);
+  rpc GetWorkerBootstrap(GetWorkerBootstrapRequest) returns (GetWorkerBootstrapResponse);
+  rpc DrainNode(DrainNodeRequest) returns (DrainNodeResponse);
+  rpc UncordonNode(UncordonNodeRequest) returns (UncordonNodeResponse);
+  rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse);
 }
 
 message Node {
@@ -26,6 +30,10 @@ message Node {
   string kernel = 11;
   string wireguard_ip = 12;
   string wireguard_public_key = 13;
+  string kubernetes_status = 14;
+  string kubernetes_message = 15;
+  bool schedulable = 16;
+  string vpn_status = 17;
 }
 
 message CreateJoinTokenRequest {
@@ -79,8 +87,46 @@ message HeartbeatNodeRequest {
   string os = 4;
   string kernel = 5;
   string resource_summary = 6;
+  string vpn_status = 7;
 }
 
 message HeartbeatNodeResponse {
   string accepted_at = 1;
+}
+
+message GetWorkerBootstrapRequest {}
+
+message GetWorkerBootstrapResponse {
+  string node_name = 1;
+  string wireguard_ip = 2;
+  string wireguard_subnet = 3;
+  string wireguard_hub_ip = 4;
+  string wireguard_hub_public_key = 5;
+  string wireguard_endpoint = 6;
+  string k3s_url = 7;
+  string k3s_token = 8;
+}
+
+message DrainNodeRequest {
+  string node_ref = 1;
+}
+
+message DrainNodeResponse {
+  Node node = 1;
+}
+
+message UncordonNodeRequest {
+  string node_ref = 1;
+}
+
+message UncordonNodeResponse {
+  Node node = 1;
+}
+
+message RemoveNodeRequest {
+  string node_ref = 1;
+}
+
+message RemoveNodeResponse {
+  Node node = 1;
 }

@@ -24,6 +24,7 @@ var (
 type agentClient interface {
 	JoinNode(ctx context.Context, joinToken string, hostname string, arch string, publicKey string) (clicore.JoinResult, error)
 	Heartbeat(ctx context.Context, heartbeat clicore.Heartbeat) error
+	GetWorkerBootstrap(ctx context.Context) (clicore.WorkerBootstrap, error)
 }
 
 func main() {

@@ -501,6 +501,61 @@ func TestEventsListsFilteredDiagnosticsAndSupportsJSON(t *testing.T) {
 	}
 }
 
+func TestLogsStreamsRecentLinesAndPassesFollowOptions(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	client := &recordingAppClient{logLines: []string{"booted", "ready"}}
+	app := newCLIApp(strings.NewReader(""), &stdout, &stderr)
+	app.newPlatformClient = func(string, string) (platformClient, func() error, error) {
+		return client, func() error { return nil }, nil
+	}
+	args := []string{"--server", "localhost:7443", "--token", "dep_admin_test", "logs", "--tail", "25", "--follow", "my-api"}
+	if code := app.run(args); code != 0 {
+		t.Fatalf("expected logs success, got %d: %s", code, stderr.String())
+	}
+	if client.logAppName != "my-api" || client.logTailLines != 25 || !client.logFollow ||
+		stdout.String() != "booted\nready\n" {
+		t.Fatalf("unexpected logs request/output client=%#v stdout=%q", client, stdout.String())
+	}
+}
+
+func TestAppStatusAndNodeRemoveCommands(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	client := &recordingAppClient{
+		appStatus: clicore.AppStatusResult{
+			App:               clicore.AppInfo{Name: "my-api", Image: "ivan/my-api:1.0.0"},
+			RuntimeStatus:     "degraded",
+			DesiredReplicas:   2,
+			AvailableReplicas: 1,
+			Routes:            []clicore.RouteInfo{{Domain: "api.example.com", Status: "healthy"}},
+			RunningNodes:      []string{"pi-kitchen"},
+			Warnings:          []string{"resilient replicas are not spread across two nodes"},
+		},
+		nodeMutation: clicore.NodeInfo{Name: "pi-kitchen", Status: "removed"},
+	}
+	app := newCLIApp(strings.NewReader("yes\n"), &stdout, &stderr)
+	app.newPlatformClient = func(string, string) (platformClient, func() error, error) {
+		return client, func() error { return nil }, nil
+	}
+	args := []string{"--server", "localhost:7443", "--token", "dep_admin_test", "status", "my-api"}
+	if code := app.run(args); code != 0 {
+		t.Fatalf("expected app status success, got %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "pi-kitchen") || !strings.Contains(stdout.String(), "ROUTE HEALTH") ||
+		!strings.Contains(stdout.String(), "healthy") || !strings.Contains(stdout.String(), "WARNING") {
+		t.Fatalf("expected app runtime status output, got %q", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := app.run([]string{"--server", "localhost:7443", "--token", "dep_admin_test", "nodes", "remove", "pi-kitchen"}); code != 0 {
+		t.Fatalf("expected node removal success, got %d: %s", code, stderr.String())
+	}
+	if client.removedNodeRef != "pi-kitchen" || !strings.Contains(stdout.String(), "removed") {
+		t.Fatalf("expected confirmed node removal, ref=%q output=%q", client.removedNodeRef, stdout.String())
+	}
+}
+
 type recordingClientFactory struct {
 	serverURL string
 	token     string
@@ -538,6 +593,18 @@ func (c recordingClient) GetNode(context.Context, string) (clicore.NodeInfo, err
 	return clicore.NodeInfo{}, c.err
 }
 
+func (c recordingClient) DrainNode(context.Context, string) (clicore.NodeInfo, error) {
+	return clicore.NodeInfo{}, c.err
+}
+
+func (c recordingClient) UncordonNode(context.Context, string) (clicore.NodeInfo, error) {
+	return clicore.NodeInfo{}, c.err
+}
+
+func (c recordingClient) RemoveNode(context.Context, string) (clicore.NodeInfo, error) {
+	return clicore.NodeInfo{}, c.err
+}
+
 func (c recordingClient) DeployApp(context.Context, string) (clicore.DeployResult, error) {
 	return clicore.DeployResult{}, c.err
 }
@@ -548,6 +615,14 @@ func (c recordingClient) ListApps(context.Context) ([]clicore.AppInfo, error) {
 
 func (c recordingClient) InspectApp(context.Context, string) (clicore.AppInspectResult, error) {
 	return clicore.AppInspectResult{}, c.err
+}
+
+func (c recordingClient) GetAppStatus(context.Context, string) (clicore.AppStatusResult, error) {
+	return clicore.AppStatusResult{}, c.err
+}
+
+func (c recordingClient) StreamLogs(context.Context, string, int32, bool, func(string) error) error {
+	return c.err
 }
 
 func (c recordingClient) ListRoutes(context.Context) ([]clicore.RouteInfo, error) {
@@ -593,6 +668,13 @@ type recordingAppClient struct {
 	deletedSecretName    string
 	events               []clicore.EventInfo
 	eventFilter          clicore.EventFilter
+	appStatus            clicore.AppStatusResult
+	logLines             []string
+	logAppName           string
+	logTailLines         int32
+	logFollow            bool
+	nodeMutation         clicore.NodeInfo
+	removedNodeRef       string
 	err                  error
 }
 
@@ -612,6 +694,19 @@ func (c *recordingAppClient) GetNode(context.Context, string) (clicore.NodeInfo,
 	return clicore.NodeInfo{}, c.err
 }
 
+func (c *recordingAppClient) DrainNode(context.Context, string) (clicore.NodeInfo, error) {
+	return c.nodeMutation, c.err
+}
+
+func (c *recordingAppClient) UncordonNode(context.Context, string) (clicore.NodeInfo, error) {
+	return c.nodeMutation, c.err
+}
+
+func (c *recordingAppClient) RemoveNode(_ context.Context, ref string) (clicore.NodeInfo, error) {
+	c.removedNodeRef = ref
+	return c.nodeMutation, c.err
+}
+
 func (c *recordingAppClient) DeployApp(_ context.Context, deployerYAML string) (clicore.DeployResult, error) {
 	c.deployerYAML = deployerYAML
 	return c.deployResult, c.err
@@ -623,6 +718,22 @@ func (c *recordingAppClient) ListApps(context.Context) ([]clicore.AppInfo, error
 
 func (c *recordingAppClient) InspectApp(context.Context, string) (clicore.AppInspectResult, error) {
 	return c.inspect, c.err
+}
+
+func (c *recordingAppClient) GetAppStatus(context.Context, string) (clicore.AppStatusResult, error) {
+	return c.appStatus, c.err
+}
+
+func (c *recordingAppClient) StreamLogs(_ context.Context, appName string, tailLines int32, follow bool, receive func(string) error) error {
+	c.logAppName = appName
+	c.logTailLines = tailLines
+	c.logFollow = follow
+	for _, line := range c.logLines {
+		if err := receive(line); err != nil {
+			return err
+		}
+	}
+	return c.err
 }
 
 func (c *recordingAppClient) ListRoutes(context.Context) ([]clicore.RouteInfo, error) {

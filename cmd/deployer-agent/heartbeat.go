@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	clicore "github.com/0xivanov/self-hosted-deployer/internal/cli"
+	"github.com/0xivanov/self-hosted-deployer/internal/config"
 )
 
 func sendHeartbeat(ctx context.Context, client agentClient) error {
@@ -23,6 +24,7 @@ func sendHeartbeat(ctx context.Context, client agentClient) error {
 		OS:              runtime.GOOS,
 		Kernel:          kernelVersion(),
 		ResourceSummary: resourceSummary(),
+		VPNStatus:       vpnConnectivityStatus(ctx, config.LoadAgent().WireGuardHubIP),
 	})
 }
 

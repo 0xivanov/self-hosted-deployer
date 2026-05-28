@@ -40,5 +40,8 @@ func validateServeConfig(cfg config.ServerConfig) error {
 	if _, err := cfg.EventRetention(); err != nil {
 		errs = append(errs, err)
 	}
+	if _, err := cfg.NodeMonitor(); err != nil {
+		errs = append(errs, err)
+	}
 	return errors.Join(errs...)
 }

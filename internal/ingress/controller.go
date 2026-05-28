@@ -18,6 +18,7 @@ import (
 	appstyped "k8s.io/client-go/kubernetes/typed/apps/v1"
 	coretyped "k8s.io/client-go/kubernetes/typed/core/v1"
 	networkingtyped "k8s.io/client-go/kubernetes/typed/networking/v1"
+	policytyped "k8s.io/client-go/kubernetes/typed/policy/v1"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -46,6 +47,9 @@ type Controller struct {
 	ingresses   networkingtyped.IngressInterface
 	services    coretyped.ServiceInterface
 	appSecrets  coretyped.SecretInterface
+	nodes       coretyped.NodeInterface
+	pods        coretyped.PodInterface
+	evictions   policytyped.EvictionInterface
 	deployments appstyped.DeploymentInterface
 	issuers     dynamic.ResourceInterface
 }
@@ -81,6 +85,9 @@ func NewController(cfg ControllerConfig) (*Controller, error) {
 		ingresses:   clientset.NetworkingV1().Ingresses(namespace),
 		services:    clientset.CoreV1().Services(namespace),
 		appSecrets:  clientset.CoreV1().Secrets(namespace),
+		nodes:       clientset.CoreV1().Nodes(),
+		pods:        clientset.CoreV1().Pods(namespace),
+		evictions:   clientset.PolicyV1().Evictions(namespace),
 		deployments: clientset.AppsV1().Deployments(namespace),
 		issuers:     issuers,
 	}, nil
@@ -91,6 +98,9 @@ func (c *Controller) TLSEnabled() bool {
 }
 
 func (c *Controller) Reconcile(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string) error {
+	if err := c.ensureSchedulableWorker(ctx, cfg); err != nil {
+		return err
+	}
 	if err := c.reconcileAppResources(ctx, cfg, secretValues, secretRevision); err != nil {
 		return err
 	}

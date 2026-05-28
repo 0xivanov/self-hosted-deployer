@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -339,6 +340,132 @@ func TestNodeServiceDoesNotConsumeJoinTokenWhenAgentTokenStoreFails(t *testing.T
 	}
 }
 
+func TestNodeServiceDrainUncordonAndRemoveLifecycle(t *testing.T) {
+	ctx := context.Background()
+	adminCtx := WithCaller(ctx, Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	agentTokens := db.NewAgentTokenRepository(database)
+	events := &recordingEventRecorder{}
+	runtime := &recordingNodeRuntime{readiness: "ready", schedulable: true}
+	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
+	if err := nodes.Create(ctx, domain.Node{
+		ID:                 "node-live",
+		Name:               "pi-kitchen",
+		Status:             nodeStatusOnline,
+		LabelsJSON:         "{}",
+		WireGuardIP:        "10.8.0.2",
+		WireGuardPublicKey: validWireGuardPublicKey,
+		LastSeenAt:         &now,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+	if err := agentTokens.Create(ctx, domain.AgentToken{TokenHash: "agent-hash", NodeID: "node-live", CreatedAt: now}); err != nil {
+		t.Fatalf("create agent token: %v", err)
+	}
+	peers := &recordingPeerSynchronizer{}
+	service := NewNodeService(NodeServiceConfig{
+		Nodes:        nodes,
+		AgentTokens:  agentTokens,
+		Runtime:      runtime,
+		Peers:        peers,
+		Events:       events,
+		OfflineAfter: 2 * time.Minute,
+	})
+	service.now = func() time.Time { return now.Add(time.Minute) }
+
+	drained, err := service.DrainNode(adminCtx, &deployerv1.DrainNodeRequest{NodeRef: "pi-kitchen"})
+	if err != nil || drained.GetNode().GetStatus() != nodeStatusDrained || runtime.cordons != 1 || runtime.drains != 1 {
+		t.Fatalf("unexpected drain response=%#v runtime=%#v err=%v", drained, runtime, err)
+	}
+	if _, err := service.HeartbeatNode(WithCaller(ctx, Caller{Kind: CallerAgent, NodeID: "node-live"}), &deployerv1.HeartbeatNodeRequest{Status: nodeStatusOnline}); err != nil {
+		t.Fatalf("heartbeat drained node: %v", err)
+	}
+	stored, _ := nodes.FindByID(ctx, "node-live")
+	if stored.Status != nodeStatusDrained {
+		t.Fatalf("heartbeat must retain drained state: %#v", stored)
+	}
+	uncordoned, err := service.UncordonNode(adminCtx, &deployerv1.UncordonNodeRequest{NodeRef: "pi-kitchen"})
+	if err != nil || uncordoned.GetNode().GetStatus() != nodeStatusOnline || runtime.uncordons != 1 {
+		t.Fatalf("unexpected uncordon response=%#v runtime=%#v err=%v", uncordoned, runtime, err)
+	}
+	removed, err := service.RemoveNode(adminCtx, &deployerv1.RemoveNodeRequest{NodeRef: "pi-kitchen"})
+	if err != nil || removed.GetNode().GetStatus() != nodeStatusRemoved || runtime.removals != 1 {
+		t.Fatalf("unexpected remove response=%#v runtime=%#v err=%v", removed, runtime, err)
+	}
+	stored, _ = nodes.FindByID(ctx, "node-live")
+	if stored.WireGuardIP != "10.8.0.2" || stored.WireGuardPublicKey != "" {
+		t.Fatalf("removed node must reserve its WireGuard address without retaining a peer key: %#v", stored)
+	}
+	nextIP, err := service.allocateWireGuardIP(ctx)
+	if err != nil || nextIP != "10.8.0.3" {
+		t.Fatalf("removed node WireGuard address must not be reused, got %q: %v", nextIP, err)
+	}
+	token, err := agentTokens.FindByHash(ctx, "agent-hash")
+	if err != nil || token.RevokedAt == nil {
+		t.Fatalf("removed node token not revoked: %#v err=%v", token, err)
+	}
+	if _, err := service.HeartbeatNode(WithCaller(ctx, Caller{Kind: CallerAgent, NodeID: "node-live"}), &deployerv1.HeartbeatNodeRequest{}); status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("removed node heartbeat should fail, got %v", err)
+	}
+	if _, err := service.RemoveNode(adminCtx, &deployerv1.RemoveNodeRequest{NodeRef: "pi-kitchen"}); err != nil {
+		t.Fatalf("repeat removal should be idempotent: %v", err)
+	}
+	removedEvents := 0
+	for _, event := range events.events {
+		if event.Type == domain.EventTypeNodeRemoved {
+			removedEvents++
+		}
+	}
+	if removedEvents != 1 {
+		t.Fatalf("expected one removal event, got %#v", events.events)
+	}
+	if peers.calls != 2 || len(peers.lastNodes) != 1 || peers.lastNodes[0].Status != nodeStatusRemoved {
+		t.Fatalf("expected removal to synchronize disabled hub peer, got %#v", peers)
+	}
+}
+
+func TestNodeServiceReturnsAuthenticatedWorkerBootstrapMaterial(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	now := time.Date(2026, 5, 26, 12, 0, 0, 0, time.UTC)
+	if err := nodes.Create(ctx, domain.Node{
+		ID: "node-1", Name: "pi-kitchen", Status: nodeStatusOnline, LabelsJSON: "{}",
+		WireGuardIP: "10.8.0.2", WireGuardPublicKey: validWireGuardPublicKey,
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+	peers := &recordingPeerSynchronizer{}
+	events := &recordingEventRecorder{}
+	service := NewNodeService(NodeServiceConfig{
+		Nodes: nodes, Peers: peers, WorkerJoin: fixedWorkerJoinMaterial{},
+		Events: events,
+		Network: WorkerNetworkConfig{
+			HubIP: "10.8.0.1", HubPublicKey: validWireGuardPublicKey, Endpoint: "deploy.example.com:51820",
+		},
+	})
+	response, err := service.GetWorkerBootstrap(
+		WithCaller(ctx, Caller{Kind: CallerAgent, NodeID: "node-1"}),
+		&deployerv1.GetWorkerBootstrapRequest{},
+	)
+	if err != nil {
+		t.Fatalf("get worker bootstrap: %v", err)
+	}
+	if response.GetNodeName() != "pi-kitchen" || response.GetWireguardIp() != "10.8.0.2" ||
+		response.GetWireguardSubnet() != "10.8.0.0/24" || response.GetK3SUrl() != "https://10.8.0.1:6443" ||
+		response.GetK3SToken() != "worker-token" || peers.calls != 1 {
+		t.Fatalf("unexpected worker bootstrap response=%#v peers=%#v", response, peers)
+	}
+	if !events.hasType(domain.EventTypeNodeWorkerBootstrapRequested) ||
+		strings.Contains(events.events[0].MetadataJSON, "worker-token") {
+		t.Fatalf("expected non-secret worker bootstrap audit event: %#v", events.events)
+	}
+}
+
 const validWireGuardPublicKey = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
 
 type failingJoinTokenRepository struct {
@@ -361,6 +488,69 @@ type failingAgentTokenRepository struct {
 	err error
 }
 
+type recordingNodeRuntime struct {
+	readiness   string
+	schedulable bool
+	cordons     int
+	drains      int
+	uncordons   int
+	removals    int
+	labelSyncs  int
+}
+
+func (r *recordingNodeRuntime) NodeReadiness(context.Context, string) (string, string, bool, error) {
+	if r.removals > 0 {
+		return "missing", "Kubernetes node was not found", false, nil
+	}
+	return r.readiness, "", r.schedulable && r.cordons == r.uncordons, nil
+}
+
+func (r *recordingNodeRuntime) CordonNode(context.Context, string) error {
+	r.cordons++
+	return nil
+}
+
+func (r *recordingNodeRuntime) DrainNode(ctx context.Context, name string) error {
+	r.drains++
+	return r.CordonNode(ctx, name)
+}
+
+func (r *recordingNodeRuntime) UncordonNode(context.Context, string) error {
+	r.uncordons++
+	return nil
+}
+
+func (r *recordingNodeRuntime) RemoveNode(context.Context, string) error {
+	r.removals++
+	return nil
+}
+
+func (r *recordingNodeRuntime) SyncNodeLabels(context.Context, domain.Node) error {
+	r.labelSyncs++
+	return nil
+}
+
+type recordingPeerSynchronizer struct {
+	calls     int
+	lastNodes []domain.Node
+}
+
+func (s *recordingPeerSynchronizer) SyncPeers(_ context.Context, nodes []domain.Node) error {
+	s.calls++
+	s.lastNodes = append([]domain.Node(nil), nodes...)
+	return nil
+}
+
+type fixedWorkerJoinMaterial struct{}
+
+func (fixedWorkerJoinMaterial) WorkerJoinMaterial(context.Context) (string, string, error) {
+	return "https://10.8.0.1:6443", "worker-token", nil
+}
+
 func (r failingAgentTokenRepository) Create(context.Context, domain.AgentToken) error {
+	return r.err
+}
+
+func (r failingAgentTokenRepository) RevokeByNodeID(context.Context, string, time.Time) error {
 	return r.err
 }

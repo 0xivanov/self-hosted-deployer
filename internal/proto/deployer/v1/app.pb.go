@@ -822,12 +822,17 @@ func (x *GetAppStatusRequest) GetName() string {
 }
 
 type GetAppStatusResponse struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	App              *App                   `protobuf:"bytes,1,opt,name=app,proto3" json:"app,omitempty"`
-	LatestDeployment *Deployment            `protobuf:"bytes,2,opt,name=latest_deployment,json=latestDeployment,proto3" json:"latest_deployment,omitempty"`
-	Routes           []*Route               `protobuf:"bytes,3,rep,name=routes,proto3" json:"routes,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	App               *App                   `protobuf:"bytes,1,opt,name=app,proto3" json:"app,omitempty"`
+	LatestDeployment  *Deployment            `protobuf:"bytes,2,opt,name=latest_deployment,json=latestDeployment,proto3" json:"latest_deployment,omitempty"`
+	Routes            []*Route               `protobuf:"bytes,3,rep,name=routes,proto3" json:"routes,omitempty"`
+	RuntimeStatus     string                 `protobuf:"bytes,4,opt,name=runtime_status,json=runtimeStatus,proto3" json:"runtime_status,omitempty"`
+	DesiredReplicas   int32                  `protobuf:"varint,5,opt,name=desired_replicas,json=desiredReplicas,proto3" json:"desired_replicas,omitempty"`
+	AvailableReplicas int32                  `protobuf:"varint,6,opt,name=available_replicas,json=availableReplicas,proto3" json:"available_replicas,omitempty"`
+	RunningNodes      []string               `protobuf:"bytes,7,rep,name=running_nodes,json=runningNodes,proto3" json:"running_nodes,omitempty"`
+	Warnings          []string               `protobuf:"bytes,8,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *GetAppStatusResponse) Reset() {
@@ -881,11 +886,47 @@ func (x *GetAppStatusResponse) GetRoutes() []*Route {
 	return nil
 }
 
+func (x *GetAppStatusResponse) GetRuntimeStatus() string {
+	if x != nil {
+		return x.RuntimeStatus
+	}
+	return ""
+}
+
+func (x *GetAppStatusResponse) GetDesiredReplicas() int32 {
+	if x != nil {
+		return x.DesiredReplicas
+	}
+	return 0
+}
+
+func (x *GetAppStatusResponse) GetAvailableReplicas() int32 {
+	if x != nil {
+		return x.AvailableReplicas
+	}
+	return 0
+}
+
+func (x *GetAppStatusResponse) GetRunningNodes() []string {
+	if x != nil {
+		return x.RunningNodes
+	}
+	return nil
+}
+
+func (x *GetAppStatusResponse) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
+	}
+	return nil
+}
+
 type GetDeploymentLogsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	AppName       string                 `protobuf:"bytes,1,opt,name=app_name,json=appName,proto3" json:"app_name,omitempty"`
 	DeploymentId  string                 `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentId,proto3" json:"deployment_id,omitempty"`
 	TailLines     int32                  `protobuf:"varint,3,opt,name=tail_lines,json=tailLines,proto3" json:"tail_lines,omitempty"`
+	Follow        bool                   `protobuf:"varint,4,opt,name=follow,proto3" json:"follow,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -939,6 +980,13 @@ func (x *GetDeploymentLogsRequest) GetTailLines() int32 {
 		return x.TailLines
 	}
 	return 0
+}
+
+func (x *GetDeploymentLogsRequest) GetFollow() bool {
+	if x != nil {
+		return x.Follow
+	}
+	return false
 }
 
 type GetDeploymentLogsResponse struct {
@@ -1218,16 +1266,22 @@ const file_deployer_v1_app_proto_rawDesc = "" +
 	"\vdeployments\x18\x02 \x03(\v2\x17.deployer.v1.DeploymentR\vdeployments\x12*\n" +
 	"\x06routes\x18\x03 \x03(\v2\x12.deployer.v1.RouteR\x06routes\")\n" +
 	"\x13GetAppStatusRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xac\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xee\x02\n" +
 	"\x14GetAppStatusResponse\x12\"\n" +
 	"\x03app\x18\x01 \x01(\v2\x10.deployer.v1.AppR\x03app\x12D\n" +
 	"\x11latest_deployment\x18\x02 \x01(\v2\x17.deployer.v1.DeploymentR\x10latestDeployment\x12*\n" +
-	"\x06routes\x18\x03 \x03(\v2\x12.deployer.v1.RouteR\x06routes\"y\n" +
+	"\x06routes\x18\x03 \x03(\v2\x12.deployer.v1.RouteR\x06routes\x12%\n" +
+	"\x0eruntime_status\x18\x04 \x01(\tR\rruntimeStatus\x12)\n" +
+	"\x10desired_replicas\x18\x05 \x01(\x05R\x0fdesiredReplicas\x12-\n" +
+	"\x12available_replicas\x18\x06 \x01(\x05R\x11availableReplicas\x12#\n" +
+	"\rrunning_nodes\x18\a \x03(\tR\frunningNodes\x12\x1a\n" +
+	"\bwarnings\x18\b \x03(\tR\bwarnings\"\x91\x01\n" +
 	"\x18GetDeploymentLogsRequest\x12\x19\n" +
 	"\bapp_name\x18\x01 \x01(\tR\aappName\x12#\n" +
 	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentId\x12\x1d\n" +
 	"\n" +
-	"tail_lines\x18\x03 \x01(\x05R\ttailLines\"1\n" +
+	"tail_lines\x18\x03 \x01(\x05R\ttailLines\x12\x16\n" +
+	"\x06follow\x18\x04 \x01(\bR\x06follow\"1\n" +
 	"\x19GetDeploymentLogsResponse\x12\x14\n" +
 	"\x05lines\x18\x01 \x03(\tR\x05lines\"\x13\n" +
 	"\x11ListRoutesRequest\"@\n" +
@@ -1236,7 +1290,7 @@ const file_deployer_v1_app_proto_rawDesc = "" +
 	"\x13InspectRouteRequest\x12\x16\n" +
 	"\x06domain\x18\x01 \x01(\tR\x06domain\"@\n" +
 	"\x14InspectRouteResponse\x12(\n" +
-	"\x05route\x18\x01 \x01(\v2\x12.deployer.v1.RouteR\x05route2\xdc\x05\n" +
+	"\x05route\x18\x01 \x01(\v2\x12.deployer.v1.RouteR\x05route2\xde\x05\n" +
 	"\n" +
 	"AppService\x12J\n" +
 	"\tDeployApp\x12\x1d.deployer.v1.DeployAppRequest\x1a\x1e.deployer.v1.DeployAppResponse\x12G\n" +
@@ -1245,8 +1299,8 @@ const file_deployer_v1_app_proto_rawDesc = "" +
 	"InspectApp\x12\x1e.deployer.v1.InspectAppRequest\x1a\x1f.deployer.v1.InspectAppResponse\x12J\n" +
 	"\tDeleteApp\x12\x1d.deployer.v1.DeleteAppRequest\x1a\x1e.deployer.v1.DeleteAppResponse\x12A\n" +
 	"\x06GetApp\x12\x1a.deployer.v1.GetAppRequest\x1a\x1b.deployer.v1.GetAppResponse\x12S\n" +
-	"\fGetAppStatus\x12 .deployer.v1.GetAppStatusRequest\x1a!.deployer.v1.GetAppStatusResponse\x12b\n" +
-	"\x11GetDeploymentLogs\x12%.deployer.v1.GetDeploymentLogsRequest\x1a&.deployer.v1.GetDeploymentLogsResponse\x12M\n" +
+	"\fGetAppStatus\x12 .deployer.v1.GetAppStatusRequest\x1a!.deployer.v1.GetAppStatusResponse\x12d\n" +
+	"\x11GetDeploymentLogs\x12%.deployer.v1.GetDeploymentLogsRequest\x1a&.deployer.v1.GetDeploymentLogsResponse0\x01\x12M\n" +
 	"\n" +
 	"ListRoutes\x12\x1e.deployer.v1.ListRoutesRequest\x1a\x1f.deployer.v1.ListRoutesResponse\x12S\n" +
 	"\fInspectRoute\x12 .deployer.v1.InspectRouteRequest\x1a!.deployer.v1.InspectRouteResponseBPZNgithub.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1;deployerv1b\x06proto3"

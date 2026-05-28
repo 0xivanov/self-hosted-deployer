@@ -126,6 +126,9 @@ func NextPeerIP(subnet string, reservedIP string, existingIPs []string) (string,
 func HubPeerConfig(nodes []domain.Node) (string, error) {
 	peers := make([]domain.Node, 0, len(nodes))
 	for _, node := range nodes {
+		if node.Status == "removed" {
+			continue
+		}
 		if strings.TrimSpace(node.WireGuardIP) == "" || strings.TrimSpace(node.WireGuardPublicKey) == "" {
 			continue
 		}

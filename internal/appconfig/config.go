@@ -14,20 +14,26 @@ const (
 	DefaultPlacementArch  = "linux/arm64"
 	DefaultDeployStrategy = "rolling"
 	DefaultStateMode      = "stateless"
+	DefaultResilienceMode = "basic"
+	ResilienceBasic       = "basic"
+	ResilienceResilient   = "resilient"
+	ResilienceFallback    = "fallback"
+	ResiliencePinned      = "pinned"
 )
 
 var appNamePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 var secretNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type Config struct {
-	Name      string          `json:"name" yaml:"name"`
-	Image     string          `json:"image" yaml:"image"`
-	Service   ServiceConfig   `json:"service" yaml:"service"`
-	Routing   RoutingConfig   `json:"routing" yaml:"routing"`
-	Deploy    DeployConfig    `json:"deploy" yaml:"deploy"`
-	Placement PlacementConfig `json:"placement" yaml:"placement"`
-	Secrets   []string        `json:"secrets,omitempty" yaml:"secrets"`
-	State     StateConfig     `json:"state" yaml:"state"`
+	Name       string           `json:"name" yaml:"name"`
+	Image      string           `json:"image" yaml:"image"`
+	Service    ServiceConfig    `json:"service" yaml:"service"`
+	Routing    RoutingConfig    `json:"routing" yaml:"routing"`
+	Deploy     DeployConfig     `json:"deploy" yaml:"deploy"`
+	Placement  PlacementConfig  `json:"placement" yaml:"placement"`
+	Secrets    []string         `json:"secrets,omitempty" yaml:"secrets"`
+	State      StateConfig      `json:"state" yaml:"state"`
+	Resilience ResilienceConfig `json:"resilience" yaml:"resilience"`
 }
 
 type ServiceConfig struct {
@@ -59,6 +65,11 @@ type StateConfig struct {
 	Mode string `json:"mode" yaml:"mode"`
 }
 
+type ResilienceConfig struct {
+	Mode                        string `json:"mode" yaml:"mode"`
+	AllowUnsafeStatefulFailover bool   `json:"allow_unsafe_stateful_failover,omitempty" yaml:"allowUnsafeStatefulFailover,omitempty"`
+}
+
 func Parse(data []byte) (Config, error) {
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
@@ -82,6 +93,7 @@ func (c *Config) Normalize() {
 	c.Deploy.Strategy = strings.TrimSpace(c.Deploy.Strategy)
 	c.Placement.Arch = strings.TrimSpace(c.Placement.Arch)
 	c.State.Mode = strings.TrimSpace(c.State.Mode)
+	c.Resilience.Mode = strings.TrimSpace(c.Resilience.Mode)
 
 	if c.Deploy.Strategy == "" {
 		c.Deploy.Strategy = DefaultDeployStrategy
@@ -91,6 +103,9 @@ func (c *Config) Normalize() {
 	}
 	if c.State.Mode == "" {
 		c.State.Mode = DefaultStateMode
+	}
+	if c.Resilience.Mode == "" {
+		c.Resilience.Mode = DefaultResilienceMode
 	}
 
 	c.Secrets = normalizeStringList(c.Secrets)
@@ -127,6 +142,22 @@ func (c Config) Validate() error {
 	case "stateless", "stateful", "cache":
 	default:
 		return fmt.Errorf("state.mode must be one of stateless, stateful, cache")
+	}
+	switch c.Resilience.Mode {
+	case ResilienceBasic, ResilienceResilient, ResilienceFallback, ResiliencePinned:
+	default:
+		return fmt.Errorf("resilience.mode must be one of basic, resilient, fallback, pinned")
+	}
+	if c.State.Mode != DefaultStateMode &&
+		(c.Resilience.Mode == ResilienceResilient || c.Resilience.Mode == ResilienceFallback) &&
+		!c.Resilience.AllowUnsafeStatefulFailover {
+		return fmt.Errorf("resilience.mode %q requires resilience.allowUnsafeStatefulFailover for state.mode %q", c.Resilience.Mode, c.State.Mode)
+	}
+	if c.Resilience.Mode == ResilienceFallback && (len(c.Placement.Prefer) == 0 || len(c.Placement.Fallback) == 0) {
+		return fmt.Errorf("resilience.mode fallback requires placement.prefer and placement.fallback selectors")
+	}
+	if c.Resilience.Mode == ResiliencePinned && len(c.Placement.Prefer) != 1 {
+		return fmt.Errorf("resilience.mode pinned requires exactly one placement.prefer selector")
 	}
 	seenSecrets := map[string]struct{}{}
 	for i, secret := range c.Secrets {

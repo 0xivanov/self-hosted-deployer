@@ -44,6 +44,8 @@ func run(args []string) int {
 			return join(flags.Args()[1:])
 		case "run":
 			return runLoop(flags.Args()[1:])
+		case "join-k3s":
+			return joinK3s(flags.Args()[1:])
 		case "help":
 			usage()
 			return 0
@@ -57,10 +59,11 @@ func run(args []string) int {
 }
 
 func usage() {
-	fmt.Fprintln(agentStderr, "Usage: deployer-agent [--version] [--validate-config] [join|run|help]")
+	fmt.Fprintln(agentStderr, "Usage: deployer-agent [--version] [--validate-config] [join|join-k3s|run|help]")
 	fmt.Fprintln(agentStderr)
 	fmt.Fprintln(agentStderr, "Commands:")
 	fmt.Fprintln(agentStderr, "  join       Register this node with the control plane")
+	fmt.Fprintln(agentStderr, "  join-k3s   Connect WireGuard and join this node to k3s")
 	fmt.Fprintln(agentStderr, "  run        Send periodic heartbeats")
 	fmt.Fprintln(agentStderr, "  version    Print version information")
 	fmt.Fprintln(agentStderr, "  help       Show help")

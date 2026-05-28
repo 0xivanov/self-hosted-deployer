@@ -40,7 +40,7 @@ type AppServiceClient interface {
 	DeleteApp(ctx context.Context, in *DeleteAppRequest, opts ...grpc.CallOption) (*DeleteAppResponse, error)
 	GetApp(ctx context.Context, in *GetAppRequest, opts ...grpc.CallOption) (*GetAppResponse, error)
 	GetAppStatus(ctx context.Context, in *GetAppStatusRequest, opts ...grpc.CallOption) (*GetAppStatusResponse, error)
-	GetDeploymentLogs(ctx context.Context, in *GetDeploymentLogsRequest, opts ...grpc.CallOption) (*GetDeploymentLogsResponse, error)
+	GetDeploymentLogs(ctx context.Context, in *GetDeploymentLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetDeploymentLogsResponse], error)
 	ListRoutes(ctx context.Context, in *ListRoutesRequest, opts ...grpc.CallOption) (*ListRoutesResponse, error)
 	InspectRoute(ctx context.Context, in *InspectRouteRequest, opts ...grpc.CallOption) (*InspectRouteResponse, error)
 }
@@ -113,15 +113,24 @@ func (c *appServiceClient) GetAppStatus(ctx context.Context, in *GetAppStatusReq
 	return out, nil
 }
 
-func (c *appServiceClient) GetDeploymentLogs(ctx context.Context, in *GetDeploymentLogsRequest, opts ...grpc.CallOption) (*GetDeploymentLogsResponse, error) {
+func (c *appServiceClient) GetDeploymentLogs(ctx context.Context, in *GetDeploymentLogsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[GetDeploymentLogsResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(GetDeploymentLogsResponse)
-	err := c.cc.Invoke(ctx, AppService_GetDeploymentLogs_FullMethodName, in, out, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &AppService_ServiceDesc.Streams[0], AppService_GetDeploymentLogs_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &grpc.GenericClientStream[GetDeploymentLogsRequest, GetDeploymentLogsResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AppService_GetDeploymentLogsClient = grpc.ServerStreamingClient[GetDeploymentLogsResponse]
 
 func (c *appServiceClient) ListRoutes(ctx context.Context, in *ListRoutesRequest, opts ...grpc.CallOption) (*ListRoutesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -153,7 +162,7 @@ type AppServiceServer interface {
 	DeleteApp(context.Context, *DeleteAppRequest) (*DeleteAppResponse, error)
 	GetApp(context.Context, *GetAppRequest) (*GetAppResponse, error)
 	GetAppStatus(context.Context, *GetAppStatusRequest) (*GetAppStatusResponse, error)
-	GetDeploymentLogs(context.Context, *GetDeploymentLogsRequest) (*GetDeploymentLogsResponse, error)
+	GetDeploymentLogs(*GetDeploymentLogsRequest, grpc.ServerStreamingServer[GetDeploymentLogsResponse]) error
 	ListRoutes(context.Context, *ListRoutesRequest) (*ListRoutesResponse, error)
 	InspectRoute(context.Context, *InspectRouteRequest) (*InspectRouteResponse, error)
 	mustEmbedUnimplementedAppServiceServer()
@@ -184,8 +193,8 @@ func (UnimplementedAppServiceServer) GetApp(context.Context, *GetAppRequest) (*G
 func (UnimplementedAppServiceServer) GetAppStatus(context.Context, *GetAppStatusRequest) (*GetAppStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetAppStatus not implemented")
 }
-func (UnimplementedAppServiceServer) GetDeploymentLogs(context.Context, *GetDeploymentLogsRequest) (*GetDeploymentLogsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetDeploymentLogs not implemented")
+func (UnimplementedAppServiceServer) GetDeploymentLogs(*GetDeploymentLogsRequest, grpc.ServerStreamingServer[GetDeploymentLogsResponse]) error {
+	return status.Error(codes.Unimplemented, "method GetDeploymentLogs not implemented")
 }
 func (UnimplementedAppServiceServer) ListRoutes(context.Context, *ListRoutesRequest) (*ListRoutesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListRoutes not implemented")
@@ -322,23 +331,16 @@ func _AppService_GetAppStatus_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
-func _AppService_GetDeploymentLogs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetDeploymentLogsRequest)
-	if err := dec(in); err != nil {
-		return nil, err
+func _AppService_GetDeploymentLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GetDeploymentLogsRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
 	}
-	if interceptor == nil {
-		return srv.(AppServiceServer).GetDeploymentLogs(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: AppService_GetDeploymentLogs_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AppServiceServer).GetDeploymentLogs(ctx, req.(*GetDeploymentLogsRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return srv.(AppServiceServer).GetDeploymentLogs(m, &grpc.GenericServerStream[GetDeploymentLogsRequest, GetDeploymentLogsResponse]{ServerStream: stream})
 }
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AppService_GetDeploymentLogsServer = grpc.ServerStreamingServer[GetDeploymentLogsResponse]
 
 func _AppService_ListRoutes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListRoutesRequest)
@@ -408,10 +410,6 @@ var AppService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AppService_GetAppStatus_Handler,
 		},
 		{
-			MethodName: "GetDeploymentLogs",
-			Handler:    _AppService_GetDeploymentLogs_Handler,
-		},
-		{
 			MethodName: "ListRoutes",
 			Handler:    _AppService_ListRoutes_Handler,
 		},
@@ -420,6 +418,12 @@ var AppService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _AppService_InspectRoute_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "GetDeploymentLogs",
+			Handler:       _AppService_GetDeploymentLogs_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "deployer/v1/app.proto",
 }

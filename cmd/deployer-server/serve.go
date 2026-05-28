@@ -10,10 +10,12 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/config"
 	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	"github.com/0xivanov/self-hosted-deployer/internal/ingress"
+	"github.com/0xivanov/self-hosted-deployer/internal/k3s"
 	"github.com/0xivanov/self-hosted-deployer/internal/logging"
 	"github.com/0xivanov/self-hosted-deployer/internal/security"
 	"github.com/0xivanov/self-hosted-deployer/internal/server"
 	"github.com/0xivanov/self-hosted-deployer/internal/version"
+	"github.com/0xivanov/self-hosted-deployer/internal/wireguard"
 )
 
 func serve() int {
@@ -61,6 +63,10 @@ func serve() int {
 	}
 	runtime := server.Runtime{
 		Apps:            ingressController,
+		Nodes:           ingressController,
+		Readiness:       ingressController,
+		WireGuardPeers:  wireguard.NewHubController(cfg.WireGuardInterface),
+		WorkerJoin:      k3s.NewWorkerJoinProvider(cfg.K3sNodeTokenPath, cfg.K3sWireGuardIP),
 		SecretCipher:    secretCipher,
 		RouteTLSEnabled: ingressController.TLSEnabled(),
 	}

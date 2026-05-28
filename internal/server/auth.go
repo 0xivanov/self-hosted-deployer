@@ -36,6 +36,7 @@ type AgentTokenRepository interface {
 	Create(ctx context.Context, token domain.AgentToken) error
 	FindByHash(ctx context.Context, tokenHash string) (domain.AgentToken, error)
 	MarkUsed(ctx context.Context, tokenHash string, usedAt time.Time) error
+	RevokeByNodeID(ctx context.Context, nodeID string, revokedAt time.Time) error
 }
 
 type JoinTokenRepository interface {
@@ -168,9 +169,10 @@ func isPublicMethod(fullMethod string) bool {
 }
 
 func isAdminOnlyMethod(fullMethod string) bool {
-	return !strings.HasPrefix(fullMethod, "/deployer.v1.NodeService/HeartbeatNode")
+	return !isAgentOnlyMethod(fullMethod)
 }
 
 func isAgentOnlyMethod(fullMethod string) bool {
-	return fullMethod == "/deployer.v1.NodeService/HeartbeatNode"
+	return fullMethod == "/deployer.v1.NodeService/HeartbeatNode" ||
+		fullMethod == "/deployer.v1.NodeService/GetWorkerBootstrap"
 }

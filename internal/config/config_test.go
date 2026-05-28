@@ -85,6 +85,8 @@ func TestLoadServerK3sDefaults(t *testing.T) {
 	t.Setenv("DEPLOYER_K3S_CONFIG_PATH", "")
 	t.Setenv("DEPLOYER_K3S_WIREGUARD_IP", "10.8.0.1")
 	t.Setenv("DEPLOYER_K3S_INSTALLER_URL", "")
+	t.Setenv("DEPLOYER_K3S_NODE_TOKEN_PATH", "")
+	t.Setenv("DEPLOYER_WIREGUARD_INTERFACE", "")
 	t.Setenv("DEPLOYER_SECRET_KEY_FILE", "/tmp/deployer.key")
 
 	cfg := LoadServer()
@@ -105,6 +107,9 @@ func TestLoadServerK3sDefaults(t *testing.T) {
 	}
 	if cfg.K3sWireGuardIP != "10.8.0.1" {
 		t.Fatalf("unexpected wireguard IP %q", cfg.K3sWireGuardIP)
+	}
+	if cfg.K3sNodeTokenPath != "/var/lib/rancher/k3s/server/node-token" || cfg.WireGuardInterface != "wg0" {
+		t.Fatalf("unexpected worker bootstrap defaults: %#v", cfg)
 	}
 	if cfg.SecretKeyFile != "/tmp/deployer.key" {
 		t.Fatalf("unexpected secret key file %q", cfg.SecretKeyFile)
@@ -137,12 +142,34 @@ func TestServerConfigEventRetention(t *testing.T) {
 	}
 }
 
+func TestServerConfigNodeMonitor(t *testing.T) {
+	got, err := (ServerConfig{}).NodeMonitor()
+	if err != nil {
+		t.Fatalf("default node monitor: %v", err)
+	}
+	if got.OfflineAfter != 2*time.Minute || got.Interval != 30*time.Second {
+		t.Fatalf("unexpected node monitor defaults: %#v", got)
+	}
+	got, err = (ServerConfig{NodeOfflineAfter: "45s", NodeMonitorInterval: "5s"}).NodeMonitor()
+	if err != nil {
+		t.Fatalf("custom node monitor: %v", err)
+	}
+	if got.OfflineAfter != 45*time.Second || got.Interval != 5*time.Second {
+		t.Fatalf("unexpected custom node monitor: %#v", got)
+	}
+	if _, err := (ServerConfig{NodeOfflineAfter: "never"}).NodeMonitor(); err == nil {
+		t.Fatal("expected invalid offline threshold to fail")
+	}
+}
+
 func TestAgentConfigValidate(t *testing.T) {
 	cfg := AgentConfig{
 		ServerURL:               "https://deploy.example.com",
 		NodeCredentialPath:      "/tmp/token",
 		WireGuardInterface:      "wg0",
 		WireGuardPrivateKeyPath: "/tmp/wg-privatekey",
+		WireGuardConfigPath:     "/tmp/wg0.conf",
+		K3sConfigPath:           "/tmp/k3s/config.yaml",
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -152,9 +179,19 @@ func TestAgentConfigValidate(t *testing.T) {
 
 func TestLoadAgentWireGuardPrivateKeyDefault(t *testing.T) {
 	t.Setenv("DEPLOYER_WIREGUARD_PRIVATE_KEY_PATH", "")
+	t.Setenv("DEPLOYER_WIREGUARD_CONFIG_PATH", "")
+	t.Setenv("DEPLOYER_WIREGUARD_HUB_IP", "")
+	t.Setenv("DEPLOYER_K3S_CONFIG_PATH", "")
+	t.Setenv("DEPLOYER_K3S_INSTALLER_URL", "")
 
 	cfg := LoadAgent()
 	if cfg.WireGuardPrivateKeyPath != "/etc/deployer/wireguard/privatekey" {
 		t.Fatalf("unexpected WireGuard private key path %q", cfg.WireGuardPrivateKeyPath)
+	}
+	if cfg.WireGuardConfigPath != "/etc/wireguard/wg0.conf" || cfg.WireGuardHubIP != "10.8.0.1" {
+		t.Fatalf("unexpected WireGuard agent defaults: %#v", cfg)
+	}
+	if cfg.K3sConfigPath != "/etc/rancher/k3s/config.yaml" || cfg.K3sInstallerURL != "https://get.k3s.io" {
+		t.Fatalf("unexpected k3s agent defaults: %#v", cfg)
 	}
 }

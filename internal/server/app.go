@@ -17,6 +17,7 @@ import (
 
 const (
 	deploymentStatusPending = "pending"
+	deploymentStatusHealthy = "healthy"
 	deploymentStatusFailed  = "failed"
 	routeStatusPending      = "pending"
 )
@@ -54,6 +55,14 @@ type AppRuntime interface {
 
 type DetailedAppRuntime interface {
 	StatusDetails(ctx context.Context, appName string) (state string, desiredReplicas int32, availableReplicas int32, err error)
+}
+
+type ReportingAppRuntime interface {
+	RuntimeStatus(ctx context.Context, appName string) (state string, desiredReplicas int32, availableReplicas int32, runningNodes []string, err error)
+}
+
+type LoggingAppRuntime interface {
+	StreamLogs(ctx context.Context, appName string, tailLines int32, follow bool, send func(string) error) error
 }
 
 type IngressRuntime = AppRuntime
@@ -178,13 +187,17 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if s.runtime != nil {
 		if err := s.runtime.Reconcile(ctx, cfg, secretValues, secretRevision); err != nil {
 			s.recordFailedDeployment(ctx, app, deployment, cfg, err, now)
-			return nil, status.Error(codes.Internal, "apply app resources")
+			return nil, status.Errorf(codes.Internal, "apply app resources: %v", err)
 		}
 	}
 	if err := s.syncRoute(ctx, app, cfg, now); err != nil {
 		s.recordFailedDeployment(ctx, app, deployment, cfg, err, now)
 		return nil, err
 	}
+	if err := s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusHealthy, "", now); err != nil {
+		return nil, status.Error(codes.Internal, "mark deployment healthy")
+	}
+	deployment.Status = deploymentStatusHealthy
 	s.recordDeployEvent(ctx, domain.EventTypeAppDeploySucceeded, domain.EventSeverityInfo, "deployment applied", app, deployment, cfg, "")
 
 	appProto, err := protoApp(app)
@@ -314,7 +327,72 @@ func (s AppService) GetAppStatus(ctx context.Context, req *deployerv1.GetAppStat
 	for _, route := range routes {
 		response.Routes = append(response.Routes, protoRoute(route))
 	}
+	response.DesiredReplicas = appProto.GetReplicas()
+	if runtime, ok := s.runtime.(ReportingAppRuntime); ok {
+		runtimeStatus, desired, available, nodes, err := runtime.RuntimeStatus(ctx, app.Name)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "read app runtime status")
+		}
+		response.RuntimeStatus = runtimeStatus
+		response.DesiredReplicas = desired
+		response.AvailableReplicas = available
+		response.RunningNodes = nodes
+		cfg, err := appconfig.FromJSON(app.DesiredStateJSON)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "decode desired state")
+		}
+		response.Warnings = runtimeWarnings(cfg, runtimeStatus, desired, available, nodes)
+	}
 	return response, nil
+}
+
+func (s AppService) GetDeploymentLogs(req *deployerv1.GetDeploymentLogsRequest, stream deployerv1.AppService_GetDeploymentLogsServer) error {
+	ctx := stream.Context()
+	if err := requireCaller(ctx, CallerAdmin); err != nil {
+		return err
+	}
+	name := strings.TrimSpace(req.GetAppName())
+	if name == "" {
+		return status.Error(codes.InvalidArgument, "app name is required")
+	}
+	if req.GetTailLines() < 0 {
+		return status.Error(codes.InvalidArgument, "tail lines cannot be negative")
+	}
+	app, err := s.apps.FindActiveByName(ctx, name)
+	if errors.Is(err, db.ErrNotFound) {
+		return status.Error(codes.NotFound, "app not found")
+	}
+	if err != nil {
+		return status.Error(codes.Internal, "get app")
+	}
+	runtime, ok := s.runtime.(LoggingAppRuntime)
+	if !ok {
+		return status.Error(codes.FailedPrecondition, "app log runtime is not configured")
+	}
+	err = runtime.StreamLogs(ctx, app.Name, req.GetTailLines(), req.GetFollow(), func(line string) error {
+		return stream.Send(&deployerv1.GetDeploymentLogsResponse{Lines: []string{line}})
+	})
+	if err != nil {
+		if ctx.Err() != nil {
+			return status.FromContextError(ctx.Err()).Err()
+		}
+		return status.Errorf(codes.Internal, "stream app logs: %v", err)
+	}
+	return nil
+}
+
+func runtimeWarnings(cfg appconfig.Config, state string, desired int32, available int32, runningNodes []string) []string {
+	warnings := []string{}
+	if desired > available {
+		warnings = append(warnings, fmt.Sprintf("only %d of %d desired replicas are available", available, desired))
+	}
+	if cfg.Resilience.Mode == appconfig.ResilienceResilient && desired >= 2 && len(runningNodes) < 2 {
+		warnings = append(warnings, "resilient replicas are not spread across two nodes")
+	}
+	if cfg.Resilience.Mode == appconfig.ResilienceFallback && state != "healthy" {
+		warnings = append(warnings, "fallback capacity is not currently satisfying desired availability")
+	}
+	return warnings
 }
 
 func (s AppService) ListRoutes(ctx context.Context, _ *deployerv1.ListRoutesRequest) (*deployerv1.ListRoutesResponse, error) {
