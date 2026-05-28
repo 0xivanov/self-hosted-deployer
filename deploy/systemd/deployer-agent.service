@@ -1,0 +1,15 @@
+[Unit]
+Description=Self-Hosted Deployer node agent
+Documentation=https://github.com/0xivanov/self-hosted-deployer
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/deployer/agent.env
+ExecStart=/usr/local/bin/deployer-agent run
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

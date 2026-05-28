@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/db/migrations"
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/pressly/goose/v3"
+	_ "modernc.org/sqlite"
 )
 
 type Db struct {
@@ -16,7 +16,7 @@ type Db struct {
 }
 
 func Open(ctx context.Context, dsn string) (*Db, error) {
-	sqlDB, err := sql.Open("sqlite3", dsn)
+	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
