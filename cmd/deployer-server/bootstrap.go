@@ -269,6 +269,7 @@ func bootstrapK3s(args []string) int {
 	flags := flag.NewFlagSet("deployer-server bootstrap k3s", flag.ContinueOnError)
 	flags.SetOutput(os.Stderr)
 	wireGuardIP := flags.String("wireguard-ip", cfg.K3sWireGuardIP, "VPS WireGuard hub IP for the k3s API")
+	wireGuardInterface := flags.String("wireguard-interface", cfg.WireGuardInterface, "WireGuard interface for k3s flannel traffic")
 	configPath := flags.String("config-path", cfg.K3sConfigPath, "path to write the k3s server config")
 	kubeconfigPath := flags.String("kubeconfig", cfg.KubeconfigPath, "path where k3s writes kubeconfig")
 	installerURL := flags.String("installer-url", cfg.K3sInstallerURL, "official k3s installer URL")
@@ -285,11 +286,12 @@ func bootstrapK3s(args []string) int {
 	}
 
 	result, err := newK3sBootstrapper().Bootstrap(context.Background(), k3s.Config{
-		WireGuardIP:    *wireGuardIP,
-		ConfigPath:     *configPath,
-		KubeconfigPath: *kubeconfigPath,
-		InstallerURL:   *installerURL,
-		Force:          *force,
+		WireGuardIP:      *wireGuardIP,
+		ConfigPath:       *configPath,
+		KubeconfigPath:   *kubeconfigPath,
+		InstallerURL:     *installerURL,
+		FlannelInterface: *wireGuardInterface,
+		Force:            *force,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

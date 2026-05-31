@@ -194,7 +194,8 @@ func TestJoinK3sConnectsWireGuardAndRunsWorkerBootstrap(t *testing.T) {
 		t.Fatalf("expected WireGuard config: data=%q err=%v", wireGuardData, err)
 	}
 	if len(commands) != 1 || commands[0][0] != "wg" || len(runner.calls) != 1 ||
-		!strings.Contains(strings.Join(runner.calls[0].env, "\n"), "K3S_TOKEN=worker-token") {
+		!strings.Contains(strings.Join(runner.calls[0].env, "\n"), "K3S_TOKEN=worker-token") ||
+		!strings.Contains(string(files.data), "flannel-iface: wg0") {
 		t.Fatalf("unexpected setup commands=%#v runner=%#v", commands, runner.calls)
 	}
 	if strings.Contains(stdout.String(), "worker-token") || strings.Contains(stderr.String(), "worker-token") {

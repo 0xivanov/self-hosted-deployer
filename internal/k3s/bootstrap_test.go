@@ -25,6 +25,7 @@ func TestServerConfigYAMLIncludesWireGuardAPISettings(t *testing.T) {
 		"bind-address: 10.8.0.1",
 		"advertise-address: 10.8.0.1",
 		"node-ip: 10.8.0.1",
+		"flannel-iface: wg0",
 		"- 10.8.0.1",
 		"write-kubeconfig: /tmp/k3s/k3s.yaml",
 		"write-kubeconfig-mode: \"0644\"",
@@ -96,7 +97,8 @@ func TestBootstrapWritesConfigAndRunsInstaller(t *testing.T) {
 	if files.writePath != "/tmp/rancher/k3s/config.yaml" || files.writePerm != 0o600 {
 		t.Fatalf("unexpected config write path/perm: %s %o", files.writePath, files.writePerm)
 	}
-	if !strings.Contains(string(files.writeData), "advertise-address: 10.8.0.1") {
+	if !strings.Contains(string(files.writeData), "advertise-address: 10.8.0.1") ||
+		!strings.Contains(string(files.writeData), "flannel-iface: wg0") {
 		t.Fatalf("config missing advertise address:\n%s", string(files.writeData))
 	}
 	if len(ports.calls) != 2 || ports.calls[0] != "10.8.0.1:0" || ports.calls[1] != "10.8.0.1:6443" {
@@ -188,7 +190,8 @@ func TestBootstrapWorkerWritesRestrictedConfigAndRunsAgentInstaller(t *testing.T
 		t.Fatalf("bootstrap worker: %v", err)
 	}
 	if files.writePerm != 0o600 || !strings.Contains(string(files.writeData), "node-name: pi-kitchen") ||
-		!strings.Contains(string(files.writeData), "token: worker-secret") {
+		!strings.Contains(string(files.writeData), "token: worker-secret") ||
+		!strings.Contains(string(files.writeData), "flannel-iface: wg0") {
 		t.Fatalf("unexpected worker config write: perm=%o data=%q", files.writePerm, files.writeData)
 	}
 	if len(runner.calls) != 1 || !strings.Contains(strings.Join(runner.calls[0].env, "\n"), "INSTALL_K3S_EXEC=agent --config /tmp/rancher/k3s/config.yaml") ||

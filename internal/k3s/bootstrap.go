@@ -22,16 +22,18 @@ const (
 	DefaultConfigPath     = "/etc/rancher/k3s/config.yaml"
 	DefaultKubeconfigPath = "/etc/rancher/k3s/k3s.yaml"
 	DefaultInstallerURL   = "https://get.k3s.io"
+	DefaultFlannelIface   = "wg0"
 	kubernetesAPIPort     = "6443"
 	maxInstallerBytes     = 4 << 20
 )
 
 type Config struct {
-	WireGuardIP    string
-	ConfigPath     string
-	KubeconfigPath string
-	InstallerURL   string
-	Force          bool
+	WireGuardIP      string
+	ConfigPath       string
+	KubeconfigPath   string
+	InstallerURL     string
+	FlannelInterface string
+	Force            bool
 }
 
 func (c Config) WithDefaults() Config {
@@ -43,6 +45,9 @@ func (c Config) WithDefaults() Config {
 	}
 	if c.InstallerURL == "" {
 		c.InstallerURL = DefaultInstallerURL
+	}
+	if c.FlannelInterface == "" {
+		c.FlannelInterface = DefaultFlannelIface
 	}
 	return c
 }
@@ -60,6 +65,9 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.InstallerURL) == "" {
 		errs = append(errs, errors.New("DEPLOYER_K3S_INSTALLER_URL is required"))
+	}
+	if strings.TrimSpace(c.FlannelInterface) == "" {
+		errs = append(errs, errors.New("k3s flannel interface is required"))
 	}
 	return errors.Join(errs...)
 }
@@ -226,6 +234,7 @@ type serverConfigFile struct {
 	BindAddress         string   `yaml:"bind-address"`
 	AdvertiseAddress    string   `yaml:"advertise-address"`
 	NodeIP              string   `yaml:"node-ip"`
+	FlannelInterface    string   `yaml:"flannel-iface"`
 	TLSSAN              []string `yaml:"tls-san"`
 	WriteKubeconfig     string   `yaml:"write-kubeconfig"`
 	WriteKubeconfigMode string   `yaml:"write-kubeconfig-mode"`
@@ -240,6 +249,7 @@ func ServerConfigYAML(cfg Config) ([]byte, error) {
 		BindAddress:         cfg.WireGuardIP,
 		AdvertiseAddress:    cfg.WireGuardIP,
 		NodeIP:              cfg.WireGuardIP,
+		FlannelInterface:    strings.TrimSpace(cfg.FlannelInterface),
 		TLSSAN:              []string{cfg.WireGuardIP},
 		WriteKubeconfig:     cfg.KubeconfigPath,
 		WriteKubeconfigMode: "0644",

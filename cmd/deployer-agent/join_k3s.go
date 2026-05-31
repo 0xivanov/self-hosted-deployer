@@ -86,6 +86,7 @@ func joinK3s(args []string) int {
 	if err := newAgentK3sBootstrapper().BootstrapWorker(context.Background(), k3s.WorkerConfig{
 		ServerURL: material.K3sURL, Token: material.K3sToken, NodeName: material.NodeName,
 		NodeIP: material.WireGuardIP, ConfigPath: *k3sConfigPath, InstallerURL: *installerURL,
+		FlannelInterface: *wireGuardInterface,
 	}); err != nil {
 		fmt.Fprintln(agentStderr, err)
 		return 1

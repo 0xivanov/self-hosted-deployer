@@ -41,6 +41,6 @@ EOF
 "$DEPLOYER_BIN" --server "$SERVER_URL" --token "$ADMIN_TOKEN" doctor
 "$DEPLOYER_BIN" --server "$SERVER_URL" --token "$ADMIN_TOKEN" deploy --file "$WORKDIR/deployer.yaml"
 "$DEPLOYER_BIN" --server "$SERVER_URL" --token "$ADMIN_TOKEN" status "$APP_NAME"
-"$DEPLOYER_BIN" --server "$SERVER_URL" --token "$ADMIN_TOKEN" logs "$APP_NAME" --tail 20
+"$DEPLOYER_BIN" --server "$SERVER_URL" --token "$ADMIN_TOKEN" logs --tail 20 "$APP_NAME"
 
 echo "smoke test completed for $APP_NAME"

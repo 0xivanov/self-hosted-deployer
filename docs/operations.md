@@ -2,6 +2,8 @@
 
 This phase makes the MVP installable enough for manual VPS and Linux worker testing.
 
+For the full manual path from a fresh VPS and Raspberry Pi to a deployed nginx smoke app, see [VPS And Raspberry Pi End-To-End Setup](vps-raspberry-pi-e2e.md).
+
 ## Install Paths
 
 - Binaries: `/usr/local/bin/deployer`, `/usr/local/bin/deployer-server`, `/usr/local/bin/deployer-agent`
@@ -31,7 +33,7 @@ sudo deployer-server bootstrap server \
 The bootstrap command prints the initial admin token once. Store it in your local CLI config with:
 
 ```bash
-deployer login https://YOUR_VPS:7443
+deployer --token dep_admin_... login https://YOUR_VPS:7443
 ```
 
 Then bootstrap k3s and start the server:
@@ -82,3 +84,21 @@ export DEPLOYER_SMOKE_ARCH=linux/arm64
 ```
 
 If your only schedulable worker is amd64, set `DEPLOYER_SMOKE_ARCH=linux/amd64`.
+
+## Release Artifacts
+
+GitHub Actions builds release artifacts when a tag matching `v*` is pushed.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow runs tests, builds `make release` with `VERSION` set to the tag, verifies checksums, and uploads:
+
+- `deployer-darwin-arm64.tar.gz`
+- `deployer-linux-amd64.tar.gz`
+- `deployer-linux-arm64.tar.gz`
+- `checksums.txt`
+
+Use `deployer-linux-amd64.tar.gz` for amd64 VPS hosts and `deployer-linux-arm64.tar.gz` for 64-bit Raspberry Pi workers.

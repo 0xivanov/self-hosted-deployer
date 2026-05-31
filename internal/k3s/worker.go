@@ -51,12 +51,13 @@ func (p WorkerJoinProvider) WorkerJoinMaterial(ctx context.Context) (string, str
 }
 
 type WorkerConfig struct {
-	ServerURL    string
-	Token        string
-	NodeName     string
-	NodeIP       string
-	ConfigPath   string
-	InstallerURL string
+	ServerURL        string
+	Token            string
+	NodeName         string
+	NodeIP           string
+	ConfigPath       string
+	InstallerURL     string
+	FlannelInterface string
 }
 
 func (c WorkerConfig) WithDefaults() WorkerConfig {
@@ -65,6 +66,9 @@ func (c WorkerConfig) WithDefaults() WorkerConfig {
 	}
 	if c.InstallerURL == "" {
 		c.InstallerURL = DefaultInstallerURL
+	}
+	if c.FlannelInterface == "" {
+		c.FlannelInterface = DefaultFlannelIface
 	}
 	return c
 }
@@ -84,14 +88,18 @@ func (c WorkerConfig) Validate() error {
 	if net.ParseIP(strings.TrimSpace(c.NodeIP)) == nil {
 		errs = append(errs, errors.New("k3s worker node IP must be a valid IP address"))
 	}
+	if strings.TrimSpace(c.FlannelInterface) == "" {
+		errs = append(errs, errors.New("k3s worker flannel interface is required"))
+	}
 	return errors.Join(errs...)
 }
 
 type workerConfigFile struct {
-	Server   string `yaml:"server"`
-	Token    string `yaml:"token"`
-	NodeName string `yaml:"node-name"`
-	NodeIP   string `yaml:"node-ip"`
+	Server           string `yaml:"server"`
+	Token            string `yaml:"token"`
+	NodeName         string `yaml:"node-name"`
+	NodeIP           string `yaml:"node-ip"`
+	FlannelInterface string `yaml:"flannel-iface"`
 }
 
 func WorkerConfigYAML(cfg WorkerConfig) ([]byte, error) {
@@ -101,6 +109,7 @@ func WorkerConfigYAML(cfg WorkerConfig) ([]byte, error) {
 	}
 	data, err := yaml.Marshal(workerConfigFile{
 		Server: cfg.ServerURL, Token: cfg.Token, NodeName: cfg.NodeName, NodeIP: cfg.NodeIP,
+		FlannelInterface: strings.TrimSpace(cfg.FlannelInterface),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("encode k3s worker config: %w", err)
