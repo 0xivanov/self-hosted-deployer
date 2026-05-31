@@ -99,6 +99,9 @@ func TestRunServerBootstrapWritesEnvAndInitializesAdmin(t *testing.T) {
 		HTTPAddress:        ":7080",
 		KubeconfigPath:     "/etc/rancher/k3s/k3s.yaml",
 		IngressNamespace:   "deployer-apps",
+		IngressACMEEmail:   "ops@example.com",
+		IngressTLSIssuer:   "deployer-letsencrypt",
+		IngressACMEServer:  "https://acme-v02.api.letsencrypt.org/directory",
 		K3sWireGuardIP:     "10.8.0.1",
 		WireGuardInterface: "wg0",
 		WireGuardEndpoint:  "deploy.example.com:51820",
@@ -122,7 +125,10 @@ func TestRunServerBootstrapWritesEnvAndInitializesAdmin(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "DEPLOYER_DATABASE_URL=file:"+dbPath) ||
 		!strings.Contains(string(data), "DEPLOYER_SECRET_KEY=") ||
-		!strings.Contains(string(data), "DEPLOYER_TOKEN_HASH_KEY=") {
+		!strings.Contains(string(data), "DEPLOYER_TOKEN_HASH_KEY=") ||
+		!strings.Contains(string(data), "DEPLOYER_INGRESS_ACME_EMAIL=ops@example.com") ||
+		!strings.Contains(string(data), "DEPLOYER_INGRESS_TLS_ISSUER=deployer-letsencrypt") ||
+		!strings.Contains(string(data), "DEPLOYER_INGRESS_ACME_SERVER=https://acme-v02.api.letsencrypt.org/directory") {
 		t.Fatalf("unexpected env file contents:\n%s", string(data))
 	}
 	if _, err := os.Stat(dbPath); err != nil {

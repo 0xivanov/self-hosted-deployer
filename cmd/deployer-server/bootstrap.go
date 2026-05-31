@@ -51,6 +51,9 @@ type serverBootstrapOptions struct {
 	HTTPAddress           string
 	KubeconfigPath        string
 	IngressNamespace      string
+	IngressACMEEmail      string
+	IngressTLSIssuer      string
+	IngressACMEServer     string
 	K3sWireGuardIP        string
 	WireGuardInterface    string
 	WireGuardHubPublicKey string
@@ -68,6 +71,9 @@ func bootstrapServer(args []string) int {
 		HTTPAddress:           cfg.HTTPListenAddress,
 		KubeconfigPath:        cfg.KubeconfigPath,
 		IngressNamespace:      cfg.IngressNamespace,
+		IngressACMEEmail:      cfg.IngressACMEEmail,
+		IngressTLSIssuer:      cfg.IngressTLSIssuer,
+		IngressACMEServer:     cfg.IngressACMEServer,
 		K3sWireGuardIP:        cfg.K3sWireGuardIP,
 		WireGuardInterface:    cfg.WireGuardInterface,
 		WireGuardHubPublicKey: cfg.WireGuardHubPublicKey,
@@ -83,6 +89,9 @@ func bootstrapServer(args []string) int {
 	flags.StringVar(&opts.HTTPAddress, "http-addr", opts.HTTPAddress, "HTTP health listen address")
 	flags.StringVar(&opts.KubeconfigPath, "kubeconfig", opts.KubeconfigPath, "kubeconfig path for the local k3s cluster")
 	flags.StringVar(&opts.IngressNamespace, "ingress-namespace", opts.IngressNamespace, "Kubernetes namespace for managed app resources")
+	flags.StringVar(&opts.IngressACMEEmail, "ingress-acme-email", opts.IngressACMEEmail, "ACME contact email; enables HTTPS routes when cert-manager is installed")
+	flags.StringVar(&opts.IngressTLSIssuer, "ingress-tls-issuer", opts.IngressTLSIssuer, "cert-manager ClusterIssuer name for HTTPS routes")
+	flags.StringVar(&opts.IngressACMEServer, "ingress-acme-server", opts.IngressACMEServer, "ACME directory URL for HTTPS route certificates")
 	flags.StringVar(&opts.K3sWireGuardIP, "k3s-wireguard-ip", opts.K3sWireGuardIP, "VPS WireGuard hub IP for the k3s API")
 	flags.StringVar(&opts.WireGuardInterface, "wireguard-interface", opts.WireGuardInterface, "WireGuard hub interface name")
 	flags.StringVar(&opts.WireGuardHubPublicKey, "wireguard-hub-public-key", opts.WireGuardHubPublicKey, "WireGuard hub public key")
@@ -191,6 +200,9 @@ func renderServerEnv(opts serverBootstrapOptions, secretKey string, tokenHashKey
 		{"DEPLOYER_TOKEN_HASH_KEY", tokenHashKey},
 		{"DEPLOYER_KUBECONFIG", opts.KubeconfigPath},
 		{"DEPLOYER_INGRESS_NAMESPACE", opts.IngressNamespace},
+		{"DEPLOYER_INGRESS_ACME_EMAIL", opts.IngressACMEEmail},
+		{"DEPLOYER_INGRESS_TLS_ISSUER", opts.IngressTLSIssuer},
+		{"DEPLOYER_INGRESS_ACME_SERVER", opts.IngressACMEServer},
 		{"DEPLOYER_K3S_WIREGUARD_IP", opts.K3sWireGuardIP},
 		{"DEPLOYER_WIREGUARD_INTERFACE", opts.WireGuardInterface},
 		{"DEPLOYER_WIREGUARD_HUB_PUBLIC_KEY", opts.WireGuardHubPublicKey},

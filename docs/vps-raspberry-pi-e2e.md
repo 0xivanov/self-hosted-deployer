@@ -141,6 +141,8 @@ sudo deployer-server bootstrap server \
   --wireguard-endpoint VPS_PUBLIC_IP:51820
 ```
 
+If you already know the domain email you want to use for Let's Encrypt certificates, add `--ingress-acme-email you@example.com` to this bootstrap command. You can also add it later by editing `/etc/deployer/server.env`.
+
 Save the printed `dep_admin_...` token. It is shown once.
 
 Bootstrap k3s on the VPS and start deployer-server:
@@ -432,7 +434,26 @@ Point a DNS record at the VPS public IP:
 app.example.com -> VPS_PUBLIC_IP
 ```
 
-Open TCP `80` and `443` on the VPS.
+Open TCP `80` and `443` on the VPS. For HTTPS routes, install cert-manager on the VPS and configure the deployer server with an ACME email:
+
+```bash
+sudo k3s kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.yaml
+sudoedit /etc/deployer/server.env
+```
+
+Add or update:
+
+```text
+DEPLOYER_INGRESS_ACME_EMAIL=you@example.com
+```
+
+Then restart the server:
+
+```bash
+sudo systemctl restart deployer-server
+```
+
+For Cloudflare DNS, keep the app record as **DNS only** while Let's Encrypt HTTP-01 validation runs. Proxied records can be enabled later after the origin certificate is working.
 
 Deploy with `routing.domain`:
 
@@ -461,6 +482,7 @@ Then:
 ./bin/deployer deploy --file deployer.yaml
 ./bin/deployer routes list
 ./bin/deployer status my-api
+curl -v https://app.example.com/
 ```
 
 k3s usually installs Traefik by default. Check ingress components with:
@@ -514,6 +536,26 @@ Check placement:
 ```bash
 sudo k3s kubectl -n deployer-apps get pods -o wide
 ```
+
+## Updating Hosts From A GitHub Release
+
+Release tags build Linux artifacts in GitHub Actions. Once a release exists, update the VPS from the `linux-amd64` artifact:
+
+```bash
+VERSION=v0.1.0
+curl -fsSL "https://raw.githubusercontent.com/0xivanov/self-hosted-deployer/$VERSION/scripts/install-release.sh" -o /tmp/install-release.sh
+sudo sh /tmp/install-release.sh --version "$VERSION" --role server
+```
+
+Update each Raspberry Pi from the `linux-arm64` artifact:
+
+```bash
+VERSION=v0.1.0
+curl -fsSL "https://raw.githubusercontent.com/0xivanov/self-hosted-deployer/$VERSION/scripts/install-release.sh" -o /tmp/install-release.sh
+sudo sh /tmp/install-release.sh --version "$VERSION" --role agent
+```
+
+The installer verifies checksums, installs the new binaries and systemd unit, and restarts `deployer-server.service` or `deployer-agent.service`.
 
 ## Troubleshooting
 
