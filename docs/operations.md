@@ -27,7 +27,8 @@ sudo deployer-server bootstrap server \
   --public-base-url https://YOUR_VPS:7443 \
   --k3s-wireguard-ip 10.8.0.1 \
   --wireguard-hub-public-key YOUR_HUB_PUBLIC_KEY \
-  --wireguard-endpoint YOUR_VPS:51820
+  --wireguard-endpoint YOUR_VPS:51820 \
+  --ingress-acme-email you@example.com
 ```
 
 The bootstrap command prints the initial admin token once. Store it in your local CLI config with:
@@ -43,6 +44,14 @@ sudo deployer-server bootstrap k3s --wireguard-ip 10.8.0.1
 sudo systemctl daemon-reload
 sudo systemctl enable --now deployer-server.service
 ```
+
+To enable HTTPS for routed apps, install cert-manager before deploying routes and set `--ingress-acme-email` during `bootstrap server`:
+
+```bash
+sudo k3s kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.18.2/cert-manager.yaml
+```
+
+When `DEPLOYER_INGRESS_ACME_EMAIL` is set, the server creates a cert-manager `ClusterIssuer` named `deployer-letsencrypt` and each routed app gets a TLS Ingress with a per-app certificate secret. On an existing install, add `DEPLOYER_INGRESS_ACME_EMAIL=you@example.com` to `/etc/deployer/server.env`, install cert-manager, restart `deployer-server`, and redeploy the app route. Leave the Cloudflare record as DNS only while HTTP-01 certificates are being issued.
 
 ## Worker Setup
 
@@ -102,3 +111,25 @@ The release workflow runs tests, builds `make release` with `VERSION` set to the
 - `checksums.txt`
 
 Use `deployer-linux-amd64.tar.gz` for amd64 VPS hosts and `deployer-linux-arm64.tar.gz` for 64-bit Raspberry Pi workers.
+
+## Updating From Release Artifacts
+
+After a release exists, hosts can update directly from GitHub without a local Go toolchain or git checkout.
+
+On the VPS:
+
+```bash
+VERSION=v0.1.0
+curl -fsSL "https://raw.githubusercontent.com/0xivanov/self-hosted-deployer/$VERSION/scripts/install-release.sh" -o /tmp/install-release.sh
+sudo sh /tmp/install-release.sh --version "$VERSION" --role server
+```
+
+On a Raspberry Pi worker:
+
+```bash
+VERSION=v0.1.0
+curl -fsSL "https://raw.githubusercontent.com/0xivanov/self-hosted-deployer/$VERSION/scripts/install-release.sh" -o /tmp/install-release.sh
+sudo sh /tmp/install-release.sh --version "$VERSION" --role agent
+```
+
+The installer auto-detects `linux-amd64` versus `linux-arm64`, verifies the tarball against `checksums.txt`, installs binaries into `/usr/local/bin`, updates the matching systemd unit, runs `systemctl daemon-reload`, and restarts the selected service. Use `--version latest` to follow the latest GitHub release.
