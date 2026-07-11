@@ -14,6 +14,8 @@ service NodeService {
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeResponse);
   rpc UncordonNode(UncordonNodeRequest) returns (UncordonNodeResponse);
   rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse);
+  rpc PurgeNode(PurgeNodeRequest) returns (PurgeNodeResponse);
+  rpc RenameNode(RenameNodeRequest) returns (RenameNodeResponse);
 }
 
 message Node {
@@ -128,5 +130,23 @@ message RemoveNodeRequest {
 }
 
 message RemoveNodeResponse {
+  Node node = 1;
+}
+
+message PurgeNodeRequest {
+  string node_ref = 1;
+}
+
+message PurgeNodeResponse {
+  string node_ref = 1;
+  string node_name = 2;
+}
+
+message RenameNodeRequest {
+  string node_ref = 1;
+  string new_name = 2;
+}
+
+message RenameNodeResponse {
   Node node = 1;
 }

@@ -72,3 +72,8 @@ func (r *JoinTokenRepository) Consume(ctx context.Context, tokenHash string, use
 	token.UsedAt = &usedAt
 	return token, nil
 }
+
+func (r *JoinTokenRepository) DeleteByNodeName(ctx context.Context, nodeName string) error {
+	_, err := r.db.conn.ExecContext(ctx, `DELETE FROM node_join_tokens WHERE intended_node_name = ?`, nodeName)
+	return err
+}

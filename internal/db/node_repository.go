@@ -79,6 +79,14 @@ func (r *NodeRepository) SetWireGuard(ctx context.Context, nodeID string, wireGu
 		wireGuardIP, publicKey, formatTime(updatedAt), nodeID))
 }
 
+func (r *NodeRepository) Rename(ctx context.Context, nodeID string, name string, updatedAt time.Time) error {
+	return mapRowsAffected(r.db.conn.ExecContext(ctx, `UPDATE nodes SET name = ?, updated_at = ? WHERE id = ?`, name, formatTime(updatedAt), nodeID))
+}
+
+func (r *NodeRepository) Delete(ctx context.Context, nodeID string) error {
+	return mapRowsAffected(r.db.conn.ExecContext(ctx, `DELETE FROM nodes WHERE id = ?`, nodeID))
+}
+
 func (r *NodeRepository) findOne(ctx context.Context, query string, args ...any) (domain.Node, error) {
 	row := r.db.conn.QueryRowContext(ctx, query, args...)
 	node, err := scanNode(row)

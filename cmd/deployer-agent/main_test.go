@@ -285,7 +285,10 @@ type agentTestFiles struct {
 	data []byte
 }
 
-func (f *agentTestFiles) Stat(string) (os.FileInfo, error)   { return nil, os.ErrNotExist }
+func (f *agentTestFiles) Stat(string) (os.FileInfo, error) { return nil, os.ErrNotExist }
+func (f *agentTestFiles) ReadFile(string) ([]byte, error) {
+	return []byte("cpuset cpu io memory pids\n"), nil
+}
 func (f *agentTestFiles) MkdirAll(string, os.FileMode) error { return nil }
 func (f *agentTestFiles) WriteFile(_ string, data []byte, _ os.FileMode) error {
 	f.data = data

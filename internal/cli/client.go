@@ -304,6 +304,28 @@ func (c *PlatformClient) RemoveNode(ctx context.Context, ref string) (NodeInfo, 
 	return nodeInfo(response.GetNode()), nil
 }
 
+func (c *PlatformClient) PurgeNode(ctx context.Context, ref string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	response, err := c.nodeClient.PurgeNode(ctx, &deployerv1.PurgeNodeRequest{NodeRef: ref})
+	if err != nil {
+		return "", DecodeRPCError(err)
+	}
+	return response.GetNodeName(), nil
+}
+
+func (c *PlatformClient) RenameNode(ctx context.Context, ref string, newName string) (NodeInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	response, err := c.nodeClient.RenameNode(ctx, &deployerv1.RenameNodeRequest{NodeRef: ref, NewName: newName})
+	if err != nil {
+		return NodeInfo{}, DecodeRPCError(err)
+	}
+	return nodeInfo(response.GetNode()), nil
+}
+
 func (c *PlatformClient) JoinNode(ctx context.Context, joinToken string, hostname string, arch string, publicKey string) (JoinResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()

@@ -90,6 +90,57 @@ if ! command -v systemctl >/dev/null 2>&1; then
   exit 1
 fi
 
+memory_cgroup_enabled() {
+  if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
+    grep -qw memory /sys/fs/cgroup/cgroup.controllers
+    return $?
+  fi
+  [ -d /sys/fs/cgroup/memory ]
+}
+
+ensure_memory_cgroup() {
+  if memory_cgroup_enabled; then
+    return 0
+  fi
+
+  CMDLINE_FILE=""
+  for candidate in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
+    if [ -f "$candidate" ]; then
+      CMDLINE_FILE="$candidate"
+      break
+    fi
+  done
+
+  if [ -z "$CMDLINE_FILE" ]; then
+    echo "memory cgroup is not enabled; add 'cgroup_memory=1 cgroup_enable=memory' to the kernel cmdline, reboot, and rerun this installer" >&2
+    exit 1
+  fi
+
+  current_cmdline=$(cat "$CMDLINE_FILE")
+  changed=0
+  case " $current_cmdline " in
+    *" cgroup_memory=1 "*) ;;
+    *)
+      current_cmdline="$current_cmdline cgroup_memory=1"
+      changed=1
+      ;;
+  esac
+  case " $current_cmdline " in
+    *" cgroup_enable=memory "*) ;;
+    *)
+      current_cmdline="$current_cmdline cgroup_enable=memory"
+      changed=1
+      ;;
+  esac
+
+  if [ "$changed" = "1" ]; then
+    printf '%s\n' "$current_cmdline" > "$CMDLINE_FILE"
+    echo "Enabled memory cgroup boot flags in $CMDLINE_FILE."
+  fi
+  echo "Reboot this node, then rerun this installer with the same unexpired join token or a fresh one." >&2
+  exit 1
+}
+
 if [ -z "$AGENT_BINARY" ]; then
   if [ -x "./deployer-agent" ]; then
     AGENT_BINARY="./deployer-agent"
@@ -129,6 +180,7 @@ DEPLOYER_K3S_INSTALLER_URL=https://get.k3s.io
 EOF
 chmod 0600 "$ENV_FILE"
 
+ensure_memory_cgroup
 "$BIN_DIR/deployer-agent" join --server "$SERVER_URL" --token "$JOIN_TOKEN"
 "$BIN_DIR/deployer-agent" join-k3s --server "$SERVER_URL"
 

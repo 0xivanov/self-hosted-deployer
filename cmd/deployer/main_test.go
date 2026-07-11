@@ -584,6 +584,23 @@ func TestAppStatusAndNodeRemoveCommands(t *testing.T) {
 	if client.removedNodeRef != "pi-kitchen" || !strings.Contains(stdout.String(), "removed") {
 		t.Fatalf("expected confirmed node removal, ref=%q output=%q", client.removedNodeRef, stdout.String())
 	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := app.run([]string{"--server", "localhost:7443", "--token", "dep_admin_test", "nodes", "purge", "--yes", "pi-kitchen"}); code != 0 {
+		t.Fatalf("expected node purge success, got %d: %s", code, stderr.String())
+	}
+	if client.purgedNodeRef != "pi-kitchen" || !strings.Contains(stdout.String(), "purged") {
+		t.Fatalf("expected confirmed node purge, ref=%q output=%q", client.purgedNodeRef, stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	client.nodeMutation = clicore.NodeInfo{Name: "pi-renamed", Status: "removed"}
+	if code := app.run([]string{"--server", "localhost:7443", "--token", "dep_admin_test", "nodes", "rename", "pi-kitchen", "pi-renamed"}); code != 0 {
+		t.Fatalf("expected node rename success, got %d: %s", code, stderr.String())
+	}
+	if client.renamedNodeRef != "pi-kitchen" || client.renamedNodeNewName != "pi-renamed" || !strings.Contains(stdout.String(), "renamed") {
+		t.Fatalf("expected node rename, ref=%q new=%q output=%q", client.renamedNodeRef, client.renamedNodeNewName, stdout.String())
+	}
 }
 
 type recordingClientFactory struct {
@@ -632,6 +649,14 @@ func (c recordingClient) UncordonNode(context.Context, string) (clicore.NodeInfo
 }
 
 func (c recordingClient) RemoveNode(context.Context, string) (clicore.NodeInfo, error) {
+	return clicore.NodeInfo{}, c.err
+}
+
+func (c recordingClient) PurgeNode(context.Context, string) (string, error) {
+	return "", c.err
+}
+
+func (c recordingClient) RenameNode(context.Context, string, string) (clicore.NodeInfo, error) {
 	return clicore.NodeInfo{}, c.err
 }
 
@@ -707,6 +732,9 @@ type recordingAppClient struct {
 	logFollow            bool
 	nodeMutation         clicore.NodeInfo
 	removedNodeRef       string
+	purgedNodeRef        string
+	renamedNodeRef       string
+	renamedNodeNewName   string
 	err                  error
 }
 
@@ -736,6 +764,17 @@ func (c *recordingAppClient) UncordonNode(context.Context, string) (clicore.Node
 
 func (c *recordingAppClient) RemoveNode(_ context.Context, ref string) (clicore.NodeInfo, error) {
 	c.removedNodeRef = ref
+	return c.nodeMutation, c.err
+}
+
+func (c *recordingAppClient) PurgeNode(_ context.Context, ref string) (string, error) {
+	c.purgedNodeRef = ref
+	return c.nodeMutation.Name, c.err
+}
+
+func (c *recordingAppClient) RenameNode(_ context.Context, ref string, newName string) (clicore.NodeInfo, error) {
+	c.renamedNodeRef = ref
+	c.renamedNodeNewName = newName
 	return c.nodeMutation, c.err
 }
 

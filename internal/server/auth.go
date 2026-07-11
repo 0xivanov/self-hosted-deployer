@@ -37,12 +37,14 @@ type AgentTokenRepository interface {
 	FindByHash(ctx context.Context, tokenHash string) (domain.AgentToken, error)
 	MarkUsed(ctx context.Context, tokenHash string, usedAt time.Time) error
 	RevokeByNodeID(ctx context.Context, nodeID string, revokedAt time.Time) error
+	DeleteByNodeID(ctx context.Context, nodeID string) error
 }
 
 type JoinTokenRepository interface {
 	Create(ctx context.Context, token domain.JoinToken) error
 	Consume(ctx context.Context, tokenHash string, usedAt time.Time) (domain.JoinToken, error)
 	FindByHash(ctx context.Context, tokenHash string) (domain.JoinToken, error)
+	DeleteByNodeName(ctx context.Context, nodeName string) error
 }
 
 func NewAuthenticator(repos TokenRepositories, hashKey string) Authenticator {
