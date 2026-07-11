@@ -156,7 +156,7 @@ if [ ! -x "$AGENT_BINARY" ]; then
   exit 1
 fi
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 if [ ! -f "$SERVICE_TEMPLATE" ] && [ -f "$SCRIPT_DIR/../deploy/systemd/deployer-agent.service" ]; then
   SERVICE_TEMPLATE="$SCRIPT_DIR/../deploy/systemd/deployer-agent.service"
 fi
