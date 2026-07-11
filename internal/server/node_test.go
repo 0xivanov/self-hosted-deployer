@@ -556,6 +556,38 @@ func TestNodeServiceRenameOnlyPendingOrRemovedNodes(t *testing.T) {
 	}
 }
 
+func TestNodeServicePurgeRejectsActiveNode(t *testing.T) {
+	ctx := context.Background()
+	adminCtx := WithCaller(ctx, Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	now := time.Date(2026, 7, 11, 12, 0, 0, 0, time.UTC)
+	if err := nodes.Create(ctx, domain.Node{
+		ID:         "node-active",
+		Name:       "pi-active",
+		Status:     nodeStatusOnline,
+		LabelsJSON: "{}",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatalf("create active node: %v", err)
+	}
+
+	runtime := &recordingNodeRuntime{}
+	peers := &recordingPeerSynchronizer{}
+	service := NewNodeService(NodeServiceConfig{Nodes: nodes, Runtime: runtime, Peers: peers})
+	_, err := service.PurgeNode(adminCtx, &deployerv1.PurgeNodeRequest{NodeRef: "pi-active"})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("expected active purge to fail with FailedPrecondition, got %v", err)
+	}
+	if runtime.removals != 0 || peers.calls != 0 {
+		t.Fatalf("active purge must not mutate runtime or peers, runtime=%#v peers=%#v", runtime, peers)
+	}
+	if _, err := nodes.FindByName(ctx, "pi-active"); err != nil {
+		t.Fatalf("active node must remain stored: %v", err)
+	}
+}
+
 func TestNodeServiceReturnsAuthenticatedWorkerBootstrapMaterial(t *testing.T) {
 	ctx := context.Background()
 	database := openTestDB(t)

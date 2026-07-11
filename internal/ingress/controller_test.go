@@ -29,6 +29,7 @@ func TestControllerReconcilesAndDeletesAppResources(t *testing.T) {
 		services:    clientset.CoreV1().Services(DefaultNamespace),
 		appSecrets:  clientset.CoreV1().Secrets(DefaultNamespace),
 		nodes:       clientset.CoreV1().Nodes(),
+		pdbs:        clientset.PolicyV1().PodDisruptionBudgets(DefaultNamespace),
 		deployments: clientset.AppsV1().Deployments(DefaultNamespace),
 	}
 	cfg := testAppConfig()
@@ -104,6 +105,9 @@ func TestControllerReconcilesAndDeletesAppResources(t *testing.T) {
 	}
 	if _, err := controller.deployments.Get(context.Background(), cfg.Name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
 		t.Fatalf("expected deleted deployment, got %v", err)
+	}
+	if _, err := controller.pdbs.Get(context.Background(), cfg.Name, metav1.GetOptions{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("expected deleted PodDisruptionBudget, got %v", err)
 	}
 }
 
@@ -279,8 +283,16 @@ func TestDeploymentMapsResiliencePolicies(t *testing.T) {
 		}
 		if *deployment.Spec.Replicas != 2 ||
 			len(deployment.Spec.Template.Spec.TopologySpreadConstraints) != 1 ||
-			deployment.Spec.Template.Spec.TopologySpreadConstraints[0].WhenUnsatisfiable != corev1.DoNotSchedule {
+			deployment.Spec.Template.Spec.TopologySpreadConstraints[0].WhenUnsatisfiable != corev1.DoNotSchedule ||
+			deployment.Spec.Template.Spec.Affinity == nil ||
+			deployment.Spec.Template.Spec.Affinity.PodAntiAffinity == nil ||
+			len(deployment.Spec.Template.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution) != 1 {
 			t.Fatalf("unexpected resilient policy: %#v", deployment.Spec)
+		}
+		pdb := podDisruptionBudgetForApp(cfg, DefaultNamespace)
+		if pdb.Spec.MinAvailable == nil || pdb.Spec.MinAvailable.IntVal != 1 ||
+			pdb.Spec.Selector.MatchLabels["deployer.io/app"] != cfg.Name {
+			t.Fatalf("unexpected resilient PodDisruptionBudget: %#v", pdb.Spec)
 		}
 	})
 

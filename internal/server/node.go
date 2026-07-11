@@ -703,6 +703,11 @@ func (s NodeService) PurgeNode(ctx context.Context, req *deployerv1.PurgeNodeReq
 	if err != nil {
 		return nil, err
 	}
+	switch node.Status {
+	case nodeStatusPending, nodeStatusRemoved:
+	default:
+		return nil, status.Error(codes.FailedPrecondition, "only pending or removed nodes can be purged; drain and remove active Kubernetes nodes first")
+	}
 	now := s.now().UTC()
 	if s.agentTokens != nil {
 		if err := s.agentTokens.RevokeByNodeID(ctx, node.ID, now); err != nil {
@@ -712,6 +717,21 @@ func (s NodeService) PurgeNode(ctx context.Context, req *deployerv1.PurgeNodeReq
 	if s.runtime != nil {
 		if err := s.runtime.RemoveNode(ctx, node.Name); err != nil {
 			return nil, status.Error(codes.Internal, "remove Kubernetes node")
+		}
+	}
+	if s.peers != nil {
+		nodes, err := s.nodes.List(ctx)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "list WireGuard peers")
+		}
+		remaining := make([]domain.Node, 0, len(nodes)-1)
+		for _, knownNode := range nodes {
+			if knownNode.ID != node.ID {
+				remaining = append(remaining, knownNode)
+			}
+		}
+		if err := s.peers.SyncPeers(ctx, remaining); err != nil {
+			return nil, status.Error(codes.Internal, "synchronize WireGuard hub peers")
 		}
 	}
 	if s.agentTokens != nil {
@@ -726,15 +746,6 @@ func (s NodeService) PurgeNode(ctx context.Context, req *deployerv1.PurgeNodeReq
 	}
 	if err := s.nodes.Delete(ctx, node.ID); err != nil {
 		return nil, status.Error(codes.Internal, "delete node")
-	}
-	if s.peers != nil {
-		nodes, err := s.nodes.List(ctx)
-		if err != nil {
-			return nil, status.Error(codes.Internal, "list WireGuard peers")
-		}
-		if err := s.peers.SyncPeers(ctx, nodes); err != nil {
-			return nil, status.Error(codes.Internal, "synchronize WireGuard hub peers")
-		}
 	}
 	recordEvent(ctx, s.events, domain.Event{
 		Type:         domain.EventTypeNodePurged,
