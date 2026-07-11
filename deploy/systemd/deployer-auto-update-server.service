@@ -1,0 +1,9 @@
+[Unit]
+Description=Update Self-Hosted Deployer server from GitHub Releases
+Documentation=https://github.com/0xivanov/self-hosted-deployer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/deployer-auto-update --role server

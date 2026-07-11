@@ -159,3 +159,13 @@ sudo sh /tmp/install-release.sh --version "$VERSION" --role agent
 ```
 
 The installer auto-detects `linux-amd64` versus `linux-arm64`, verifies the tarball against `checksums.txt`, installs binaries into `/usr/local/bin`, updates the matching systemd unit, runs `systemctl daemon-reload`, and restarts the selected service. Use `--version latest` to follow the latest GitHub release.
+
+The installer also enables a role-specific systemd timer. Servers check for a new GitHub Release every 15 minutes near minute 0. Agents check near minute 5 with randomized delay so the server normally updates first and workers do not restart together.
+
+```bash
+systemctl list-timers 'deployer-auto-update*'
+journalctl -u deployer-auto-update-server.service
+journalctl -u deployer-auto-update-agent.service
+```
+
+The updater compares the installed version with the latest release, verifies release checksums through `install-release.sh`, serializes updates with a host lock, and restores the previous binary if the restarted service fails its health check.

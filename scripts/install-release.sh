@@ -183,14 +183,22 @@ install_cli() {
 
 install_server() {
   install_cli
+  install -d -m 0755 /usr/local/sbin
   install -m 0755 "$PACKAGE_DIR/deployer-server" "$INSTALL_DIR/deployer-server"
+  install -m 0755 "$PACKAGE_DIR/scripts/auto-update.sh" /usr/local/sbin/deployer-auto-update
   install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-server.service" /etc/systemd/system/deployer-server.service
+  install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-auto-update-server.service" /etc/systemd/system/deployer-auto-update-server.service
+  install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-auto-update-server.timer" /etc/systemd/system/deployer-auto-update-server.timer
 }
 
 install_agent() {
   install -d -m 0755 "$INSTALL_DIR"
+  install -d -m 0755 /usr/local/sbin
   install -m 0755 "$PACKAGE_DIR/deployer-agent" "$INSTALL_DIR/deployer-agent"
+  install -m 0755 "$PACKAGE_DIR/scripts/auto-update.sh" /usr/local/sbin/deployer-auto-update
   install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-agent.service" /etc/systemd/system/deployer-agent.service
+  install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-auto-update-agent.service" /etc/systemd/system/deployer-auto-update-agent.service
+  install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-auto-update-agent.timer" /etc/systemd/system/deployer-auto-update-agent.timer
 }
 
 if [ "$ROLE" = "auto" ]; then
@@ -220,6 +228,17 @@ esac
 
 if command -v systemctl >/dev/null 2>&1; then
   systemctl daemon-reload
+  case "$ROLE" in
+    server)
+      systemctl enable --now deployer-auto-update-server.timer
+      ;;
+    agent)
+      systemctl enable --now deployer-auto-update-agent.timer
+      ;;
+    all)
+      systemctl enable --now deployer-auto-update-server.timer deployer-auto-update-agent.timer
+      ;;
+  esac
   if [ "$RESTART" = "1" ]; then
     case "$ROLE" in
       server)
