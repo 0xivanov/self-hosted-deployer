@@ -25,15 +25,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Set up Buf
+        uses: bufbuild/buf-setup-action@v1.50.0
 
       - name: Resolve version
         id: version
@@ -52,6 +55,18 @@ jobs:
 
       - name: Test
         run: go test ./...
+
+      - name: Race test
+        run: go test -race ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Protobuf lint
+        run: buf lint
+
+      - name: Shell lint
+        run: shellcheck scripts/*.sh
 
       - name: Build packages
         run: VERSION="${{ steps.version.outputs.version }}" make release
