@@ -28,6 +28,8 @@ const (
 	NodeService_DrainNode_FullMethodName          = "/deployer.v1.NodeService/DrainNode"
 	NodeService_UncordonNode_FullMethodName       = "/deployer.v1.NodeService/UncordonNode"
 	NodeService_RemoveNode_FullMethodName         = "/deployer.v1.NodeService/RemoveNode"
+	NodeService_PurgeNode_FullMethodName          = "/deployer.v1.NodeService/PurgeNode"
+	NodeService_RenameNode_FullMethodName         = "/deployer.v1.NodeService/RenameNode"
 )
 
 // NodeServiceClient is the client API for NodeService service.
@@ -43,6 +45,8 @@ type NodeServiceClient interface {
 	DrainNode(ctx context.Context, in *DrainNodeRequest, opts ...grpc.CallOption) (*DrainNodeResponse, error)
 	UncordonNode(ctx context.Context, in *UncordonNodeRequest, opts ...grpc.CallOption) (*UncordonNodeResponse, error)
 	RemoveNode(ctx context.Context, in *RemoveNodeRequest, opts ...grpc.CallOption) (*RemoveNodeResponse, error)
+	PurgeNode(ctx context.Context, in *PurgeNodeRequest, opts ...grpc.CallOption) (*PurgeNodeResponse, error)
+	RenameNode(ctx context.Context, in *RenameNodeRequest, opts ...grpc.CallOption) (*RenameNodeResponse, error)
 }
 
 type nodeServiceClient struct {
@@ -143,6 +147,26 @@ func (c *nodeServiceClient) RemoveNode(ctx context.Context, in *RemoveNodeReques
 	return out, nil
 }
 
+func (c *nodeServiceClient) PurgeNode(ctx context.Context, in *PurgeNodeRequest, opts ...grpc.CallOption) (*PurgeNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PurgeNodeResponse)
+	err := c.cc.Invoke(ctx, NodeService_PurgeNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nodeServiceClient) RenameNode(ctx context.Context, in *RenameNodeRequest, opts ...grpc.CallOption) (*RenameNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RenameNodeResponse)
+	err := c.cc.Invoke(ctx, NodeService_RenameNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NodeServiceServer is the server API for NodeService service.
 // All implementations must embed UnimplementedNodeServiceServer
 // for forward compatibility.
@@ -156,6 +180,8 @@ type NodeServiceServer interface {
 	DrainNode(context.Context, *DrainNodeRequest) (*DrainNodeResponse, error)
 	UncordonNode(context.Context, *UncordonNodeRequest) (*UncordonNodeResponse, error)
 	RemoveNode(context.Context, *RemoveNodeRequest) (*RemoveNodeResponse, error)
+	PurgeNode(context.Context, *PurgeNodeRequest) (*PurgeNodeResponse, error)
+	RenameNode(context.Context, *RenameNodeRequest) (*RenameNodeResponse, error)
 	mustEmbedUnimplementedNodeServiceServer()
 }
 
@@ -192,6 +218,12 @@ func (UnimplementedNodeServiceServer) UncordonNode(context.Context, *UncordonNod
 }
 func (UnimplementedNodeServiceServer) RemoveNode(context.Context, *RemoveNodeRequest) (*RemoveNodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RemoveNode not implemented")
+}
+func (UnimplementedNodeServiceServer) PurgeNode(context.Context, *PurgeNodeRequest) (*PurgeNodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PurgeNode not implemented")
+}
+func (UnimplementedNodeServiceServer) RenameNode(context.Context, *RenameNodeRequest) (*RenameNodeResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RenameNode not implemented")
 }
 func (UnimplementedNodeServiceServer) mustEmbedUnimplementedNodeServiceServer() {}
 func (UnimplementedNodeServiceServer) testEmbeddedByValue()                     {}
@@ -376,6 +408,42 @@ func _NodeService_RemoveNode_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeService_PurgeNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PurgeNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).PurgeNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_PurgeNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).PurgeNode(ctx, req.(*PurgeNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NodeService_RenameNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeServiceServer).RenameNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeService_RenameNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeServiceServer).RenameNode(ctx, req.(*RenameNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NodeService_ServiceDesc is the grpc.ServiceDesc for NodeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -418,6 +486,14 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RemoveNode",
 			Handler:    _NodeService_RemoveNode_Handler,
+		},
+		{
+			MethodName: "PurgeNode",
+			Handler:    _NodeService_PurgeNode_Handler,
+		},
+		{
+			MethodName: "RenameNode",
+			Handler:    _NodeService_RenameNode_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

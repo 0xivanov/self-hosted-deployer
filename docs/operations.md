@@ -72,6 +72,32 @@ sudo ./scripts/install-agent.sh \
 
 The installer writes `/etc/deployer/agent.env`, runs `deployer-agent join`, runs `deployer-agent join-k3s`, installs the systemd unit, and starts `deployer-agent.service`.
 
+On Raspberry Pi hosts where the kernel memory cgroup is disabled, the installer updates `/boot/firmware/cmdline.txt` or `/boot/cmdline.txt` with `cgroup_memory=1 cgroup_enable=memory` before enrollment and exits. Reboot the Pi, then rerun the installer with the same unexpired join token or create a fresh one with `deployer nodes add`.
+
+## Node Cleanup
+
+Use soft removal when you want to revoke a worker and keep its historical record:
+
+```bash
+deployer nodes remove pi-kitchen
+```
+
+Soft-removed nodes keep their name and WireGuard IP reserved. To permanently delete a removed or failed enrollment and make the name/IP reusable, purge it:
+
+```bash
+deployer nodes purge pi-kitchen
+deployer nodes purge --yes pi-kitchen
+```
+
+Pending or removed nodes can be renamed before retrying enrollment:
+
+```bash
+deployer nodes rename pi-kithcen pi-kitchen
+deployer nodes add pi-kitchen
+```
+
+Renaming deletes outstanding join tokens for the old name, so create a new token before rerunning the agent installer. Active Kubernetes nodes cannot be renamed in place because Kubernetes node names are immutable. Purge and rejoin the worker under the new name instead.
+
 ## Doctor
 
 Use `deployer doctor` after login to check the control plane, readiness, enrolled nodes, WireGuard heartbeat status, and ingress routes:

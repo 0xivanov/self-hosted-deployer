@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -30,6 +31,8 @@ const (
 	defaultNodeOfflineAfter = 2 * time.Minute
 )
 
+var nodeNamePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
+
 type NodeRepository interface {
 	Create(ctx context.Context, node domain.Node) error
 	FindByID(ctx context.Context, nodeID string) (domain.Node, error)
@@ -38,17 +41,21 @@ type NodeRepository interface {
 	UpdateStatus(ctx context.Context, nodeID string, status string, updatedAt time.Time) error
 	UpdateHeartbeat(ctx context.Context, nodeID string, heartbeat domain.Node, seenAt time.Time) error
 	SetWireGuard(ctx context.Context, nodeID string, wireGuardIP string, publicKey string, updatedAt time.Time) error
+	Rename(ctx context.Context, nodeID string, name string, updatedAt time.Time) error
+	Delete(ctx context.Context, nodeID string) error
 }
 
 type consumableJoinTokenRepository interface {
 	Create(ctx context.Context, token domain.JoinToken) error
 	FindByHash(ctx context.Context, tokenHash string) (domain.JoinToken, error)
 	Consume(ctx context.Context, tokenHash string, usedAt time.Time) (domain.JoinToken, error)
+	DeleteByNodeName(ctx context.Context, nodeName string) error
 }
 
 type nodeAgentTokenRepository interface {
 	Create(ctx context.Context, token domain.AgentToken) error
 	RevokeByNodeID(ctx context.Context, nodeID string, revokedAt time.Time) error
+	DeleteByNodeID(ctx context.Context, nodeID string) error
 }
 
 type NodeRuntime interface {
@@ -135,8 +142,8 @@ func (s NodeService) CreateJoinToken(ctx context.Context, req *deployerv1.Create
 	}
 
 	nodeName := strings.TrimSpace(req.GetNodeName())
-	if nodeName == "" {
-		return nil, status.Error(codes.InvalidArgument, "node name is required")
+	if err := validateNodeName(nodeName); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	now := s.now().UTC()
@@ -393,7 +400,11 @@ func (s NodeService) ListNodes(ctx context.Context, _ *deployerv1.ListNodesReque
 		Nodes: make([]*deployerv1.Node, 0, len(nodes)),
 	}
 	for _, node := range nodes {
-		response.Nodes = append(response.Nodes, protoNode(node))
+		nodeProto, err := s.nodeWithReadiness(ctx, node)
+		if err != nil {
+			return nil, err
+		}
+		response.Nodes = append(response.Nodes, nodeProto)
 	}
 	return response, nil
 }
@@ -684,6 +695,114 @@ func (s NodeService) RemoveNode(ctx context.Context, req *deployerv1.RemoveNodeR
 	return &deployerv1.RemoveNodeResponse{Node: nodeProto}, nil
 }
 
+func (s NodeService) PurgeNode(ctx context.Context, req *deployerv1.PurgeNodeRequest) (*deployerv1.PurgeNodeResponse, error) {
+	if err := requireCaller(ctx, CallerAdmin); err != nil {
+		return nil, err
+	}
+	node, err := s.findNode(ctx, req.GetNodeRef())
+	if err != nil {
+		return nil, err
+	}
+	now := s.now().UTC()
+	if s.agentTokens != nil {
+		if err := s.agentTokens.RevokeByNodeID(ctx, node.ID, now); err != nil {
+			return nil, status.Error(codes.Internal, "revoke node identity")
+		}
+	}
+	if s.runtime != nil {
+		if err := s.runtime.RemoveNode(ctx, node.Name); err != nil {
+			return nil, status.Error(codes.Internal, "remove Kubernetes node")
+		}
+	}
+	if s.agentTokens != nil {
+		if err := s.agentTokens.DeleteByNodeID(ctx, node.ID); err != nil {
+			return nil, status.Error(codes.Internal, "delete node agent tokens")
+		}
+	}
+	if s.joinTokens != nil {
+		if err := s.joinTokens.DeleteByNodeName(ctx, node.Name); err != nil {
+			return nil, status.Error(codes.Internal, "delete node join tokens")
+		}
+	}
+	if err := s.nodes.Delete(ctx, node.ID); err != nil {
+		return nil, status.Error(codes.Internal, "delete node")
+	}
+	if s.peers != nil {
+		nodes, err := s.nodes.List(ctx)
+		if err != nil {
+			return nil, status.Error(codes.Internal, "list WireGuard peers")
+		}
+		if err := s.peers.SyncPeers(ctx, nodes); err != nil {
+			return nil, status.Error(codes.Internal, "synchronize WireGuard hub peers")
+		}
+	}
+	recordEvent(ctx, s.events, domain.Event{
+		Type:         domain.EventTypeNodePurged,
+		Severity:     domain.EventSeverityWarning,
+		Message:      fmt.Sprintf("node %s was purged", node.Name),
+		NodeID:       node.ID,
+		MetadataJSON: metadataJSON(map[string]any{"node_name": node.Name}),
+	})
+	return &deployerv1.PurgeNodeResponse{NodeRef: req.GetNodeRef(), NodeName: node.Name}, nil
+}
+
+func (s NodeService) RenameNode(ctx context.Context, req *deployerv1.RenameNodeRequest) (*deployerv1.RenameNodeResponse, error) {
+	if err := requireCaller(ctx, CallerAdmin); err != nil {
+		return nil, err
+	}
+	node, err := s.findNode(ctx, req.GetNodeRef())
+	if err != nil {
+		return nil, err
+	}
+	newName := strings.TrimSpace(req.GetNewName())
+	if err := validateNodeName(newName); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	if node.Name == newName {
+		nodeProto, err := s.nodeWithReadiness(ctx, node)
+		if err != nil {
+			return nil, err
+		}
+		return &deployerv1.RenameNodeResponse{Node: nodeProto}, nil
+	}
+	switch node.Status {
+	case nodeStatusPending, nodeStatusRemoved:
+	default:
+		return nil, status.Error(codes.FailedPrecondition, "only pending or removed nodes can be renamed; active Kubernetes nodes must be rejoined")
+	}
+	existing, err := s.nodes.FindByName(ctx, newName)
+	if err == nil && existing.ID != node.ID {
+		return nil, status.Error(codes.AlreadyExists, "node already exists")
+	}
+	if err != nil && !errors.Is(err, db.ErrNotFound) {
+		return nil, status.Error(codes.Internal, "find node")
+	}
+	oldName := node.Name
+	now := s.now().UTC()
+	if err := s.nodes.Rename(ctx, node.ID, newName, now); err != nil {
+		return nil, status.Error(codes.Internal, "rename node")
+	}
+	if s.joinTokens != nil {
+		if err := s.joinTokens.DeleteByNodeName(ctx, oldName); err != nil {
+			return nil, status.Error(codes.Internal, "delete old node join tokens")
+		}
+	}
+	node.Name = newName
+	node.UpdatedAt = now
+	recordEvent(ctx, s.events, domain.Event{
+		Type:         domain.EventTypeNodeRenamed,
+		Severity:     domain.EventSeverityInfo,
+		Message:      fmt.Sprintf("node %s was renamed to %s", oldName, newName),
+		NodeID:       node.ID,
+		MetadataJSON: metadataJSON(map[string]any{"old_name": oldName, "new_name": newName}),
+	})
+	nodeProto, err := s.nodeWithReadiness(ctx, node)
+	if err != nil {
+		return nil, err
+	}
+	return &deployerv1.RenameNodeResponse{Node: nodeProto}, nil
+}
+
 func (s NodeService) findNode(ctx context.Context, ref string) (domain.Node, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
@@ -700,6 +819,16 @@ func (s NodeService) findNode(ctx context.Context, ref string) (domain.Node, err
 		return domain.Node{}, status.Error(codes.Internal, "get node")
 	}
 	return node, nil
+}
+
+func validateNodeName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return fmt.Errorf("node name is required")
+	}
+	if len(name) > 63 || !nodeNamePattern.MatchString(name) {
+		return fmt.Errorf("node name must be a DNS-safe Kubernetes name")
+	}
+	return nil
 }
 
 func (s NodeService) nodeWithReadiness(ctx context.Context, node domain.Node) (*deployerv1.Node, error) {

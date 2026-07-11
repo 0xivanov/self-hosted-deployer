@@ -13,7 +13,7 @@ import (
 
 func (a cliApp) nodes(args []string, opts cliOptions) int {
 	if len(args) == 0 {
-		fmt.Fprintln(a.stderr, "usage: deployer nodes <add|list|inspect|drain|uncordon|remove>")
+		fmt.Fprintln(a.stderr, "usage: deployer nodes <add|list|inspect|drain|uncordon|remove|purge|rename>")
 		return 2
 	}
 	resolved, err := resolveRuntimeOptions(opts)
@@ -42,9 +42,13 @@ func (a cliApp) nodes(args []string, opts cliOptions) int {
 		return a.nodesUncordon(args[1:], resolved, client)
 	case "remove":
 		return a.nodesRemove(args[1:], resolved, client)
+	case "purge":
+		return a.nodesPurge(args[1:], resolved, client)
+	case "rename":
+		return a.nodesRename(args[1:], resolved, client)
 	default:
 		fmt.Fprintf(a.stderr, "unknown nodes command %q\n", args[0])
-		fmt.Fprintln(a.stderr, "usage: deployer nodes <add|list|inspect|drain|uncordon|remove>")
+		fmt.Fprintln(a.stderr, "usage: deployer nodes <add|list|inspect|drain|uncordon|remove|purge|rename>")
 		return 2
 	}
 }
@@ -219,6 +223,61 @@ func (a cliApp) nodesRemove(args []string, opts runtimeOptions, client platformC
 		return 1
 	}
 	return a.renderNodeMutation(opts, node, "removed")
+}
+
+func (a cliApp) nodesPurge(args []string, opts runtimeOptions, client platformClient) int {
+	flags := flag.NewFlagSet("nodes purge", flag.ContinueOnError)
+	flags.SetOutput(a.stderr)
+	var yes bool
+	flags.BoolVar(&yes, "yes", false, "purge without confirmation")
+	if err := flags.Parse(args); err != nil {
+		return 2
+	}
+	if flags.NArg() != 1 {
+		fmt.Fprintln(a.stderr, "usage: deployer nodes purge [--yes] <name-or-id>")
+		return 2
+	}
+	ref := flags.Arg(0)
+	if !yes {
+		fmt.Fprintf(a.stderr, "Permanently purge node %s, revoke its identity, and free its name/IP? [y/N]: ", ref)
+		answer, err := bufio.NewReader(a.stdin).ReadString('\n')
+		if err != nil {
+			fmt.Fprintln(a.stderr)
+			fmt.Fprintln(a.stderr, "node purge cancelled")
+			return 1
+		}
+		if !strings.EqualFold(strings.TrimSpace(answer), "y") && !strings.EqualFold(strings.TrimSpace(answer), "yes") {
+			fmt.Fprintln(a.stderr, "Node purge cancelled.")
+			return 0
+		}
+	}
+	nodeName, err := client.PurgeNode(context.Background(), ref)
+	if err != nil {
+		fmt.Fprintln(a.stderr, err)
+		return 1
+	}
+	if opts.output == clicore.OutputJSON {
+		if err := clicore.RenderJSON(a.stdout, map[string]any{"node_ref": ref, "node_name": nodeName, "purged": true}); err != nil {
+			fmt.Fprintf(a.stderr, "render node purge: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	fmt.Fprintf(a.stdout, "Node %s purged.\n", nodeName)
+	return 0
+}
+
+func (a cliApp) nodesRename(args []string, opts runtimeOptions, client platformClient) int {
+	if len(args) != 2 {
+		fmt.Fprintln(a.stderr, "usage: deployer nodes rename <name-or-id> <new-name>")
+		return 2
+	}
+	node, err := client.RenameNode(context.Background(), args[0], args[1])
+	if err != nil {
+		fmt.Fprintln(a.stderr, err)
+		return 1
+	}
+	return a.renderNodeMutation(opts, node, "renamed")
 }
 
 func (a cliApp) renderNodeMutation(opts runtimeOptions, node clicore.NodeInfo, action string) int {

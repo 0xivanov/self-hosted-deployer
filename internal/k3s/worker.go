@@ -15,6 +15,8 @@ import (
 
 const DefaultNodeTokenPath = "/var/lib/rancher/k3s/server/node-token"
 
+const raspberryPiCgroupHint = `memory cgroup is not enabled; on Raspberry Pi add "cgroup_memory=1 cgroup_enable=memory" to /boot/firmware/cmdline.txt and reboot before rerunning deployer-agent join-k3s`
+
 type WorkerJoinProvider struct {
 	NodeTokenPath string
 	WireGuardIP   string
@@ -129,6 +131,9 @@ func (b Bootstrapper) BootstrapWorker(ctx context.Context, cfg WorkerConfig) err
 	if b.Runtime.EUID() != 0 {
 		return errors.New("k3s worker bootstrap must run as root; rerun with sudo or as root")
 	}
+	if err := b.validateMemoryCgroup(); err != nil {
+		return err
+	}
 	data, err := WorkerConfigYAML(cfg)
 	if err != nil {
 		return err
@@ -152,4 +157,25 @@ func (b Bootstrapper) BootstrapWorker(ctx context.Context, cfg WorkerConfig) err
 		return fmt.Errorf("run k3s worker installer: %w", err)
 	}
 	return nil
+}
+
+func (b Bootstrapper) validateMemoryCgroup() error {
+	controllers, err := b.Files.ReadFile("/sys/fs/cgroup/cgroup.controllers")
+	if err == nil {
+		for _, controller := range strings.Fields(string(controllers)) {
+			if controller == "memory" {
+				return nil
+			}
+		}
+		return errors.New(raspberryPiCgroupHint)
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect cgroup controllers: %w", err)
+	}
+	if _, err := b.Files.Stat("/sys/fs/cgroup/memory"); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("inspect memory cgroup: %w", err)
+	}
+	return errors.New(raspberryPiCgroupHint)
 }

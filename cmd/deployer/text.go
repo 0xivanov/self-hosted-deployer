@@ -67,7 +67,7 @@ func usage(w io.Writer, flags *flag.FlagSet) {
 	fmt.Fprintln(w, "  status     Show live app replica and route health")
 	fmt.Fprintln(w, "  logs       Stream recent application pod logs")
 	fmt.Fprintln(w, "  login      Save CLI access to the control plane")
-	fmt.Fprintln(w, "  nodes      Add, inspect, drain, and remove enrolled nodes")
+	fmt.Fprintln(w, "  nodes      Add, inspect, drain, remove, purge, and rename nodes")
 	fmt.Fprintln(w, "  routes     List and inspect public routes")
 	fmt.Fprintln(w, "  secrets    Set, list, and remove app secrets")
 	fmt.Fprintln(w, "  events     List and watch platform events")

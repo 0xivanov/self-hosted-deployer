@@ -54,3 +54,8 @@ func (r *AgentTokenRepository) RevokeByNodeID(ctx context.Context, nodeID string
 	_, err := r.db.conn.ExecContext(ctx, `UPDATE agent_tokens SET revoked_at = ? WHERE node_id = ? AND revoked_at IS NULL`, formatTime(revokedAt), nodeID)
 	return err
 }
+
+func (r *AgentTokenRepository) DeleteByNodeID(ctx context.Context, nodeID string) error {
+	_, err := r.db.conn.ExecContext(ctx, `DELETE FROM agent_tokens WHERE node_id = ?`, nodeID)
+	return err
+}

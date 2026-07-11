@@ -200,6 +200,34 @@ func TestBootstrapWorkerWritesRestrictedConfigAndRunsAgentInstaller(t *testing.T
 	}
 }
 
+func TestBootstrapWorkerFailsEarlyWhenMemoryCgroupMissing(t *testing.T) {
+	files := &fakeFiles{
+		statErr:  os.ErrNotExist,
+		readData: []byte("cpuset cpu io pids\n"),
+	}
+	runner := &fakeRunner{}
+	bootstrapper := Bootstrapper{
+		Runtime:    fakeRuntime{goos: "linux", euid: 0, lookPath: exec.ErrNotFound},
+		Files:      files,
+		Runner:     runner,
+		HTTPClient: fakeHTTPClient{body: "#!/bin/sh\n"},
+	}
+	err := bootstrapper.BootstrapWorker(context.Background(), WorkerConfig{
+		ServerURL:    "https://10.8.0.1:6443",
+		Token:        "worker-secret",
+		NodeName:     "pi-kitchen",
+		NodeIP:       "10.8.0.2",
+		ConfigPath:   "/tmp/rancher/k3s/config.yaml",
+		InstallerURL: "https://example.test/k3s.sh",
+	})
+	if err == nil || !strings.Contains(err.Error(), "cgroup_memory=1 cgroup_enable=memory") {
+		t.Fatalf("expected memory cgroup guidance, got %v", err)
+	}
+	if len(runner.calls) != 0 {
+		t.Fatalf("installer must not run when memory cgroup is missing, got %#v", runner.calls)
+	}
+}
+
 type fakeRuntime struct {
 	goos     string
 	euid     int
@@ -224,6 +252,8 @@ func (r fakeRuntime) LookPath(string) (string, error) {
 
 type fakeFiles struct {
 	statErr   error
+	readErr   error
+	readData  []byte
 	mkdirPath string
 	writePath string
 	writeData []byte
@@ -235,6 +265,16 @@ func (f *fakeFiles) Stat(string) (os.FileInfo, error) {
 		return nil, f.statErr
 	}
 	return nil, nil
+}
+
+func (f *fakeFiles) ReadFile(string) ([]byte, error) {
+	if f.readErr != nil {
+		return nil, f.readErr
+	}
+	if f.readData != nil {
+		return append([]byte(nil), f.readData...), nil
+	}
+	return []byte("cpuset cpu io memory pids\n"), nil
 }
 
 func (f *fakeFiles) MkdirAll(path string, _ os.FileMode) error {

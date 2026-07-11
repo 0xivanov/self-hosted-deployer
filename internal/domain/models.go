@@ -97,6 +97,8 @@ const (
 	EventTypeNodeOnline                   EventType = "node.online"
 	EventTypeNodeOffline                  EventType = "node.offline"
 	EventTypeNodeRemoved                  EventType = "node.removed"
+	EventTypeNodePurged                   EventType = "node.purged"
+	EventTypeNodeRenamed                  EventType = "node.renamed"
 	EventTypeNodeWorkerBootstrapRequested EventType = "node.worker.bootstrap.requested"
 	EventTypeAppDeployStarted             EventType = "app.deploy.started"
 	EventTypeAppDeploySucceeded           EventType = "app.deploy.succeeded"

@@ -268,6 +268,7 @@ type Runtime interface {
 
 type FileSystem interface {
 	Stat(name string) (os.FileInfo, error)
+	ReadFile(name string) ([]byte, error)
 	MkdirAll(path string, perm os.FileMode) error
 	WriteFile(name string, data []byte, perm os.FileMode) error
 }
@@ -302,6 +303,10 @@ type osFileSystem struct{}
 
 func (osFileSystem) Stat(name string) (os.FileInfo, error) {
 	return os.Stat(name)
+}
+
+func (osFileSystem) ReadFile(name string) ([]byte, error) {
+	return os.ReadFile(name)
 }
 
 func (osFileSystem) MkdirAll(path string, perm os.FileMode) error {

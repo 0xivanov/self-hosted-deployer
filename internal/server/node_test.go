@@ -151,6 +151,37 @@ func TestNodeServiceCreateJoinTokenJoinAndHeartbeat(t *testing.T) {
 	}
 }
 
+func TestNodeServiceListNodesIncludesKubernetesReadiness(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	now := time.Date(2026, 7, 11, 10, 0, 0, 0, time.UTC)
+	if err := nodes.Create(ctx, domain.Node{
+		ID:         "node-ready",
+		Name:       "pi-ready",
+		Status:     nodeStatusOnline,
+		LabelsJSON: "{}",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatalf("create node: %v", err)
+	}
+
+	runtime := &recordingNodeRuntime{readiness: "ready", schedulable: true}
+	service := NewNodeService(NodeServiceConfig{Nodes: nodes, Runtime: runtime})
+	response, err := service.ListNodes(WithCaller(ctx, Caller{Kind: CallerAdmin}), &deployerv1.ListNodesRequest{})
+	if err != nil {
+		t.Fatalf("list nodes: %v", err)
+	}
+	if len(response.GetNodes()) != 1 {
+		t.Fatalf("expected one node, got %#v", response.GetNodes())
+	}
+	node := response.GetNodes()[0]
+	if node.GetKubernetesStatus() != "ready" || !node.GetSchedulable() {
+		t.Fatalf("expected live Kubernetes readiness, got %#v", node)
+	}
+}
+
 func TestNodeServiceHeartbeatRequiresAgentCaller(t *testing.T) {
 	service := NewNodeService(NodeServiceConfig{})
 	_, err := service.HeartbeatNode(WithCaller(context.Background(), Caller{Kind: CallerAdmin}), &deployerv1.HeartbeatNodeRequest{})
@@ -425,6 +456,104 @@ func TestNodeServiceDrainUncordonAndRemoveLifecycle(t *testing.T) {
 	if peers.calls != 2 || len(peers.lastNodes) != 1 || peers.lastNodes[0].Status != nodeStatusRemoved {
 		t.Fatalf("expected removal to synchronize disabled hub peer, got %#v", peers)
 	}
+
+	purged, err := service.PurgeNode(adminCtx, &deployerv1.PurgeNodeRequest{NodeRef: "pi-kitchen"})
+	if err != nil || purged.GetNodeName() != "pi-kitchen" {
+		t.Fatalf("unexpected purge response=%#v err=%v", purged, err)
+	}
+	if _, err := nodes.FindByName(ctx, "pi-kitchen"); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("purged node should be deleted, got %v", err)
+	}
+	if _, err := agentTokens.FindByHash(ctx, "agent-hash"); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("purged node agent token should be deleted, got %v", err)
+	}
+	nextIP, err = service.allocateWireGuardIP(ctx)
+	if err != nil || nextIP != "10.8.0.2" {
+		t.Fatalf("purged node WireGuard address should be reusable, got %q: %v", nextIP, err)
+	}
+	if peers.calls != 3 || len(peers.lastNodes) != 0 {
+		t.Fatalf("expected purge to synchronize remaining hub peers, got %#v", peers)
+	}
+	if !events.hasType(domain.EventTypeNodePurged) {
+		t.Fatalf("expected purge event, got %#v", events.events)
+	}
+}
+
+func TestNodeServiceRenameOnlyPendingOrRemovedNodes(t *testing.T) {
+	ctx := context.Background()
+	adminCtx := WithCaller(ctx, Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	joinTokens := db.NewJoinTokenRepository(database)
+	events := &recordingEventRecorder{}
+	service := NewNodeService(NodeServiceConfig{Nodes: nodes, JoinTokens: joinTokens, Events: events})
+	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
+
+	if err := nodes.Create(ctx, domain.Node{
+		ID:         "node-removed",
+		Name:       "pi-old",
+		Status:     nodeStatusRemoved,
+		LabelsJSON: "{}",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatalf("create removed node: %v", err)
+	}
+	if err := nodes.Create(ctx, domain.Node{
+		ID:         "node-active",
+		Name:       "pi-active",
+		Status:     nodeStatusOnline,
+		LabelsJSON: "{}",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatalf("create active node: %v", err)
+	}
+	if err := nodes.Create(ctx, domain.Node{
+		ID:         "node-duplicate",
+		Name:       "pi-duplicate",
+		Status:     nodeStatusPending,
+		LabelsJSON: "{}",
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}); err != nil {
+		t.Fatalf("create duplicate node: %v", err)
+	}
+	if err := joinTokens.Create(ctx, domain.JoinToken{
+		TokenHash:        "join-token-hash",
+		IntendedNodeName: "pi-old",
+		LabelsJSON:       "{}",
+		CreatedAt:        now,
+		ExpiresAt:        now.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("create old join token: %v", err)
+	}
+
+	renamed, err := service.RenameNode(adminCtx, &deployerv1.RenameNodeRequest{NodeRef: "pi-old", NewName: "pi-new"})
+	if err != nil || renamed.GetNode().GetName() != "pi-new" {
+		t.Fatalf("unexpected rename response=%#v err=%v", renamed, err)
+	}
+	if _, err := nodes.FindByName(ctx, "pi-old"); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("old node name should be released, got %v", err)
+	}
+	if _, err := nodes.FindByName(ctx, "pi-new"); err != nil {
+		t.Fatalf("new node name should be stored: %v", err)
+	}
+	if _, err := joinTokens.FindByHash(ctx, "join-token-hash"); !errors.Is(err, db.ErrNotFound) {
+		t.Fatalf("old node join tokens should be deleted, got %v", err)
+	}
+	if !events.hasType(domain.EventTypeNodeRenamed) {
+		t.Fatalf("expected rename event, got %#v", events.events)
+	}
+
+	_, err = service.RenameNode(adminCtx, &deployerv1.RenameNodeRequest{NodeRef: "pi-active", NewName: "pi-active-new"})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("expected active node rename to fail with FailedPrecondition, got %v", err)
+	}
+	_, err = service.RenameNode(adminCtx, &deployerv1.RenameNodeRequest{NodeRef: "pi-new", NewName: "pi-duplicate"})
+	if status.Code(err) != codes.AlreadyExists {
+		t.Fatalf("expected duplicate rename to fail with AlreadyExists, got %v", err)
+	}
 }
 
 func TestNodeServiceReturnsAuthenticatedWorkerBootstrapMaterial(t *testing.T) {
@@ -482,6 +611,10 @@ func (r failingJoinTokenRepository) FindByHash(context.Context, string) (domain.
 
 func (r failingJoinTokenRepository) Consume(context.Context, string, time.Time) (domain.JoinToken, error) {
 	return domain.JoinToken{}, r.err
+}
+
+func (r failingJoinTokenRepository) DeleteByNodeName(context.Context, string) error {
+	return r.err
 }
 
 type failingAgentTokenRepository struct {
@@ -552,5 +685,9 @@ func (r failingAgentTokenRepository) Create(context.Context, domain.AgentToken) 
 }
 
 func (r failingAgentTokenRepository) RevokeByNodeID(context.Context, string, time.Time) error {
+	return r.err
+}
+
+func (r failingAgentTokenRepository) DeleteByNodeID(context.Context, string) error {
 	return r.err
 }

@@ -195,6 +195,10 @@ func (f *serverFakeFiles) Stat(string) (os.FileInfo, error) {
 	return nil, nil
 }
 
+func (f *serverFakeFiles) ReadFile(string) ([]byte, error) {
+	return []byte("cpuset cpu io memory pids\n"), nil
+}
+
 func (f *serverFakeFiles) MkdirAll(string, os.FileMode) error {
 	return nil
 }
