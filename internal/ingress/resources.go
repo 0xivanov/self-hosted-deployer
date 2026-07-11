@@ -264,6 +264,15 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 		}}
 	}
 	if cfg.Resilience.Mode == appconfig.ResilienceResilient {
+		maxUnavailable := intstr.FromInt32(1)
+		maxSurge := intstr.FromInt32(0)
+		deployment.Spec.Strategy = appsv1.DeploymentStrategy{
+			Type: appsv1.RollingUpdateDeploymentStrategyType,
+			RollingUpdate: &appsv1.RollingUpdateDeployment{
+				MaxUnavailable: &maxUnavailable,
+				MaxSurge:       &maxSurge,
+			},
+		}
 		deployment.Spec.Template.Spec.Affinity = &corev1.Affinity{
 			PodAntiAffinity: &corev1.PodAntiAffinity{
 				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{

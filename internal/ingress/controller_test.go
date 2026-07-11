@@ -284,6 +284,9 @@ func TestDeploymentMapsResiliencePolicies(t *testing.T) {
 		if *deployment.Spec.Replicas != 2 ||
 			len(deployment.Spec.Template.Spec.TopologySpreadConstraints) != 1 ||
 			deployment.Spec.Template.Spec.TopologySpreadConstraints[0].WhenUnsatisfiable != corev1.DoNotSchedule ||
+			deployment.Spec.Strategy.RollingUpdate == nil ||
+			deployment.Spec.Strategy.RollingUpdate.MaxUnavailable.IntVal != 1 ||
+			deployment.Spec.Strategy.RollingUpdate.MaxSurge.IntVal != 0 ||
 			deployment.Spec.Template.Spec.Affinity == nil ||
 			deployment.Spec.Template.Spec.Affinity.PodAntiAffinity == nil ||
 			len(deployment.Spec.Template.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution) != 1 {
