@@ -50,6 +50,7 @@ type Controller struct {
 	nodes       coretyped.NodeInterface
 	pods        coretyped.PodInterface
 	evictions   policytyped.EvictionInterface
+	pdbs        policytyped.PodDisruptionBudgetInterface
 	deployments appstyped.DeploymentInterface
 	issuers     dynamic.ResourceInterface
 }
@@ -88,6 +89,7 @@ func NewController(cfg ControllerConfig) (*Controller, error) {
 		nodes:       clientset.CoreV1().Nodes(),
 		pods:        clientset.CoreV1().Pods(namespace),
 		evictions:   clientset.PolicyV1().Evictions(namespace),
+		pdbs:        clientset.PolicyV1().PodDisruptionBudgets(namespace),
 		deployments: clientset.AppsV1().Deployments(namespace),
 		issuers:     issuers,
 	}, nil
@@ -145,6 +147,7 @@ func (c *Controller) Delete(ctx context.Context, appName string) error {
 		c.deleteIngress(ctx, appName),
 		c.deleteService(ctx, appName),
 		c.deleteDeployment(ctx, appName),
+		c.deletePodDisruptionBudget(ctx, appName),
 		c.deleteAppSecret(ctx, appName),
 	)
 }

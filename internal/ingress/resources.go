@@ -9,6 +9,7 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -26,8 +27,33 @@ func (c *Controller) reconcileAppResources(ctx context.Context, cfg appconfig.Co
 	if err := c.reconcileDeployment(ctx, cfg, secretRevision); err != nil {
 		return err
 	}
+	if err := c.reconcilePodDisruptionBudget(ctx, cfg); err != nil {
+		return err
+	}
 	if err := c.reconcileService(ctx, cfg); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (c *Controller) reconcilePodDisruptionBudget(ctx context.Context, cfg appconfig.Config) error {
+	if cfg.Resilience.Mode != appconfig.ResilienceResilient {
+		return c.deletePodDisruptionBudget(ctx, cfg.Name)
+	}
+	desired := podDisruptionBudgetForApp(cfg, c.namespace)
+	existing, err := c.pdbs.Get(ctx, desired.Name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		if _, err := c.pdbs.Create(ctx, desired, metav1.CreateOptions{}); err != nil {
+			return fmt.Errorf("create PodDisruptionBudget %q: %w", desired.Name, err)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get PodDisruptionBudget %q: %w", desired.Name, err)
+	}
+	desired.ResourceVersion = existing.ResourceVersion
+	if _, err := c.pdbs.Update(ctx, desired, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("update PodDisruptionBudget %q: %w", desired.Name, err)
 	}
 	return nil
 }
@@ -135,6 +161,20 @@ func (c *Controller) deleteDeployment(ctx context.Context, appName string) error
 	return nil
 }
 
+func (c *Controller) deletePodDisruptionBudget(ctx context.Context, appName string) error {
+	if c.pdbs == nil {
+		return nil
+	}
+	err := c.pdbs.Delete(ctx, appName, metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("delete PodDisruptionBudget %q: %w", appName, err)
+	}
+	return nil
+}
+
 func (c *Controller) deleteService(ctx context.Context, appName string) error {
 	err := c.services.Delete(ctx, appName, metav1.DeleteOptions{})
 	if apierrors.IsNotFound(err) {
@@ -223,6 +263,16 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 			LabelSelector:     &metav1.LabelSelector{MatchLabels: labels},
 		}}
 	}
+	if cfg.Resilience.Mode == appconfig.ResilienceResilient {
+		deployment.Spec.Template.Spec.Affinity = &corev1.Affinity{
+			PodAntiAffinity: &corev1.PodAntiAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+					LabelSelector: &metav1.LabelSelector{MatchLabels: labels},
+					TopologyKey:   "kubernetes.io/hostname",
+				}},
+			},
+		}
+	}
 	if cfg.Resilience.Mode == appconfig.ResilienceFallback {
 		deployment.Spec.Template.Spec.Affinity = &corev1.Affinity{
 			NodeAffinity: &corev1.NodeAffinity{
@@ -249,6 +299,21 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 		}
 	}
 	return deployment, nil
+}
+
+func podDisruptionBudgetForApp(cfg appconfig.Config, namespace string) *policyv1.PodDisruptionBudget {
+	minAvailable := intstr.FromInt32(1)
+	return &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      cfg.Name,
+			Namespace: namespace,
+			Labels:    appLabels(cfg.Name),
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			MinAvailable: &minAvailable,
+			Selector:     &metav1.LabelSelector{MatchLabels: appLabels(cfg.Name)},
+		},
+	}
 }
 
 func preferredSchedulingTerms(selectors []map[string]string, weight int32) []corev1.PreferredSchedulingTerm {
