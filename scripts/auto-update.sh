@@ -73,8 +73,7 @@ if [ "$current" = "$latest" ]; then
 fi
 
 workdir=$(mktemp -d "${TMPDIR:-/tmp}/deployer-auto-update.XXXXXX")
-cleanup() { rm -rf "$workdir"; }
-trap cleanup EXIT INT TERM
+trap 'rm -rf "$workdir"' EXIT INT TERM
 
 rollback_dir="/var/lib/deployer/rollback/$ROLE"
 install -d -m 0700 "$rollback_dir"
