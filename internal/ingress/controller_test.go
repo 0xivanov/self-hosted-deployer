@@ -420,6 +420,53 @@ func TestControllerManagesNodeReadinessAndReportsRunningNodes(t *testing.T) {
 	}
 }
 
+func TestControllerDrainRefusesCloudNativePGInstancePod(t *testing.T) {
+	clientset := fake.NewSimpleClientset(
+		&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "pi-kitchen"}},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-api-db-2",
+				Namespace: DefaultNamespace,
+				Labels: map[string]string{
+					"cnpg.io/cluster": "my-api-db",
+					"cnpg.io/podRole": "instance",
+				},
+			},
+			Spec: corev1.PodSpec{NodeName: "pi-kitchen"},
+		},
+		&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "my-api-1",
+				Namespace: DefaultNamespace,
+				Labels: map[string]string{
+					"deployer.io/state-mode":      "stateless",
+					"deployer.io/resilience-mode": "basic",
+				},
+			},
+			Spec: corev1.PodSpec{NodeName: "pi-kitchen"},
+		},
+	)
+	controller := &Controller{
+		nodes:     clientset.CoreV1().Nodes(),
+		pods:      clientset.CoreV1().Pods(DefaultNamespace),
+		evictions: clientset.PolicyV1().Evictions(DefaultNamespace),
+	}
+
+	err := controller.DrainNode(context.Background(), "pi-kitchen")
+	if err == nil || !strings.Contains(err.Error(), "my-api-db-2") || !strings.Contains(err.Error(), "cordoned but not drained") {
+		t.Fatalf("expected explicit CloudNativePG drain refusal, got %v", err)
+	}
+	node, getErr := clientset.CoreV1().Nodes().Get(context.Background(), "pi-kitchen", metav1.GetOptions{})
+	if getErr != nil || !node.Spec.Unschedulable {
+		t.Fatalf("database node must remain cordoned after drain refusal: %#v err=%v", node, getErr)
+	}
+	for _, action := range clientset.Actions() {
+		if action.GetSubresource() == "eviction" {
+			t.Fatalf("no pods may be evicted during refused database drain: %#v", action)
+		}
+	}
+}
+
 func testAppConfig() appconfig.Config {
 	return appconfig.Config{
 		Name:  "my-api",

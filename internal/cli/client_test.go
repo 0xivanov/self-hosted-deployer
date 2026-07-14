@@ -37,6 +37,36 @@ func TestPlatformClientStatusAttachesBearerToken(t *testing.T) {
 	}
 }
 
+func TestPlatformClientGetAppStatusMapsDatabaseWithoutCredentials(t *testing.T) {
+	service := &recordingAppService{
+		response: &deployerv1.GetAppStatusResponse{
+			App: &deployerv1.App{Name: "money-manager", Image: "example/api@sha256:abc", DesiredState: `{}`},
+			Database: &deployerv1.DatabaseStatus{
+				State:            "healthy",
+				Phase:            "Cluster in healthy state",
+				DesiredInstances: 3,
+				ReadyInstances:   3,
+				Primary:          "money-manager-db-1",
+				RunningNodes:     []string{"vps", "pi-home", "pi-yasen"},
+			},
+		},
+	}
+	client := NewPlatformClientForServices(nil, nil, service, "dep_admin_test")
+
+	got, err := client.GetAppStatus(context.Background(), "money-manager")
+	if err != nil {
+		t.Fatalf("get app status: %v", err)
+	}
+	if got.Database == nil || got.Database.State != "healthy" || got.Database.Phase != "Cluster in healthy state" ||
+		got.Database.DesiredInstances != 3 || got.Database.ReadyInstances != 3 ||
+		got.Database.Primary != "money-manager-db-1" || len(got.Database.RunningNodes) != 3 {
+		t.Fatalf("unexpected database status: %#v", got.Database)
+	}
+	if service.appName != "money-manager" || service.authorization != "Bearer dep_admin_test" {
+		t.Fatalf("unexpected request name=%q authorization=%q", service.appName, service.authorization)
+	}
+}
+
 func TestPlatformClientListEventsMapsFiltersAndAttachesBearerToken(t *testing.T) {
 	service := &recordingEventService{response: &deployerv1.ListEventsResponse{Events: []*deployerv1.Event{{
 		Id:           "event-1",
@@ -123,6 +153,25 @@ type recordingPlatformService struct {
 	status        *deployerv1.GetStatusResponse
 	err           error
 	authorization string
+}
+
+type recordingAppService struct {
+	deployerv1.AppServiceClient
+	response      *deployerv1.GetAppStatusResponse
+	err           error
+	appName       string
+	authorization string
+}
+
+func (s *recordingAppService) GetAppStatus(ctx context.Context, request *deployerv1.GetAppStatusRequest, _ ...grpc.CallOption) (*deployerv1.GetAppStatusResponse, error) {
+	s.appName = request.GetName()
+	if md, ok := metadata.FromOutgoingContext(ctx); ok {
+		values := md.Get("authorization")
+		if len(values) > 0 {
+			s.authorization = values[0]
+		}
+	}
+	return s.response, s.err
 }
 
 type recordingEventService struct {

@@ -157,14 +157,24 @@ type AppInspectResult struct {
 }
 
 type AppStatusResult struct {
-	App               AppInfo        `json:"app"`
-	LatestDeployment  DeploymentInfo `json:"latest_deployment"`
-	Routes            []RouteInfo    `json:"routes"`
-	RuntimeStatus     string         `json:"runtime_status"`
-	DesiredReplicas   int            `json:"desired_replicas"`
-	AvailableReplicas int            `json:"available_replicas"`
-	RunningNodes      []string       `json:"running_nodes"`
-	Warnings          []string       `json:"warnings"`
+	App               AppInfo             `json:"app"`
+	LatestDeployment  DeploymentInfo      `json:"latest_deployment"`
+	Routes            []RouteInfo         `json:"routes"`
+	RuntimeStatus     string              `json:"runtime_status"`
+	DesiredReplicas   int                 `json:"desired_replicas"`
+	AvailableReplicas int                 `json:"available_replicas"`
+	RunningNodes      []string            `json:"running_nodes"`
+	Database          *DatabaseStatusInfo `json:"database,omitempty"`
+	Warnings          []string            `json:"warnings"`
+}
+
+type DatabaseStatusInfo struct {
+	State            string   `json:"state"`
+	Phase            string   `json:"phase"`
+	DesiredInstances int      `json:"desired_instances"`
+	ReadyInstances   int      `json:"ready_instances"`
+	Primary          string   `json:"primary"`
+	RunningNodes     []string `json:"running_nodes"`
 }
 
 func NewPlatformClient(serverURL string, token string) (*PlatformClient, *grpc.ClientConn, error) {
@@ -469,6 +479,16 @@ func (c *PlatformClient) GetAppStatus(ctx context.Context, name string) (AppStat
 		AvailableReplicas: int(response.GetAvailableReplicas()),
 		RunningNodes:      append([]string(nil), response.GetRunningNodes()...),
 		Warnings:          append([]string(nil), response.GetWarnings()...),
+	}
+	if database := response.GetDatabase(); database != nil {
+		result.Database = &DatabaseStatusInfo{
+			State:            database.GetState(),
+			Phase:            database.GetPhase(),
+			DesiredInstances: int(database.GetDesiredInstances()),
+			ReadyInstances:   int(database.GetReadyInstances()),
+			Primary:          database.GetPrimary(),
+			RunningNodes:     append([]string(nil), database.GetRunningNodes()...),
+		}
 	}
 	for _, route := range response.GetRoutes() {
 		result.Routes = append(result.Routes, routeInfo(route))

@@ -158,6 +158,21 @@ func (c *Controller) DrainNode(ctx context.Context, nodeName string) error {
 	if err != nil {
 		return fmt.Errorf("list Pods on Kubernetes Node %q: %w", nodeName, err)
 	}
+	databasePods := make([]string, 0)
+	for _, pod := range pods.Items {
+		if strings.TrimSpace(pod.Labels["cnpg.io/cluster"]) == "" || pod.Labels["cnpg.io/podRole"] != "instance" {
+			continue
+		}
+		databasePods = append(databasePods, pod.Namespace+"/"+pod.Name)
+	}
+	if len(databasePods) > 0 {
+		sort.Strings(databasePods)
+		return fmt.Errorf(
+			"Kubernetes Node %q is cordoned but not drained because it hosts CloudNativePG instance Pods %s; use the documented CloudNativePG maintenance procedure",
+			nodeName,
+			strings.Join(databasePods, ", "),
+		)
+	}
 	for _, pod := range pods.Items {
 		stateMode := pod.Labels["deployer.io/state-mode"]
 		resilienceMode := pod.Labels["deployer.io/resilience-mode"]

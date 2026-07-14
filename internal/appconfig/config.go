@@ -34,6 +34,7 @@ type Config struct {
 	Secrets    []string         `json:"secrets,omitempty" yaml:"secrets"`
 	State      StateConfig      `json:"state" yaml:"state"`
 	Resilience ResilienceConfig `json:"resilience" yaml:"resilience"`
+	Database   DatabaseConfig   `json:"database,omitempty" yaml:"database,omitempty"`
 }
 
 type ServiceConfig struct {
@@ -111,6 +112,7 @@ func (c *Config) Normalize() {
 	c.Secrets = normalizeStringList(c.Secrets)
 	c.Placement.Prefer = normalizePlacementSelectors(c.Placement.Prefer)
 	c.Placement.Fallback = normalizePlacementSelectors(c.Placement.Fallback)
+	c.Database.normalize()
 }
 
 func (c Config) Validate() error {
@@ -168,6 +170,9 @@ func (c Config) Validate() error {
 			return fmt.Errorf("secrets[%d]: duplicate secret name %q", i, secret)
 		}
 		seenSecrets[secret] = struct{}{}
+	}
+	if err := c.Database.validate(c.Name, c.Placement.Arch, seenSecrets); err != nil {
+		return err
 	}
 	return nil
 }

@@ -53,6 +53,40 @@ sudo k3s kubectl apply -f https://github.com/cert-manager/cert-manager/releases/
 
 When `DEPLOYER_INGRESS_ACME_EMAIL` is set, the server creates a cert-manager `ClusterIssuer` named `deployer-letsencrypt` and each routed app gets a TLS Ingress with a per-app certificate secret. On an existing install, add `DEPLOYER_INGRESS_ACME_EMAIL=you@example.com` to `/etc/deployer/server.env`, install cert-manager, restart `deployer-server`, and redeploy the app route. Leave the Cloudflare record as DNS only while HTTP-01 certificates are being issued.
 
+## CloudNativePG Setup
+
+Apps using `database.postgres` require CloudNativePG 1.30.0 and Kubernetes
+1.34 through 1.36. Install the checksum-pinned official operator manifest from
+the repository checkout on the k3s server:
+
+```bash
+sudo ./scripts/install-cnpg.sh
+```
+
+The script uses `k3s kubectl` when run as root on a k3s server, verifies the
+manifest checksum, replaces the operator tag with its immutable multi-platform
+digest before server-side apply, and waits for both required CRDs and the
+operator to be ready. It refuses to overwrite an existing operator using a
+different image, and is safe to rerun with the same pinned version. A host
+using a normal Kubernetes context can run:
+
+```bash
+./scripts/install-cnpg.sh --client kubectl
+```
+
+Before migrating production data, verify three same-architecture Ready nodes,
+durable storage, independent backups with a restore drill, quorum network
+reachability, and a write-quiescing cutover plan. Database replicas alone do
+not make a single-server k3s control plane or hub-and-spoke WireGuard network
+highly available. See [PostgreSQL High Availability](postgres-ha.md) for the
+configuration, failure semantics, migration gates, retention behavior, and
+rollback procedure.
+
+Managed database connections enforce TLS, SCRAM-SHA-256, and pgx/libpq-style
+channel binding. Normal app deployment freezes database image, capacity,
+storage, and replication policy; use a dedicated CloudNativePG maintenance
+runbook for those operations.
+
 ## Worker Setup
 
 Create a join token from your local machine:
@@ -129,36 +163,55 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The release workflow runs tests, builds `make release` with `VERSION` set to the tag, verifies checksums, and uploads:
+The release workflow runs tests, verifies that committed protobuf output is
+reproducible, builds `make release` from the exact tag with deterministic build
+metadata, and verifies checksums. It uploads all assets to a draft and only
+then publishes the release. Existing releases are immutable and never
+overwritten.
 
 - `deployer-darwin-arm64.tar.gz`
 - `deployer-linux-amd64.tar.gz`
 - `deployer-linux-arm64.tar.gz`
+- `install-release.sh`
+- `install-cnpg.sh`
 - `checksums.txt`
 
 Use `deployer-linux-amd64.tar.gz` for amd64 VPS hosts and `deployer-linux-arm64.tar.gz` for 64-bit Raspberry Pi workers.
 
 ## Updating From Release Artifacts
 
-After a release exists, hosts can update directly from GitHub without a local Go toolchain or git checkout.
+After a release exists, hosts can update directly from GitHub without a local
+Go toolchain or git checkout. Bootstrap the installer from the checksummed
+release assets, not from a mutable raw Git tag:
+
+```bash
+VERSION=v0.1.0
+INSTALLER_DIR=$(mktemp -d)
+BASE_URL="https://github.com/0xivanov/self-hosted-deployer/releases/download/$VERSION"
+curl -fsSL "$BASE_URL/install-release.sh" -o "$INSTALLER_DIR/install-release.sh"
+curl -fsSL "$BASE_URL/checksums.txt" -o "$INSTALLER_DIR/checksums.txt"
+(
+  cd "$INSTALLER_DIR"
+  grep '  install-release.sh$' checksums.txt > install-release.sh.sha256
+  sha256sum -c install-release.sh.sha256
+)
+```
 
 On the VPS:
 
 ```bash
-VERSION=v0.1.0
-curl -fsSL "https://raw.githubusercontent.com/0xivanov/self-hosted-deployer/$VERSION/scripts/install-release.sh" -o /tmp/install-release.sh
-sudo sh /tmp/install-release.sh --version "$VERSION" --role server
+sudo sh "$INSTALLER_DIR/install-release.sh" --version "$VERSION" --role server
 ```
 
 On a Raspberry Pi worker:
 
 ```bash
-VERSION=v0.1.0
-curl -fsSL "https://raw.githubusercontent.com/0xivanov/self-hosted-deployer/$VERSION/scripts/install-release.sh" -o /tmp/install-release.sh
-sudo sh /tmp/install-release.sh --version "$VERSION" --role agent
+sudo sh "$INSTALLER_DIR/install-release.sh" --version "$VERSION" --role agent
 ```
 
 The installer auto-detects `linux-amd64` versus `linux-arm64`, verifies the tarball against `checksums.txt`, installs binaries into `/usr/local/bin`, updates the matching systemd unit, runs `systemctl daemon-reload`, and restarts the selected service. Use `--version latest` to follow the latest GitHub release.
+Custom `--install-dir` values are CLI-only because the systemd services use
+`/usr/local/bin`.
 
 The installer also enables a role-specific systemd timer. Servers check for a new GitHub Release every 15 minutes near minute 0. Agents check near minute 5 with randomized delay so the server normally updates first and workers do not restart together.
 
@@ -168,4 +221,11 @@ journalctl -u deployer-auto-update-server.service
 journalctl -u deployer-auto-update-agent.service
 ```
 
-The updater compares the installed version with the latest release, verifies release checksums through `install-release.sh`, serializes updates with a host lock, and restores the previous binary if the restarted service fails its health check.
+The updater compares the installed version with the latest release, refuses
+non-forward version moves, and invokes the trusted local
+`/usr/local/sbin/deployer-install-release` installed from the previous
+checksummed package. It serializes both automatic and manual installs with a
+host lock and restores all previously installed release files if installation
+or the restarted service health check fails. A failed release is quarantined
+on that host so the timer does not retry it; a newer release clears the
+quarantine automatically.

@@ -54,7 +54,8 @@ package: build-release
 	cd $(DIST_DIR)/packages && tar -czf ../deployer-darwin-arm64.tar.gz deployer-darwin-arm64
 	cd $(DIST_DIR)/packages && tar -czf ../deployer-linux-arm64.tar.gz deployer-linux-arm64
 	cd $(DIST_DIR)/packages && tar -czf ../deployer-linux-amd64.tar.gz deployer-linux-amd64
-	cd $(DIST_DIR) && shasum -a 256 *.tar.gz > checksums.txt
+	cp scripts/install-release.sh scripts/install-cnpg.sh $(DIST_DIR)/
+	cd $(DIST_DIR) && shasum -a 256 *.tar.gz install-release.sh install-cnpg.sh > checksums.txt
 
 release: package
 

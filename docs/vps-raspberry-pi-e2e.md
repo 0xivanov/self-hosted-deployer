@@ -539,20 +539,32 @@ sudo k3s kubectl -n deployer-apps get pods -o wide
 
 ## Updating Hosts From A GitHub Release
 
-Release tags build Linux artifacts in GitHub Actions. Once a release exists, update the VPS from the `linux-amd64` artifact:
+Release tags build Linux artifacts in GitHub Actions. Once a release exists,
+download and verify the checksummed installer asset on each host:
 
 ```bash
 VERSION=v0.1.0
-curl -fsSL "https://raw.githubusercontent.com/0xivanov/self-hosted-deployer/$VERSION/scripts/install-release.sh" -o /tmp/install-release.sh
-sudo sh /tmp/install-release.sh --version "$VERSION" --role server
+INSTALLER_DIR=$(mktemp -d)
+BASE_URL="https://github.com/0xivanov/self-hosted-deployer/releases/download/$VERSION"
+curl -fsSL "$BASE_URL/install-release.sh" -o "$INSTALLER_DIR/install-release.sh"
+curl -fsSL "$BASE_URL/checksums.txt" -o "$INSTALLER_DIR/checksums.txt"
+(
+  cd "$INSTALLER_DIR"
+  grep '  install-release.sh$' checksums.txt > install-release.sh.sha256
+  sha256sum -c install-release.sh.sha256
+)
+```
+
+Update the VPS from the `linux-amd64` artifact:
+
+```bash
+sudo sh "$INSTALLER_DIR/install-release.sh" --version "$VERSION" --role server
 ```
 
 Update each Raspberry Pi from the `linux-arm64` artifact:
 
 ```bash
-VERSION=v0.1.0
-curl -fsSL "https://raw.githubusercontent.com/0xivanov/self-hosted-deployer/$VERSION/scripts/install-release.sh" -o /tmp/install-release.sh
-sudo sh /tmp/install-release.sh --version "$VERSION" --role agent
+sudo sh "$INSTALLER_DIR/install-release.sh" --version "$VERSION" --role agent
 ```
 
 The installer verifies checksums, installs the new binaries and systemd unit, and restarts `deployer-server.service` or `deployer-agent.service`.

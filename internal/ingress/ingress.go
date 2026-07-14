@@ -114,6 +114,7 @@ func ManifestForApp(cfg appconfig.Config, namespace string, tlsConfig TLSConfig)
 			Namespace: namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/name": cfg.Name,
+				managedByLabel:           managedByDeployer,
 				"deployer.io/app":        cfg.Name,
 			},
 		},
