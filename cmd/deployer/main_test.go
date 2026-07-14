@@ -560,7 +560,18 @@ func TestAppStatusAndNodeRemoveCommands(t *testing.T) {
 			AvailableReplicas: 1,
 			Routes:            []clicore.RouteInfo{{Domain: "api.example.com", Status: "healthy"}},
 			RunningNodes:      []string{"pi-kitchen"},
-			Warnings:          []string{"resilient replicas are not spread across two nodes"},
+			Database: &clicore.DatabaseStatusInfo{
+				State:            "degraded",
+				Phase:            "Waiting for instances",
+				DesiredInstances: 3,
+				ReadyInstances:   2,
+				Primary:          "my-api-db-1",
+				RunningNodes:     []string{"vps", "pi-kitchen"},
+			},
+			Warnings: []string{
+				"resilient replicas are not spread across two nodes",
+				`managed PostgreSQL synchronous method is "first"; expected "any"`,
+			},
 		},
 		nodeMutation: clicore.NodeInfo{Name: "pi-kitchen", Status: "removed"},
 	}
@@ -573,8 +584,20 @@ func TestAppStatusAndNodeRemoveCommands(t *testing.T) {
 		t.Fatalf("expected app status success, got %d: %s", code, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "pi-kitchen") || !strings.Contains(stdout.String(), "ROUTE HEALTH") ||
-		!strings.Contains(stdout.String(), "healthy") || !strings.Contains(stdout.String(), "WARNING") {
+		!strings.Contains(stdout.String(), "healthy") || !strings.Contains(stdout.String(), "DATABASE") ||
+		!strings.Contains(stdout.String(), "2/3 ready") || !strings.Contains(stdout.String(), "my-api-db-1") ||
+		!strings.Contains(stdout.String(), "WARNING") || !strings.Contains(stdout.String(), "synchronous method") {
 		t.Fatalf("expected app runtime status output, got %q", stdout.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := app.run([]string{"--server", "localhost:7443", "--token", "dep_admin_test", "--output", "json", "status", "my-api"}); code != 0 {
+		t.Fatalf("expected JSON app status success, got %d: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), `"database"`) || !strings.Contains(stdout.String(), `"state": "degraded"`) ||
+		!strings.Contains(stdout.String(), `"desired_instances": 3`) || !strings.Contains(stdout.String(), "synchronous method") ||
+		strings.Contains(strings.ToLower(stdout.String()), "password") || strings.Contains(stdout.String(), "DATABASE_URL") {
+		t.Fatalf("expected credential-free database JSON status, got %q", stdout.String())
 	}
 	stdout.Reset()
 	stderr.Reset()

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	clicore "github.com/0xivanov/self-hosted-deployer/internal/cli"
 )
@@ -46,6 +47,18 @@ func (a cliApp) appStatus(args []string, opts cliOptions) int {
 	fmt.Fprintln(a.stdout, "\nREPLICAS")
 	for _, node := range result.RunningNodes {
 		fmt.Fprintf(a.stdout, "%s\t%s\n", node, result.RuntimeStatus)
+	}
+	if result.Database != nil {
+		databaseNodes := "-"
+		if len(result.Database.RunningNodes) > 0 {
+			databaseNodes = strings.Join(result.Database.RunningNodes, ", ")
+		}
+		fmt.Fprintln(a.stdout, "\nDATABASE")
+		fmt.Fprintf(a.stdout, "STATE\t%s\n", valueOrDash(result.Database.State))
+		fmt.Fprintf(a.stdout, "PHASE\t%s\n", valueOrDash(result.Database.Phase))
+		fmt.Fprintf(a.stdout, "INSTANCES\t%d/%d ready\n", result.Database.ReadyInstances, result.Database.DesiredInstances)
+		fmt.Fprintf(a.stdout, "PRIMARY\t%s\n", valueOrDash(result.Database.Primary))
+		fmt.Fprintf(a.stdout, "NODES\t%s\n", databaseNodes)
 	}
 	for _, warning := range result.Warnings {
 		fmt.Fprintf(a.stdout, "\nWARNING: %s\n", warning)

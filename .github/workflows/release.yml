@@ -4,18 +4,12 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version, for example v0.1.0"
-        required: true
-        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref_name || inputs.version }}
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -25,12 +19,20 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
 
+      - name: Require release commit on master
+        run: |
+          git fetch --no-tags origin master
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "release tag must point to a commit on origin/master" >&2
+            exit 1
+          fi
+
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
           cache: true
@@ -42,16 +44,27 @@ jobs:
         id: version
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            version="${{ inputs.version }}"
-          else
-            version="${GITHUB_REF_NAME}"
-          fi
-          if [[ ! "$version" =~ ^v[0-9]+[.][0-9]+[.][0-9]+([-.][0-9A-Za-z.-]+)?$ ]]; then
+          version="${GITHUB_REF_NAME}"
+          if [[ ! "$version" =~ ^v[0-9]+[.][0-9]+[.][0-9]+(-[0-9A-Za-z-]+([.][0-9A-Za-z-]+)*)?$ ]]; then
             echo "version must look like v0.1.0 or v0.1.0-rc.1" >&2
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Refuse an existing release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "release $VERSION already exists and is immutable" >&2
+            exit 1
+          fi
 
       - name: Test
         run: go test ./...
@@ -65,11 +78,18 @@ jobs:
       - name: Protobuf lint
         run: buf lint
 
+      - name: Verify generated protobuf code
+        run: make proto-check
+
       - name: Shell lint
         run: shellcheck scripts/*.sh
 
       - name: Build packages
-        run: VERSION="${{ steps.version.outputs.version }}" make release
+        run: |
+          VERSION="${{ steps.version.outputs.version }}" \
+          COMMIT="${GITHUB_SHA}" \
+          BUILD_DATE="$(git show -s --format=%cI HEAD)" \
+          make release
 
       - name: Verify checksums
         working-directory: dist
@@ -79,19 +99,25 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
         shell: bash
         run: |
-          if gh release view "$VERSION" >/dev/null 2>&1; then
-            echo "Release $VERSION already exists; uploading artifacts"
-          else
-            gh release create "$VERSION" \
-              --title "$VERSION" \
-              --notes "Release artifacts for $VERSION."
+          cleanup_draft() {
+            if [ "$(gh release view "$VERSION" --json isDraft --jq .isDraft 2>/dev/null || true)" = "true" ]; then
+              gh release delete "$VERSION" --yes
+            fi
+          }
+          trap cleanup_draft ERR
+          release_flags=(--verify-tag --draft --title "$VERSION" --notes "Release artifacts for $VERSION.")
+          if [ "$PRERELEASE" = "true" ]; then
+            release_flags+=(--prerelease)
           fi
-
-          gh release upload "$VERSION" \
+          gh release create "$VERSION" "${release_flags[@]}" \
             dist/deployer-darwin-arm64.tar.gz \
             dist/deployer-linux-amd64.tar.gz \
             dist/deployer-linux-arm64.tar.gz \
-            dist/checksums.txt \
-            --clobber
+            dist/install-release.sh \
+            dist/install-cnpg.sh \
+            dist/checksums.txt
+          gh release edit "$VERSION" --draft=false
+          trap - ERR

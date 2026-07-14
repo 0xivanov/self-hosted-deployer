@@ -21,6 +21,7 @@ The first version should optimize for personal and family-owned infrastructure i
 - WireGuard hub-and-spoke private network for MVP.
 - Automatic resilience for stateless services.
 - Conservative, explicit support for stateful services.
+- PostgreSQL high availability only through an explicit CloudNativePG template, never by replicating an arbitrary database container.
 - ARM64-first workload support.
 - Docker Hub/GHCR-compatible image deployment.
 
@@ -356,8 +357,23 @@ placement:
     - location: vps
 
 secrets:
-  - DATABASE_URL
   - JWT_SECRET
+
+database:
+  postgres:
+    instances: 3
+    image: ghcr.io/cloudnative-pg/postgresql:17.10-202606221003-system-bookworm@sha256:f7ee6ba4f221a4c8ee8a83edf6e7eb8acd373fb118237665080ab6f9cdec8618
+    database: my_api
+    owner: my_api
+    connectionEnv: DATABASE_URL
+    connectionMode: managed
+    storage:
+      size: 20Gi
+      storageClass: local-path
+    synchronous:
+      replicas: 1
+      dataDurability: required
+    retentionPolicy: retain
 ```
 
 Deploy:
@@ -688,12 +704,93 @@ MVP should support:
 
 MVP should not claim generic automatic failover for arbitrary databases.
 
-### 9.4 Future Stateful Templates
+### 9.4 PostgreSQL High Availability Template
+
+PostgreSQL is the first supported database-specific replication template. It
+uses CloudNativePG 1.30.0 on Kubernetes 1.34 through 1.36. The operator must be
+installed before an app containing `database.postgres` is deployed.
+
+The template has the following contract:
+
+- `instances` is between 3 and 9 and defaults to 3.
+- `image` is required, its tag must begin with a PostgreSQL version whose major
+  is between 14 and 18, and it must end with an immutable lowercase `@sha256`
+  digest.
+- `database` and `owner` are required PostgreSQL identifiers. System databases
+  and PostgreSQL or CloudNativePG system roles are rejected so the application
+  never receives superuser or operator credentials.
+- `connectionEnv` defaults to `DATABASE_URL`.
+- `connectionMode` is either `external` or `managed` and defaults to `managed`.
+- `storage.size` is required and must be at least `1Gi`.
+- `storage.storageClass` defaults to `local-path`.
+- `synchronous.replicas` defaults to 1 and must be less than `instances`.
+- `synchronous.dataDurability` is `required` or `preferred` and defaults to `required`.
+- `retentionPolicy` only supports `retain`.
+
+The generated CloudNativePG `Cluster` is named `<app>-db`. It inherits
+`placement.arch` and supports `linux/amd64` and `linux/arm64`. Reconciliation
+requires enough Ready, schedulable nodes of that architecture before creating
+the cluster. Existing clusters can still be reconciled during a node outage
+because ordinary app and secret updates do not change database placement.
+Required pod anti-affinity on
+`kubernetes.io/hostname` places every database instance on a different node.
+CloudNativePG limits Cluster names to 50 characters, so the app name can use at
+most 47 characters after reserving the `-db` suffix, and it must start with a
+lowercase letter.
+
+New clusters enable PostgreSQL data checksums. The deployer owns
+`password_encryption: scram-sha-256`, rejects all non-TLS client connections,
+and installs an application-specific `hostssl` rule requiring SCRAM-SHA-256.
+Managed app pods also receive `PGSSLMODE=require`,
+`PGCHANNELBINDING=require`, and `PGREQUIREAUTH=scram-sha-256`. Those names are
+reserved in managed mode. Normal app deployments treat the PostgreSQL image,
+instance count, storage size and class, bootstrap identity, placement,
+checksums, synchronous replica count, and durability policy as immutable.
+Image changes, storage expansion, scaling, and replication-policy changes
+require a dedicated database-maintenance workflow and backup gate. The staged
+application cutover can change only `connectionMode` between `external` and
+`managed`.
+
+The generated synchronous replication policy uses quorum selection with
+`method: any` and enables failover quorum. With the common three-instance,
+one-synchronous-replica configuration, an acknowledged synchronous commit has
+reached the primary and at least one standby. If only one replica can be
+reached after the primary is lost, failover is refused because safe promotion
+cannot be proven.
+
+`dataDurability: required` stops synchronous writes when too few healthy
+standbys remain. `preferred` reduces the synchronous requirement when
+standbys are unavailable and can keep writes available at the cost of possible
+data loss. The operator must choose this trade-off explicitly.
+
+`connectionMode: external` still provisions and reconciles `<app>-db`, but the
+application keeps using `connectionEnv` from the app's ordinary encrypted
+secret. This supports a staged migration from an existing database. In
+`managed` mode, `connectionEnv` is injected from the CloudNativePG-generated
+Secret `<app>-db-app`, key `uri`, and the same name must not also be declared in
+`secrets`.
+
+Removing `database.postgres` from desired state or deleting the app does not
+delete the CloudNativePG `Cluster` or its PVCs. Database destruction requires
+a separate, explicit operator action outside the app deletion path. App status
+reports the database state, CloudNativePG phase, ready and desired instances,
+primary, and running nodes without returning credentials. A healthy state also
+requires the effective synchronous-replication, failover-quorum, placement,
+TLS, and SCRAM policies to match the desired template.
+
+This template is not a backup system. It requires independent backups and a
+tested restore procedure. It also does not make the full platform highly
+available by itself. Full platform fault tolerance requires at least three
+same-architecture failure domains, a highly available Kubernetes control
+plane, and networking that continues to connect a quorum when any single node
+or network hub fails. The k3s `local-path` storage class does not replicate
+storage, and removable flash media is not recommended for production database
+volumes.
+
+### 9.5 Future Stateful Templates
 
 Possible future templates:
 
-- Postgres primary with scheduled backups
-- Postgres primary plus read replica
 - Redis cache
 - CouchDB replicated nodes
 - MinIO object storage
@@ -1012,7 +1109,7 @@ Replica-aware database:
 
 ### 14.3 MVP Policy
 
-Only stateless services get automatic resilience and failover.
+Only stateless services get generic automatic resilience and failover.
 
 Stateful services require explicit configuration:
 
@@ -1021,7 +1118,9 @@ Stateful services require explicit configuration:
 - external database
 - app-specific replication template
 
-The platform must not pretend to provide safe automatic failover for arbitrary stateful apps.
+The CloudNativePG PostgreSQL template is the first supported app-specific
+replication template. The platform must not pretend to provide safe automatic
+failover for arbitrary stateful apps.
 
 ## 15. Kubernetes Cluster Strategy
 
@@ -1054,6 +1153,13 @@ The control plane should live on the most reliable node, preferably the VPS.
 Avoid placing the main Kubernetes control plane on a flaky home server.
 
 Workers can be unreliable. The control plane should remain stable.
+
+Database replicas on worker nodes do not remove control-plane or network
+single points of failure. Full platform fault tolerance requires an odd-sized,
+highly available k3s server topology and network paths that do not depend on a
+single WireGuard hub. A single VPS running k3s, ingress, and the WireGuard hub
+remains a platform-wide failure domain even when PostgreSQL has three healthy
+instances.
 
 ### 15.3 Future: Multi-Cluster
 
@@ -1280,6 +1386,7 @@ DEPLOYER_EVENT_CLEANUP_INTERVAL     -> cleanup frequency, default 1h
 - Node status and heartbeats.
 - App status.
 - Logs command.
+- App-specific CloudNativePG PostgreSQL high availability template.
 
 ### 18.2 MVP Nice To Have
 

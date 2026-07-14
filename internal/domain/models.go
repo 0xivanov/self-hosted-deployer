@@ -54,6 +54,39 @@ type App struct {
 	DeletedAt        *time.Time
 }
 
+// DatabaseStatus is the credential-free runtime view of a managed database.
+type DatabaseStatus struct {
+	Present                     bool
+	Phase                       string
+	DesiredInstances            int32
+	ReadyInstances              int32
+	Primary                     string
+	RunningNodes                []string
+	RunningInstances            []string
+	OwnedByDeployer             bool
+	Image                       string
+	BootstrapDatabase           string
+	BootstrapOwner              string
+	DataChecksumsEnabled        bool
+	StorageSize                 string
+	StorageClass                string
+	SynchronousMethod           string
+	SynchronousReplicas         int32
+	DataDurability              string
+	FailoverQuorumEnabled       bool
+	AntiAffinityType            string
+	TopologyKey                 string
+	Architecture                string
+	PasswordEncryption          string
+	RejectsNonTLS               bool
+	RequiresApplicationSCRAM    bool
+	FailoverQuorumPresent       bool
+	FailoverQuorumMethod        string
+	FailoverQuorumStandbyNumber int32
+	FailoverQuorumPrimary       string
+	FailoverQuorumStandbyNames  []string
+}
+
 type Deployment struct {
 	ID            string
 	AppID         string

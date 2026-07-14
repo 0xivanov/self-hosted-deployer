@@ -21,6 +21,9 @@ func (c *Controller) reconcileAppResources(ctx context.Context, cfg appconfig.Co
 	if err := c.reconcileNamespace(ctx); err != nil {
 		return err
 	}
+	if err := c.reconcilePostgres(ctx, cfg); err != nil {
+		return err
+	}
 	if err := c.reconcileSecret(ctx, cfg, secretValues); err != nil {
 		return err
 	}
@@ -50,6 +53,9 @@ func (c *Controller) reconcilePodDisruptionBudget(ctx context.Context, cfg appco
 	}
 	if err != nil {
 		return fmt.Errorf("get PodDisruptionBudget %q: %w", desired.Name, err)
+	}
+	if err := requireAppResourceOwnership("PodDisruptionBudget", existing.Name, cfg.Name, existing.Labels); err != nil {
+		return err
 	}
 	desired.ResourceVersion = existing.ResourceVersion
 	if _, err := c.pdbs.Update(ctx, desired, metav1.UpdateOptions{}); err != nil {
@@ -95,6 +101,9 @@ func (c *Controller) reconcileDeployment(ctx context.Context, cfg appconfig.Conf
 	if err != nil {
 		return fmt.Errorf("get Deployment %q: %w", desired.Name, err)
 	}
+	if err := requireAppResourceOwnership("Deployment", existing.Name, cfg.Name, existing.Labels); err != nil {
+		return err
+	}
 	desired.ResourceVersion = existing.ResourceVersion
 	if _, err := c.deployments.Update(ctx, desired, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("update Deployment %q: %w", desired.Name, err)
@@ -120,6 +129,9 @@ func (c *Controller) reconcileSecret(ctx context.Context, cfg appconfig.Config, 
 	if err != nil {
 		return fmt.Errorf("get Secret %q: %w", desired.Name, err)
 	}
+	if err := requireAppResourceOwnership("Secret", existing.Name, cfg.Name, existing.Labels); err != nil {
+		return err
+	}
 	desired.ResourceVersion = existing.ResourceVersion
 	if _, err := c.appSecrets.Update(ctx, desired, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("update Secret %q: %w", desired.Name, err)
@@ -139,6 +151,9 @@ func (c *Controller) reconcileService(ctx context.Context, cfg appconfig.Config)
 	if err != nil {
 		return fmt.Errorf("get Service %q: %w", desired.Name, err)
 	}
+	if err := requireAppResourceOwnership("Service", existing.Name, cfg.Name, existing.Labels); err != nil {
+		return err
+	}
 	desired.ResourceVersion = existing.ResourceVersion
 	desired.Spec.ClusterIP = existing.Spec.ClusterIP
 	desired.Spec.ClusterIPs = existing.Spec.ClusterIPs
@@ -151,7 +166,17 @@ func (c *Controller) reconcileService(ctx context.Context, cfg appconfig.Config)
 }
 
 func (c *Controller) deleteDeployment(ctx context.Context, appName string) error {
-	err := c.deployments.Delete(ctx, appName, metav1.DeleteOptions{})
+	existing, err := c.deployments.Get(ctx, appName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get Deployment %q for deletion: %w", appName, err)
+	}
+	if err := requireAppResourceOwnership("Deployment", existing.Name, appName, existing.Labels); err != nil {
+		return err
+	}
+	err = c.deployments.Delete(ctx, appName, ownedDeleteOptions(existing))
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -165,7 +190,17 @@ func (c *Controller) deletePodDisruptionBudget(ctx context.Context, appName stri
 	if c.pdbs == nil {
 		return nil
 	}
-	err := c.pdbs.Delete(ctx, appName, metav1.DeleteOptions{})
+	existing, err := c.pdbs.Get(ctx, appName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get PodDisruptionBudget %q for deletion: %w", appName, err)
+	}
+	if err := requireAppResourceOwnership("PodDisruptionBudget", existing.Name, appName, existing.Labels); err != nil {
+		return err
+	}
+	err = c.pdbs.Delete(ctx, appName, ownedDeleteOptions(existing))
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -176,7 +211,17 @@ func (c *Controller) deletePodDisruptionBudget(ctx context.Context, appName stri
 }
 
 func (c *Controller) deleteService(ctx context.Context, appName string) error {
-	err := c.services.Delete(ctx, appName, metav1.DeleteOptions{})
+	existing, err := c.services.Get(ctx, appName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get Service %q for deletion: %w", appName, err)
+	}
+	if err := requireAppResourceOwnership("Service", existing.Name, appName, existing.Labels); err != nil {
+		return err
+	}
+	err = c.services.Delete(ctx, appName, ownedDeleteOptions(existing))
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -187,7 +232,17 @@ func (c *Controller) deleteService(ctx context.Context, appName string) error {
 }
 
 func (c *Controller) deleteAppSecret(ctx context.Context, appName string) error {
-	err := c.appSecrets.Delete(ctx, appName, metav1.DeleteOptions{})
+	existing, err := c.appSecrets.Get(ctx, appName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get Secret %q for deletion: %w", appName, err)
+	}
+	if err := requireAppResourceOwnership("Secret", existing.Name, appName, existing.Labels); err != nil {
+		return err
+	}
+	err = c.appSecrets.Delete(ctx, appName, ownedDeleteOptions(existing))
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
@@ -212,7 +267,7 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cfg.Name,
 			Namespace: namespace,
-			Labels:    labels,
+			Labels:    managedAppLabels(cfg.Name),
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: &replicas,
@@ -307,6 +362,21 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 			})
 		}
 	}
+	if postgres := cfg.Database.Postgres; postgres != nil && postgres.ConnectionMode == appconfig.PostgresConnectionModeManaged {
+		deployment.Spec.Template.Spec.Containers[0].Env = append(
+			deployment.Spec.Template.Spec.Containers[0].Env,
+			corev1.EnvVar{
+				Name: postgres.ConnectionEnv,
+				ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: cfg.Name + postgresAppSecretSuffix},
+					Key:                  "uri",
+				}},
+			},
+			corev1.EnvVar{Name: "PGSSLMODE", Value: "require"},
+			corev1.EnvVar{Name: "PGCHANNELBINDING", Value: "require"},
+			corev1.EnvVar{Name: "PGREQUIREAUTH", Value: "scram-sha-256"},
+		)
+	}
 	return deployment, nil
 }
 
@@ -316,7 +386,7 @@ func podDisruptionBudgetForApp(cfg appconfig.Config, namespace string) *policyv1
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cfg.Name,
 			Namespace: namespace,
-			Labels:    appLabels(cfg.Name),
+			Labels:    managedAppLabels(cfg.Name),
 		},
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			MinAvailable: &minAvailable,
@@ -365,7 +435,7 @@ func secretForApp(cfg appconfig.Config, namespace string, secretValues map[strin
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cfg.Name,
 			Namespace: namespace,
-			Labels:    appLabels(cfg.Name),
+			Labels:    managedAppLabels(cfg.Name),
 		},
 		Type: corev1.SecretTypeOpaque,
 		Data: data,
@@ -379,7 +449,7 @@ func serviceForApp(cfg appconfig.Config, namespace string) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      cfg.Name,
 			Namespace: namespace,
-			Labels:    appLabels(cfg.Name),
+			Labels:    managedAppLabels(cfg.Name),
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: appLabels(cfg.Name),
@@ -398,6 +468,12 @@ func appLabels(appName string) map[string]string {
 		"app.kubernetes.io/name": appName,
 		"deployer.io/app":        appName,
 	}
+}
+
+func managedAppLabels(appName string) map[string]string {
+	labels := appLabels(appName)
+	labels[managedByLabel] = managedByDeployer
+	return labels
 }
 
 func placementArchitecture(placement string) string {

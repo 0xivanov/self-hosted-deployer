@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/apimachinery/pkg/api/resource"
 )
 
 const (
@@ -59,6 +61,10 @@ type DetailedAppRuntime interface {
 
 type ReportingAppRuntime interface {
 	RuntimeStatus(ctx context.Context, appName string) (state string, desiredReplicas int32, availableReplicas int32, runningNodes []string, err error)
+}
+
+type DatabaseReportingAppRuntime interface {
+	DatabaseStatus(ctx context.Context, appName string) (domain.DatabaseStatus, error)
 }
 
 type LoggingAppRuntime interface {
@@ -132,6 +138,7 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 
 	now := s.now().UTC()
 	app, err := s.apps.FindByName(ctx, cfg.Name)
+	var previousApp *domain.App
 	if errors.Is(err, db.ErrNotFound) {
 		appID, err := newID("app")
 		if err != nil {
@@ -151,12 +158,18 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	} else if err != nil {
 		return nil, status.Error(codes.Internal, "find app")
 	} else {
+		wasDeleted := app.DeletedAt != nil
+		previous := app
 		app.Image = cfg.Image
 		app.DesiredStateJSON = desiredStateJSON
 		app.UpdatedAt = now
 		app.DeletedAt = nil
-		if err := s.apps.Update(ctx, app); err != nil {
-			return nil, status.Error(codes.Internal, "update app")
+		if wasDeleted {
+			if err := s.apps.Update(ctx, app); err != nil {
+				return nil, status.Error(codes.Internal, "update app")
+			}
+		} else {
+			previousApp = &previous
 		}
 	}
 
@@ -186,13 +199,37 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	}
 	if s.runtime != nil {
 		if err := s.runtime.Reconcile(ctx, cfg, secretValues, secretRevision); err != nil {
+			if previousApp != nil {
+				if rollbackErr := s.rollbackAppUpdate(ctx, *previousApp, now); rollbackErr != nil {
+					err = fmt.Errorf("%w; rollback to the last applied app configuration failed: %v", err, rollbackErr)
+				}
+			}
 			s.recordFailedDeployment(ctx, app, deployment, cfg, err, now)
 			return nil, status.Errorf(codes.Internal, "apply app resources: %v", err)
 		}
 	}
 	if err := s.syncRoute(ctx, app, cfg, now); err != nil {
+		if previousApp != nil {
+			if rollbackErr := s.rollbackAppUpdate(ctx, *previousApp, now); rollbackErr != nil {
+				err = status.Errorf(
+					codes.Internal,
+					"%v; rollback to the last applied app configuration failed: %v",
+					err,
+					rollbackErr,
+				)
+			}
+		}
 		s.recordFailedDeployment(ctx, app, deployment, cfg, err, now)
 		return nil, err
+	}
+	if previousApp != nil {
+		if err := s.apps.Update(ctx, app); err != nil {
+			if rollbackErr := s.rollbackAppUpdate(ctx, *previousApp, now); rollbackErr != nil {
+				err = fmt.Errorf("%w; rollback to the last applied app configuration failed: %v", err, rollbackErr)
+			}
+			s.recordFailedDeployment(ctx, app, deployment, cfg, err, now)
+			return nil, status.Errorf(codes.Internal, "commit applied app configuration: %v", err)
+		}
 	}
 	if err := s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusHealthy, "", now); err != nil {
 		return nil, status.Error(codes.Internal, "mark deployment healthy")
@@ -208,6 +245,27 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 		App:        appProto,
 		Deployment: protoDeployment(deployment),
 	}, nil
+}
+
+func (s AppService) rollbackAppUpdate(ctx context.Context, previous domain.App, now time.Time) error {
+	cfg, err := appconfig.FromJSON(previous.DesiredStateJSON)
+	if err != nil {
+		return fmt.Errorf("decode last applied app configuration: %w", err)
+	}
+	secretValues, secretRevision, err := resolveSecretValues(ctx, s.secrets, s.cipher, previous.ID, cfg.Secrets)
+	if err != nil {
+		return fmt.Errorf("resolve last applied app secrets: %w", err)
+	}
+	var rollbackErrors []error
+	if s.runtime != nil {
+		if err := s.runtime.Reconcile(ctx, cfg, secretValues, secretRevision); err != nil {
+			rollbackErrors = append(rollbackErrors, fmt.Errorf("restore app resources: %w", err))
+		}
+	}
+	if err := s.syncRoute(ctx, previous, cfg, now); err != nil {
+		rollbackErrors = append(rollbackErrors, fmt.Errorf("restore app route: %w", err))
+	}
+	return errors.Join(rollbackErrors...)
 }
 
 func (s AppService) ListApps(ctx context.Context, _ *deployerv1.ListAppsRequest) (*deployerv1.ListAppsResponse, error) {
@@ -320,6 +378,10 @@ func (s AppService) GetAppStatus(ctx context.Context, req *deployerv1.GetAppStat
 	if err != nil {
 		return nil, status.Error(codes.Internal, "decode desired state")
 	}
+	cfg, err := appconfig.FromJSON(app.DesiredStateJSON)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "decode desired state")
+	}
 	response := &deployerv1.GetAppStatusResponse{App: appProto}
 	if len(deployments) > 0 {
 		response.LatestDeployment = protoDeployment(deployments[0])
@@ -337,13 +399,319 @@ func (s AppService) GetAppStatus(ctx context.Context, req *deployerv1.GetAppStat
 		response.DesiredReplicas = desired
 		response.AvailableReplicas = available
 		response.RunningNodes = nodes
-		cfg, err := appconfig.FromJSON(app.DesiredStateJSON)
-		if err != nil {
-			return nil, status.Error(codes.Internal, "decode desired state")
-		}
 		response.Warnings = runtimeWarnings(cfg, runtimeStatus, desired, available, nodes)
 	}
+	appendDatabaseStatus(ctx, s.runtime, cfg, app.Name, response)
 	return response, nil
+}
+
+func appendDatabaseStatus(ctx context.Context, runtime AppRuntime, cfg appconfig.Config, appName string, response *deployerv1.GetAppStatusResponse) {
+	if cfg.Database.Postgres == nil {
+		return
+	}
+
+	desired := int32(cfg.Database.Postgres.Instances)
+	response.Database = &deployerv1.DatabaseStatus{
+		State:            "unknown",
+		DesiredInstances: desired,
+	}
+	if cfg.Database.Postgres.ConnectionMode == appconfig.PostgresConnectionModeExternal {
+		response.Warnings = append(response.Warnings, "application database connection is still in external mode")
+	}
+	databaseRuntime, ok := runtime.(DatabaseReportingAppRuntime)
+	if !ok {
+		response.Warnings = append(response.Warnings, "managed PostgreSQL runtime status is unavailable")
+		return
+	}
+
+	database, err := databaseRuntime.DatabaseStatus(ctx, appName)
+	if err != nil {
+		response.Warnings = append(response.Warnings, fmt.Sprintf("managed PostgreSQL status unavailable: %v", err))
+		return
+	}
+	haWarnings := databaseHAPolicyWarnings(cfg, database, desired)
+	response.Database = &deployerv1.DatabaseStatus{
+		State:            databaseReportedState(database, desired, haWarnings),
+		Phase:            database.Phase,
+		DesiredInstances: desired,
+		ReadyInstances:   database.ReadyInstances,
+		Primary:          database.Primary,
+		RunningNodes:     append([]string(nil), database.RunningNodes...),
+	}
+	response.Warnings = append(response.Warnings, databaseRuntimeWarnings(database, desired)...)
+	response.Warnings = append(response.Warnings, haWarnings...)
+}
+
+func databaseReportedState(database domain.DatabaseStatus, desired int32, haWarnings []string) string {
+	state := databaseRuntimeState(database, desired)
+	if database.Present && len(haWarnings) > 0 {
+		return "degraded"
+	}
+	return state
+}
+
+func databaseRuntimeState(database domain.DatabaseStatus, desired int32) string {
+	if !database.Present {
+		return "missing"
+	}
+	phaseHealthy := strings.EqualFold(strings.TrimSpace(database.Phase), "Cluster in healthy state")
+	spreadAcrossDesiredNodes := desired > 0 && int32(len(database.RunningNodes)) == desired
+	if desired > 0 && database.ReadyInstances == desired && strings.TrimSpace(database.Primary) != "" && phaseHealthy && spreadAcrossDesiredNodes {
+		return "healthy"
+	}
+	if database.ReadyInstances > 0 {
+		return "degraded"
+	}
+	return "not_ready"
+}
+
+func databaseRuntimeWarnings(database domain.DatabaseStatus, desired int32) []string {
+	if !database.Present {
+		return []string{"managed PostgreSQL cluster is not present"}
+	}
+
+	warnings := []string{}
+	if database.ReadyInstances < desired {
+		warnings = append(warnings, fmt.Sprintf("managed PostgreSQL has %d of %d instances ready", database.ReadyInstances, desired))
+	} else if database.ReadyInstances > desired {
+		warnings = append(warnings, fmt.Sprintf("managed PostgreSQL reports %d ready instances; expected %d", database.ReadyInstances, desired))
+	}
+	if strings.TrimSpace(database.Primary) == "" {
+		warnings = append(warnings, "managed PostgreSQL primary is not reported")
+	}
+	if desired > 0 && int32(len(database.RunningNodes)) < desired {
+		warnings = append(warnings, fmt.Sprintf("managed PostgreSQL instances are running on %d of %d required nodes", len(database.RunningNodes), desired))
+	} else if desired > 0 && int32(len(database.RunningNodes)) > desired {
+		warnings = append(warnings, fmt.Sprintf("managed PostgreSQL instances are running on %d nodes; expected %d", len(database.RunningNodes), desired))
+	}
+	phase := strings.TrimSpace(database.Phase)
+	if phase == "" {
+		warnings = append(warnings, "managed PostgreSQL phase is not reported")
+	} else if !strings.EqualFold(phase, "Cluster in healthy state") {
+		warnings = append(warnings, fmt.Sprintf("managed PostgreSQL phase is %q", phase))
+	}
+	return warnings
+}
+
+func databaseHAPolicyWarnings(cfg appconfig.Config, database domain.DatabaseStatus, desired int32) []string {
+	if !database.Present {
+		return nil
+	}
+
+	postgres := cfg.Database.Postgres
+	if postgres == nil {
+		return nil
+	}
+	warnings := []string{}
+	if !database.OwnedByDeployer {
+		warnings = append(warnings, "managed PostgreSQL Cluster ownership labels do not match the deployer app")
+	}
+	if strings.TrimSpace(database.Image) != strings.TrimSpace(postgres.Image) {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL image is %q; expected %q",
+			database.Image,
+			postgres.Image,
+		))
+	}
+	if database.BootstrapDatabase != postgres.Database {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL bootstrap database is %q; expected %q",
+			database.BootstrapDatabase,
+			postgres.Database,
+		))
+	}
+	if database.BootstrapOwner != postgres.Owner {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL bootstrap owner is %q; expected %q",
+			database.BootstrapOwner,
+			postgres.Owner,
+		))
+	}
+	if !database.DataChecksumsEnabled {
+		warnings = append(warnings, "managed PostgreSQL data checksums are not enabled")
+	}
+	if !postgresStorageQuantitiesEqual(database.StorageSize, postgres.Storage.Size) {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL storage size is %q; expected %q",
+			database.StorageSize,
+			postgres.Storage.Size,
+		))
+	}
+	if strings.TrimSpace(database.StorageClass) != strings.TrimSpace(postgres.Storage.StorageClass) {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL storage class is %q; expected %q",
+			database.StorageClass,
+			postgres.Storage.StorageClass,
+		))
+	}
+	if database.DesiredInstances != desired {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL Cluster specifies %d instances; expected %d",
+			database.DesiredInstances,
+			desired,
+		))
+	}
+	if !strings.EqualFold(strings.TrimSpace(database.SynchronousMethod), "any") {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL synchronous method is %q; expected %q",
+			database.SynchronousMethod,
+			"any",
+		))
+	}
+	expectedSynchronousReplicas := int32(postgres.Synchronous.Replicas)
+	if database.SynchronousReplicas != expectedSynchronousReplicas {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL synchronous replica count is %d; expected %d",
+			database.SynchronousReplicas,
+			expectedSynchronousReplicas,
+		))
+	}
+	if !strings.EqualFold(strings.TrimSpace(database.DataDurability), strings.TrimSpace(postgres.Synchronous.DataDurability)) {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL data durability is %q; expected %q",
+			database.DataDurability,
+			postgres.Synchronous.DataDurability,
+		))
+	}
+	if !database.FailoverQuorumEnabled {
+		warnings = append(warnings, "managed PostgreSQL failover quorum is disabled in the Cluster specification")
+	}
+	if !strings.EqualFold(strings.TrimSpace(database.AntiAffinityType), "required") {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL pod anti-affinity type is %q; expected %q",
+			database.AntiAffinityType,
+			"required",
+		))
+	}
+	if strings.TrimSpace(database.TopologyKey) != "kubernetes.io/hostname" {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL topology key is %q; expected %q",
+			database.TopologyKey,
+			"kubernetes.io/hostname",
+		))
+	}
+	expectedArchitecture := postgresArchitecture(cfg.Placement.Arch)
+	if !strings.EqualFold(strings.TrimSpace(database.Architecture), expectedArchitecture) {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL placement architecture is %q; expected %q",
+			database.Architecture,
+			expectedArchitecture,
+		))
+	}
+	if !strings.EqualFold(strings.TrimSpace(database.PasswordEncryption), "scram-sha-256") {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL password encryption is %q; expected %q",
+			database.PasswordEncryption,
+			"scram-sha-256",
+		))
+	}
+	if !database.RejectsNonTLS {
+		warnings = append(warnings, "managed PostgreSQL does not reject non-TLS client connections")
+	}
+	if !database.RequiresApplicationSCRAM {
+		warnings = append(warnings, "managed PostgreSQL application HBA rule does not require SCRAM-SHA-256 over TLS")
+	}
+
+	if !database.FailoverQuorumPresent {
+		return append(warnings, "managed PostgreSQL FailoverQuorum status object is not present")
+	}
+	if !strings.EqualFold(strings.TrimSpace(database.FailoverQuorumMethod), "any") {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL FailoverQuorum method is %q; expected %q",
+			database.FailoverQuorumMethod,
+			"any",
+		))
+	}
+	if database.FailoverQuorumStandbyNumber != expectedSynchronousReplicas {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL FailoverQuorum standby number is %d; expected %d",
+			database.FailoverQuorumStandbyNumber,
+			expectedSynchronousReplicas,
+		))
+	}
+	if strings.TrimSpace(database.FailoverQuorumPrimary) == "" {
+		warnings = append(warnings, "managed PostgreSQL FailoverQuorum primary is not reported")
+	} else if database.FailoverQuorumPrimary != database.Primary {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL FailoverQuorum primary is %q; current primary is %q",
+			database.FailoverQuorumPrimary,
+			database.Primary,
+		))
+	}
+	standbyNames := uniqueNonEmptyStrings(database.FailoverQuorumStandbyNames)
+	if len(standbyNames) != len(database.FailoverQuorumStandbyNames) {
+		warnings = append(warnings, "managed PostgreSQL FailoverQuorum reports duplicate or empty standby names")
+	}
+	expectedStandbyNames := make(map[string]struct{}, len(database.RunningInstances))
+	for _, instanceName := range database.RunningInstances {
+		instanceName = strings.TrimSpace(instanceName)
+		if instanceName != "" && instanceName != database.Primary {
+			expectedStandbyNames[instanceName] = struct{}{}
+		}
+	}
+	if !equalStringSets(standbyNames, expectedStandbyNames) {
+		warnings = append(warnings, fmt.Sprintf(
+			"managed PostgreSQL FailoverQuorum standby names are %s; expected current running replicas %s",
+			formatStringSet(standbyNames),
+			formatStringSet(expectedStandbyNames),
+		))
+	}
+	if _, containsPrimary := standbyNames[database.Primary]; strings.TrimSpace(database.Primary) != "" && containsPrimary {
+		warnings = append(warnings, "managed PostgreSQL FailoverQuorum standby names include the current primary")
+	}
+	return warnings
+}
+
+func postgresStorageQuantitiesEqual(actual string, desired string) bool {
+	actualQuantity, err := resource.ParseQuantity(strings.TrimSpace(actual))
+	if err != nil {
+		return false
+	}
+	desiredQuantity, err := resource.ParseQuantity(strings.TrimSpace(desired))
+	if err != nil {
+		return false
+	}
+	return actualQuantity.Cmp(desiredQuantity) == 0
+}
+
+func postgresArchitecture(placement string) string {
+	placement = strings.TrimSpace(placement)
+	if separator := strings.LastIndex(placement, "/"); separator >= 0 {
+		return placement[separator+1:]
+	}
+	return placement
+}
+
+func uniqueNonEmptyStrings(values []string) map[string]struct{} {
+	unique := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			unique[value] = struct{}{}
+		}
+	}
+	return unique
+}
+
+func equalStringSets(left map[string]struct{}, right map[string]struct{}) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for value := range left {
+		if _, exists := right[value]; !exists {
+			return false
+		}
+	}
+	return true
+}
+
+func formatStringSet(values map[string]struct{}) string {
+	ordered := make([]string, 0, len(values))
+	for value := range values {
+		ordered = append(ordered, value)
+	}
+	sort.Strings(ordered)
+	return strings.Join(ordered, ", ")
 }
 
 func (s AppService) GetDeploymentLogs(req *deployerv1.GetDeploymentLogsRequest, stream deployerv1.AppService_GetDeploymentLogsServer) error {

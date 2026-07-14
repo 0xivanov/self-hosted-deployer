@@ -16,9 +16,12 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	appstyped "k8s.io/client-go/kubernetes/typed/apps/v1"
+	batchtyped "k8s.io/client-go/kubernetes/typed/batch/v1"
+	coordinationtyped "k8s.io/client-go/kubernetes/typed/coordination/v1"
 	coretyped "k8s.io/client-go/kubernetes/typed/core/v1"
 	networkingtyped "k8s.io/client-go/kubernetes/typed/networking/v1"
 	policytyped "k8s.io/client-go/kubernetes/typed/policy/v1"
+	rbactyped "k8s.io/client-go/kubernetes/typed/rbac/v1"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
@@ -34,6 +37,18 @@ var clusterIssuerResource = schema.GroupVersionResource{
 	Resource: "clusterissuers",
 }
 
+var postgresClusterResource = schema.GroupVersionResource{
+	Group:    "postgresql.cnpg.io",
+	Version:  "v1",
+	Resource: "clusters",
+}
+
+var postgresFailoverQuorumResource = schema.GroupVersionResource{
+	Group:    "postgresql.cnpg.io",
+	Version:  "v1",
+	Resource: "failoverquorums",
+}
+
 type ControllerConfig struct {
 	KubeconfigPath string
 	Namespace      string
@@ -41,18 +56,26 @@ type ControllerConfig struct {
 }
 
 type Controller struct {
-	namespace   string
-	tls         TLSConfig
-	namespaces  coretyped.NamespaceInterface
-	ingresses   networkingtyped.IngressInterface
-	services    coretyped.ServiceInterface
-	appSecrets  coretyped.SecretInterface
-	nodes       coretyped.NodeInterface
-	pods        coretyped.PodInterface
-	evictions   policytyped.EvictionInterface
-	pdbs        policytyped.PodDisruptionBudgetInterface
-	deployments appstyped.DeploymentInterface
-	issuers     dynamic.ResourceInterface
+	namespace       string
+	tls             TLSConfig
+	namespaces      coretyped.NamespaceInterface
+	ingresses       networkingtyped.IngressInterface
+	services        coretyped.ServiceInterface
+	appSecrets      coretyped.SecretInterface
+	nodes           coretyped.NodeInterface
+	pods            coretyped.PodInterface
+	serviceAccounts coretyped.ServiceAccountInterface
+	pvcs            coretyped.PersistentVolumeClaimInterface
+	evictions       policytyped.EvictionInterface
+	pdbs            policytyped.PodDisruptionBudgetInterface
+	deployments     appstyped.DeploymentInterface
+	jobs            batchtyped.JobInterface
+	leases          coordinationtyped.LeaseInterface
+	roles           rbactyped.RoleInterface
+	roleBindings    rbactyped.RoleBindingInterface
+	issuers         dynamic.ResourceInterface
+	databases       dynamic.ResourceInterface
+	quorums         dynamic.ResourceInterface
 }
 
 func NewController(cfg ControllerConfig) (*Controller, error) {
@@ -69,29 +92,38 @@ func NewController(cfg ControllerConfig) (*Controller, error) {
 		return nil, fmt.Errorf("create Kubernetes ingress client: %w", err)
 	}
 
+	dynamicClient, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("create Kubernetes dynamic client: %w", err)
+	}
+
 	tlsConfig := cfg.TLS.WithDefaults()
 	var issuers dynamic.ResourceInterface
 	if tlsConfig.Enabled() {
-		dynamicClient, err := dynamic.NewForConfig(restConfig)
-		if err != nil {
-			return nil, fmt.Errorf("create cert-manager client: %w", err)
-		}
 		issuers = dynamicClient.Resource(clusterIssuerResource)
 	}
 
 	return &Controller{
-		namespace:   namespace,
-		tls:         tlsConfig,
-		namespaces:  clientset.CoreV1().Namespaces(),
-		ingresses:   clientset.NetworkingV1().Ingresses(namespace),
-		services:    clientset.CoreV1().Services(namespace),
-		appSecrets:  clientset.CoreV1().Secrets(namespace),
-		nodes:       clientset.CoreV1().Nodes(),
-		pods:        clientset.CoreV1().Pods(namespace),
-		evictions:   clientset.PolicyV1().Evictions(namespace),
-		pdbs:        clientset.PolicyV1().PodDisruptionBudgets(namespace),
-		deployments: clientset.AppsV1().Deployments(namespace),
-		issuers:     issuers,
+		namespace:       namespace,
+		tls:             tlsConfig,
+		namespaces:      clientset.CoreV1().Namespaces(),
+		ingresses:       clientset.NetworkingV1().Ingresses(namespace),
+		services:        clientset.CoreV1().Services(namespace),
+		appSecrets:      clientset.CoreV1().Secrets(namespace),
+		nodes:           clientset.CoreV1().Nodes(),
+		pods:            clientset.CoreV1().Pods(namespace),
+		serviceAccounts: clientset.CoreV1().ServiceAccounts(namespace),
+		pvcs:            clientset.CoreV1().PersistentVolumeClaims(namespace),
+		evictions:       clientset.PolicyV1().Evictions(namespace),
+		pdbs:            clientset.PolicyV1().PodDisruptionBudgets(namespace),
+		deployments:     clientset.AppsV1().Deployments(namespace),
+		jobs:            clientset.BatchV1().Jobs(namespace),
+		leases:          clientset.CoordinationV1().Leases(namespace),
+		roles:           clientset.RbacV1().Roles(namespace),
+		roleBindings:    clientset.RbacV1().RoleBindings(namespace),
+		issuers:         issuers,
+		databases:       dynamicClient.Resource(postgresClusterResource).Namespace(namespace),
+		quorums:         dynamicClient.Resource(postgresFailoverQuorumResource).Namespace(namespace),
 	}, nil
 }
 
@@ -130,6 +162,9 @@ func (c *Controller) Reconcile(ctx context.Context, cfg appconfig.Config, secret
 	if err != nil {
 		return fmt.Errorf("get Ingress %q: %w", desired.Name, err)
 	}
+	if err := requireAppResourceOwnership("Ingress", existing.Name, cfg.Name, existing.Labels); err != nil {
+		return err
+	}
 
 	desired.ResourceVersion = existing.ResourceVersion
 	if _, err := c.ingresses.Update(ctx, desired, metav1.UpdateOptions{}); err != nil {
@@ -153,7 +188,17 @@ func (c *Controller) Delete(ctx context.Context, appName string) error {
 }
 
 func (c *Controller) deleteIngress(ctx context.Context, appName string) error {
-	err := c.ingresses.Delete(ctx, appName, metav1.DeleteOptions{})
+	existing, err := c.ingresses.Get(ctx, appName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get Ingress %q for deletion: %w", appName, err)
+	}
+	if err := requireAppResourceOwnership("Ingress", existing.Name, appName, existing.Labels); err != nil {
+		return err
+	}
+	err = c.ingresses.Delete(ctx, appName, ownedDeleteOptions(existing))
 	if apierrors.IsNotFound(err) {
 		return nil
 	}

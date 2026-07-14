@@ -9,6 +9,7 @@ The platform is designed around a stable VPS control plane, WireGuard private ne
 - [Product Spec](PRODUCT_SPEC.md)
 - [Implementation Plan](IMPLEMENTATION_PLAN.md)
 - [VPS + Raspberry Pi end-to-end setup](docs/vps-raspberry-pi-e2e.md)
+- [PostgreSQL high availability](docs/postgres-ha.md)
 
 ## Local Development
 
@@ -42,10 +43,12 @@ make release
 ```
 
 - [Operations guide](docs/operations.md)
+- [PostgreSQL high availability](docs/postgres-ha.md)
 - [VPS + Raspberry Pi end-to-end setup](docs/vps-raspberry-pi-e2e.md)
 - Systemd unit templates: `deploy/systemd/`
 - Environment examples: `deploy/env/`
 - Agent installer: `scripts/install-agent.sh`
+- CloudNativePG installer: `scripts/install-cnpg.sh`
 - MVP smoke test: `scripts/smoke-test.sh`
 
 ## Protobuf

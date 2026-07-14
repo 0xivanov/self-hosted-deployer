@@ -3,7 +3,7 @@ set -eu
 
 usage() {
   cat >&2 <<'USAGE'
-Usage: install-release.sh [--repo OWNER/REPO] [--version VERSION|latest] [--role auto|server|agent|cli|all] [--no-restart]
+Usage: install-release.sh [--repo OWNER/REPO] [--version VERSION|latest] [--role auto|server|agent|cli|all] [--no-restart] [--no-enable-timer]
 
 Downloads a GitHub release artifact for the current Linux architecture,
 verifies it against the release checksums.txt, installs binaries into
@@ -13,8 +13,9 @@ Options:
   --repo OWNER/REPO        GitHub repository (default: 0xivanov/self-hosted-deployer)
   --version VERSION        Release tag, for example v0.1.0 (default: latest)
   --role ROLE              auto, server, agent, cli, or all (default: auto)
-  --install-dir DIR        Binary install directory (default: /usr/local/bin)
+  --install-dir DIR        CLI-only install directory (default: /usr/local/bin)
   --no-restart             Install files without restarting systemd services
+  --no-enable-timer        Do not enable or start the automatic-update timer
 USAGE
 }
 
@@ -23,6 +24,7 @@ VERSION="latest"
 ROLE="auto"
 INSTALL_DIR="/usr/local/bin"
 RESTART="1"
+ENABLE_TIMER="1"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -66,6 +68,10 @@ while [ "$#" -gt 0 ]; do
       RESTART="0"
       shift
       ;;
+    --no-enable-timer)
+      ENABLE_TIMER="0"
+      shift
+      ;;
     --help|-h)
       usage
       exit 0
@@ -81,6 +87,23 @@ done
 if [ "$(id -u)" != "0" ]; then
   echo "install-release.sh must run as root; rerun with sudo" >&2
   exit 1
+fi
+
+if ! command -v flock >/dev/null 2>&1; then
+  echo "flock is required to serialize deployer updates" >&2
+  exit 1
+fi
+UPDATE_LOCK="/run/deployer-auto-update.lock"
+inherited_update_lock="0"
+if command -v readlink >/dev/null 2>&1 && [ -e /proc/self/fd/9 ]; then
+  inherited_fd=$(readlink /proc/self/fd/9 2>/dev/null || true)
+  if [ "$inherited_fd" = "$UPDATE_LOCK" ] && flock -n 9; then
+    inherited_update_lock="1"
+  fi
+fi
+if [ "$inherited_update_lock" != "1" ]; then
+  exec 9>"$UPDATE_LOCK"
+  flock 9
 fi
 
 if [ "$(uname -s)" != "Linux" ]; then
@@ -186,6 +209,8 @@ install_server() {
   install -d -m 0755 /usr/local/sbin
   install -m 0755 "$PACKAGE_DIR/deployer-server" "$INSTALL_DIR/deployer-server"
   install -m 0755 "$PACKAGE_DIR/scripts/auto-update.sh" /usr/local/sbin/deployer-auto-update
+  install -m 0755 "$PACKAGE_DIR/scripts/install-release.sh" /usr/local/sbin/deployer-install-release.new
+  mv -f /usr/local/sbin/deployer-install-release.new /usr/local/sbin/deployer-install-release
   install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-server.service" /etc/systemd/system/deployer-server.service
   install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-auto-update-server.service" /etc/systemd/system/deployer-auto-update-server.service
   install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-auto-update-server.timer" /etc/systemd/system/deployer-auto-update-server.timer
@@ -196,6 +221,8 @@ install_agent() {
   install -d -m 0755 /usr/local/sbin
   install -m 0755 "$PACKAGE_DIR/deployer-agent" "$INSTALL_DIR/deployer-agent"
   install -m 0755 "$PACKAGE_DIR/scripts/auto-update.sh" /usr/local/sbin/deployer-auto-update
+  install -m 0755 "$PACKAGE_DIR/scripts/install-release.sh" /usr/local/sbin/deployer-install-release.new
+  mv -f /usr/local/sbin/deployer-install-release.new /usr/local/sbin/deployer-install-release
   install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-agent.service" /etc/systemd/system/deployer-agent.service
   install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-auto-update-agent.service" /etc/systemd/system/deployer-auto-update-agent.service
   install -m 0644 "$PACKAGE_DIR/deploy/systemd/deployer-auto-update-agent.timer" /etc/systemd/system/deployer-auto-update-agent.timer
@@ -208,6 +235,15 @@ if [ "$ROLE" = "auto" ]; then
   elif has_unit deployer-agent.service; then
     ROLE="agent"
   fi
+fi
+
+if [ "$INSTALL_DIR" != "/usr/local/bin" ]; then
+  case "$ROLE" in
+    server|agent|all)
+      echo "--install-dir is only supported for the cli role; system services use /usr/local/bin" >&2
+      exit 2
+      ;;
+  esac
 fi
 
 case "$ROLE" in
@@ -228,17 +264,19 @@ esac
 
 if command -v systemctl >/dev/null 2>&1; then
   systemctl daemon-reload
-  case "$ROLE" in
-    server)
-      systemctl enable --now deployer-auto-update-server.timer
-      ;;
-    agent)
-      systemctl enable --now deployer-auto-update-agent.timer
-      ;;
-    all)
-      systemctl enable --now deployer-auto-update-server.timer deployer-auto-update-agent.timer
-      ;;
-  esac
+  if [ "$ENABLE_TIMER" = "1" ]; then
+    case "$ROLE" in
+      server)
+        systemctl enable --now deployer-auto-update-server.timer
+        ;;
+      agent)
+        systemctl enable --now deployer-auto-update-agent.timer
+        ;;
+      all)
+        systemctl enable --now deployer-auto-update-server.timer deployer-auto-update-agent.timer
+        ;;
+    esac
+  fi
   if [ "$RESTART" = "1" ]; then
     case "$ROLE" in
       server)

@@ -104,6 +104,16 @@ message GetAppStatusResponse {
   int32 available_replicas = 6;
   repeated string running_nodes = 7;
   repeated string warnings = 8;
+  DatabaseStatus database = 9;
+}
+
+message DatabaseStatus {
+  string state = 1;
+  string phase = 2;
+  int32 desired_instances = 3;
+  int32 ready_instances = 4;
+  string primary = 5;
+  repeated string running_nodes = 6;
 }
 
 message GetDeploymentLogsRequest {
