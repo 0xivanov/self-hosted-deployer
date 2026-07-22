@@ -279,6 +279,18 @@ func TestControllerStatusUsesAvailableReplicas(t *testing.T) {
 }
 
 func TestDeploymentMapsResiliencePolicies(t *testing.T) {
+	t.Run("any architecture does not constrain multi-architecture images", func(t *testing.T) {
+		cfg := testAppConfig()
+		cfg.Placement.Arch = appconfig.PlacementArchAny
+		deployment, err := deploymentForApp(cfg, DefaultNamespace, "")
+		if err != nil {
+			t.Fatalf("render multi-architecture deployment: %v", err)
+		}
+		if len(deployment.Spec.Template.Spec.NodeSelector) != 0 {
+			t.Fatalf("unexpected architecture selector: %#v", deployment.Spec.Template.Spec.NodeSelector)
+		}
+	})
+
 	t.Run("resilient adds replicas and required spread", func(t *testing.T) {
 		cfg := testAppConfig()
 		cfg.Deploy.Replicas = 1

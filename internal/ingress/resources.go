@@ -607,11 +607,15 @@ func managedAppLabels(appName string) map[string]string {
 }
 
 func placementArchitecture(placement string) string {
-	parts := strings.Split(strings.TrimSpace(placement), "/")
+	placement = strings.TrimSpace(placement)
+	if placement == appconfig.PlacementArchAny {
+		return ""
+	}
+	parts := strings.Split(placement, "/")
 	if len(parts) == 2 {
 		return parts[1]
 	}
-	return strings.TrimSpace(placement)
+	return placement
 }
 
 func placementLabelKey(key string) string {

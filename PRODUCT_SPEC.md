@@ -376,6 +376,8 @@ database:
     retentionPolicy: retain
 ```
 
+Set `placement.arch` to `any` only when the referenced image is multi-architecture. This removes the architecture node selector and allows a resilient deployment to spread across mixed AMD64 and ARM64 nodes. Managed PostgreSQL still requires a single explicit architecture.
+
 Deploy:
 
 ```bash

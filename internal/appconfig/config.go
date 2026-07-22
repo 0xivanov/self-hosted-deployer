@@ -12,6 +12,7 @@ import (
 
 const (
 	DefaultPlacementArch  = "linux/arm64"
+	PlacementArchAny      = "any"
 	DefaultDeployStrategy = "rolling"
 	DefaultStateMode      = "stateless"
 	DefaultResilienceMode = "basic"
