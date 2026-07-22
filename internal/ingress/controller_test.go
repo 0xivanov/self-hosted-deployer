@@ -2,6 +2,7 @@ package ingress
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
@@ -336,6 +338,79 @@ func TestDeploymentMapsResiliencePolicies(t *testing.T) {
 			t.Fatalf("unexpected pinned selector: %#v", deployment.Spec.Template.Spec.NodeSelector)
 		}
 	})
+}
+
+func TestControllerMigratesLegacyHardAntiAffinityBeforeStrictRollouts(t *testing.T) {
+	cfg := testAppConfig()
+	cfg.Resilience.Mode = appconfig.ResilienceResilient
+	desired, err := deploymentForApp(cfg, DefaultNamespace, "")
+	if err != nil {
+		t.Fatalf("render desired deployment: %v", err)
+	}
+	existing := desired.DeepCopy()
+	existing.ResourceVersion = "1"
+	existing.Generation = 1
+	existing.Spec.Strategy = legacyAffinityMigrationStrategy()
+	existing.Spec.Template.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution =
+		[]corev1.PodAffinityTerm{{
+			LabelSelector: &metav1.LabelSelector{MatchLabels: appLabels(cfg.Name)},
+			TopologyKey:   "kubernetes.io/hostname",
+		}}
+	existing.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution = nil
+
+	clientset := fake.NewSimpleClientset(existing)
+	var updates []*appsv1.Deployment
+	clientset.PrependReactor("update", "deployments", func(action k8stesting.Action) (bool, k8sruntime.Object, error) {
+		update := action.(k8stesting.UpdateAction).GetObject().(*appsv1.Deployment).DeepCopy()
+		update.ResourceVersion = strconv.Itoa(len(updates) + 2)
+		update.Generation = int64(len(updates) + 2)
+		antiAffinity := update.Spec.Template.Spec.Affinity.PodAntiAffinity
+		if update.Annotations[legacyAffinityMigrationAnnotation] == "true" &&
+			len(antiAffinity.PreferredDuringSchedulingIgnoredDuringExecution) > 0 {
+			replicas := *update.Spec.Replicas
+			update.Status = appsv1.DeploymentStatus{
+				ObservedGeneration: update.Generation,
+				UpdatedReplicas:    replicas,
+				AvailableReplicas:  replicas,
+			}
+		}
+		if err := clientset.Tracker().Update(
+			schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"},
+			update,
+			DefaultNamespace,
+		); err != nil {
+			return true, nil, err
+		}
+		updates = append(updates, update.DeepCopy())
+		return true, update, nil
+	})
+	controller := &Controller{
+		namespace:   DefaultNamespace,
+		deployments: clientset.AppsV1().Deployments(DefaultNamespace),
+	}
+
+	if err := controller.reconcileDeployment(context.Background(), cfg, ""); err != nil {
+		t.Fatalf("migrate legacy deployment: %v", err)
+	}
+	if len(updates) != 3 {
+		t.Fatalf("deployment updates = %d, want bridge, migration, and final update", len(updates))
+	}
+	bridge, migration, final := updates[0], updates[1], updates[2]
+	if bridge.Annotations[legacyAffinityMigrationAnnotation] != "true" ||
+		bridge.Spec.Strategy.RollingUpdate.MaxUnavailable.IntVal != 1 ||
+		bridge.Spec.Strategy.RollingUpdate.MaxSurge.IntVal != 0 {
+		t.Fatalf("unexpected migration bridge: %#v", bridge)
+	}
+	if migration.Annotations[legacyAffinityMigrationAnnotation] != "true" ||
+		len(migration.Spec.Template.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution) != 0 ||
+		len(migration.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution) != 1 {
+		t.Fatalf("unexpected migration rollout: %#v", migration)
+	}
+	if final.Annotations[legacyAffinityMigrationAnnotation] != "" ||
+		final.Spec.Strategy.RollingUpdate.MaxUnavailable.IntVal != 0 ||
+		final.Spec.Strategy.RollingUpdate.MaxSurge.IntVal != 1 {
+		t.Fatalf("unexpected finalized deployment: %#v", final)
+	}
 }
 
 func TestControllerManagesNodeReadinessAndReportsRunningNodes(t *testing.T) {

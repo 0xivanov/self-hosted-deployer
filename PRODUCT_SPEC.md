@@ -590,6 +590,13 @@ completed revision to collapse onto one node.
 Public routes attach a Traefik retry middleware and a bounded backend dial
 timeout. This lets idempotent requests move to another healthy replica while
 Kubernetes is still removing a stale endpoint after a node network failure.
+Route dependencies are created before their Service or Ingress references and
+removed only after those references are gone, so reconciliation does not make
+an otherwise healthy route disappear temporarily.
+
+Existing resilient deployments that still use hard pod anti-affinity are
+migrated through a one-at-a-time bridge rollout before strict surge rollouts
+are enabled. This prevents the legacy pods from deadlocking the first upgrade.
 
 Example topology spread:
 

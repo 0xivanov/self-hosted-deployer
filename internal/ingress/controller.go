@@ -151,6 +151,12 @@ func (c *Controller) Reconcile(ctx context.Context, cfg appconfig.Config, secret
 	if err := c.ensureSchedulableWorker(ctx, cfg); err != nil {
 		return err
 	}
+	if strings.TrimSpace(cfg.Routing.Domain) == "" {
+		if err := c.deleteIngress(ctx, cfg.Name); err != nil {
+			return err
+		}
+		return c.reconcileAppResources(ctx, cfg, secretValues, secretRevision)
+	}
 	if err := c.reconcileAppResources(ctx, cfg, secretValues, secretRevision); err != nil {
 		return err
 	}

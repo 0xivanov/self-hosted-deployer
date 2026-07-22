@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	appsv1 "k8s.io/api/apps/v1"
@@ -15,7 +16,11 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-const secretHashAnnotation = "deployer.io/secret-hash"
+const (
+	secretHashAnnotation              = "deployer.io/secret-hash"
+	legacyAffinityMigrationAnnotation = "deployer.io/legacy-affinity-migration"
+	legacyAffinityMigrationTimeout    = 5 * time.Minute
+)
 
 func (c *Controller) reconcileAppResources(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string) error {
 	if err := c.reconcileNamespace(ctx); err != nil {
@@ -33,11 +38,20 @@ func (c *Controller) reconcileAppResources(ctx context.Context, cfg appconfig.Co
 	if err := c.reconcilePodDisruptionBudget(ctx, cfg); err != nil {
 		return err
 	}
-	if err := c.reconcileService(ctx, cfg); err != nil {
-		return err
-	}
-	if err := c.reconcileTrafficResilienceResources(ctx, cfg); err != nil {
-		return err
+	if strings.TrimSpace(cfg.Routing.Domain) != "" {
+		if err := c.reconcileTrafficResilienceResources(ctx, cfg); err != nil {
+			return err
+		}
+		if err := c.reconcileService(ctx, cfg); err != nil {
+			return err
+		}
+	} else {
+		if err := c.reconcileService(ctx, cfg); err != nil {
+			return err
+		}
+		if err := c.reconcileTrafficResilienceResources(ctx, cfg); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -107,11 +121,114 @@ func (c *Controller) reconcileDeployment(ctx context.Context, cfg appconfig.Conf
 	if err := requireAppResourceOwnership("Deployment", existing.Name, cfg.Name, existing.Labels); err != nil {
 		return err
 	}
+	if needsLegacyAffinityMigration(existing, desired) {
+		return c.migrateLegacyAffinity(ctx, existing, desired)
+	}
 	desired.ResourceVersion = existing.ResourceVersion
 	if _, err := c.deployments.Update(ctx, desired, metav1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("update Deployment %q: %w", desired.Name, err)
 	}
 	return nil
+}
+
+func needsLegacyAffinityMigration(existing *appsv1.Deployment, desired *appsv1.Deployment) bool {
+	if existing.Annotations[legacyAffinityMigrationAnnotation] == "true" {
+		return true
+	}
+	existingAntiAffinity := existing.Spec.Template.Spec.Affinity
+	desiredAntiAffinity := desired.Spec.Template.Spec.Affinity
+	if existingAntiAffinity == nil || existingAntiAffinity.PodAntiAffinity == nil ||
+		desiredAntiAffinity == nil || desiredAntiAffinity.PodAntiAffinity == nil {
+		return false
+	}
+	return len(existingAntiAffinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution) > 0 &&
+		len(desiredAntiAffinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution) > 0
+}
+
+func (c *Controller) migrateLegacyAffinity(
+	ctx context.Context,
+	existing *appsv1.Deployment,
+	desired *appsv1.Deployment,
+) error {
+	if existing.Annotations[legacyAffinityMigrationAnnotation] != "true" {
+		bridge := existing.DeepCopy()
+		if bridge.Annotations == nil {
+			bridge.Annotations = map[string]string{}
+		}
+		bridge.Annotations[legacyAffinityMigrationAnnotation] = "true"
+		bridge.Spec.Strategy = legacyAffinityMigrationStrategy()
+		updated, err := c.deployments.Update(ctx, bridge, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("prepare Deployment %q affinity migration: %w", desired.Name, err)
+		}
+		existing = updated
+	}
+
+	migration := desired.DeepCopy()
+	if migration.Annotations == nil {
+		migration.Annotations = map[string]string{}
+	}
+	migration.Annotations[legacyAffinityMigrationAnnotation] = "true"
+	migration.Spec.Strategy = legacyAffinityMigrationStrategy()
+	migration.ResourceVersion = existing.ResourceVersion
+	updated, err := c.deployments.Update(ctx, migration, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("start Deployment %q affinity migration: %w", desired.Name, err)
+	}
+
+	waitCtx, cancel := context.WithTimeout(ctx, legacyAffinityMigrationTimeout)
+	defer cancel()
+	latest, err := c.waitForDeploymentRollout(waitCtx, updated.Name, updated.Generation)
+	if err != nil {
+		return fmt.Errorf("wait for Deployment %q affinity migration: %w", desired.Name, err)
+	}
+	desired.ResourceVersion = latest.ResourceVersion
+	if _, err := c.deployments.Update(ctx, desired, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("finalize Deployment %q affinity migration: %w", desired.Name, err)
+	}
+	return nil
+}
+
+func (c *Controller) waitForDeploymentRollout(
+	ctx context.Context,
+	name string,
+	generation int64,
+) (*appsv1.Deployment, error) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		deployment, err := c.deployments.Get(ctx, name, metav1.GetOptions{})
+		if err != nil {
+			return nil, err
+		}
+		desiredReplicas := int32(1)
+		if deployment.Spec.Replicas != nil {
+			desiredReplicas = *deployment.Spec.Replicas
+		}
+		if deployment.Status.ObservedGeneration >= generation &&
+			deployment.Status.UpdatedReplicas == desiredReplicas &&
+			deployment.Status.AvailableReplicas == desiredReplicas &&
+			deployment.Status.UnavailableReplicas == 0 {
+			return deployment, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func legacyAffinityMigrationStrategy() appsv1.DeploymentStrategy {
+	maxUnavailable := intstr.FromInt32(1)
+	maxSurge := intstr.FromInt32(0)
+	return appsv1.DeploymentStrategy{
+		Type: appsv1.RollingUpdateDeploymentStrategyType,
+		RollingUpdate: &appsv1.RollingUpdateDeployment{
+			MaxUnavailable: &maxUnavailable,
+			MaxSurge:       &maxSurge,
+		},
+	}
 }
 
 func (c *Controller) reconcileSecret(ctx context.Context, cfg appconfig.Config, secretValues map[string]string) error {
