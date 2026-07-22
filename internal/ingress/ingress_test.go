@@ -28,6 +28,10 @@ func TestManifestForAppRoutesDomainToService(t *testing.T) {
 	if manifest.Metadata.Name != "my-api" || manifest.Metadata.Namespace != DefaultNamespace {
 		t.Fatalf("unexpected metadata: %#v", manifest.Metadata)
 	}
+	if manifest.Metadata.Annotations[traefikRetryMiddlewareAnnotation] !=
+		traefikResourceReference(DefaultNamespace, "my-api") {
+		t.Fatalf("unexpected retry middleware annotation: %#v", manifest.Metadata.Annotations)
+	}
 	if len(manifest.Spec.Rules) != 1 || manifest.Spec.Rules[0].Host != "api.example.com" {
 		t.Fatalf("unexpected rules: %#v", manifest.Spec.Rules)
 	}

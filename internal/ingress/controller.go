@@ -49,6 +49,18 @@ var postgresFailoverQuorumResource = schema.GroupVersionResource{
 	Resource: "failoverquorums",
 }
 
+var retryMiddlewareResource = schema.GroupVersionResource{
+	Group:    "traefik.io",
+	Version:  "v1alpha1",
+	Resource: "middlewares",
+}
+
+var serversTransportResource = schema.GroupVersionResource{
+	Group:    "traefik.io",
+	Version:  "v1alpha1",
+	Resource: "serverstransports",
+}
+
 type ControllerConfig struct {
 	KubeconfigPath string
 	Namespace      string
@@ -56,26 +68,28 @@ type ControllerConfig struct {
 }
 
 type Controller struct {
-	namespace       string
-	tls             TLSConfig
-	namespaces      coretyped.NamespaceInterface
-	ingresses       networkingtyped.IngressInterface
-	services        coretyped.ServiceInterface
-	appSecrets      coretyped.SecretInterface
-	nodes           coretyped.NodeInterface
-	pods            coretyped.PodInterface
-	serviceAccounts coretyped.ServiceAccountInterface
-	pvcs            coretyped.PersistentVolumeClaimInterface
-	evictions       policytyped.EvictionInterface
-	pdbs            policytyped.PodDisruptionBudgetInterface
-	deployments     appstyped.DeploymentInterface
-	jobs            batchtyped.JobInterface
-	leases          coordinationtyped.LeaseInterface
-	roles           rbactyped.RoleInterface
-	roleBindings    rbactyped.RoleBindingInterface
-	issuers         dynamic.ResourceInterface
-	databases       dynamic.ResourceInterface
-	quorums         dynamic.ResourceInterface
+	namespace        string
+	tls              TLSConfig
+	namespaces       coretyped.NamespaceInterface
+	ingresses        networkingtyped.IngressInterface
+	services         coretyped.ServiceInterface
+	appSecrets       coretyped.SecretInterface
+	nodes            coretyped.NodeInterface
+	pods             coretyped.PodInterface
+	serviceAccounts  coretyped.ServiceAccountInterface
+	pvcs             coretyped.PersistentVolumeClaimInterface
+	evictions        policytyped.EvictionInterface
+	pdbs             policytyped.PodDisruptionBudgetInterface
+	deployments      appstyped.DeploymentInterface
+	jobs             batchtyped.JobInterface
+	leases           coordinationtyped.LeaseInterface
+	roles            rbactyped.RoleInterface
+	roleBindings     rbactyped.RoleBindingInterface
+	issuers          dynamic.ResourceInterface
+	databases        dynamic.ResourceInterface
+	quorums          dynamic.ResourceInterface
+	middlewares      dynamic.ResourceInterface
+	serverTransports dynamic.ResourceInterface
 }
 
 func NewController(cfg ControllerConfig) (*Controller, error) {
@@ -104,26 +118,28 @@ func NewController(cfg ControllerConfig) (*Controller, error) {
 	}
 
 	return &Controller{
-		namespace:       namespace,
-		tls:             tlsConfig,
-		namespaces:      clientset.CoreV1().Namespaces(),
-		ingresses:       clientset.NetworkingV1().Ingresses(namespace),
-		services:        clientset.CoreV1().Services(namespace),
-		appSecrets:      clientset.CoreV1().Secrets(namespace),
-		nodes:           clientset.CoreV1().Nodes(),
-		pods:            clientset.CoreV1().Pods(namespace),
-		serviceAccounts: clientset.CoreV1().ServiceAccounts(namespace),
-		pvcs:            clientset.CoreV1().PersistentVolumeClaims(namespace),
-		evictions:       clientset.PolicyV1().Evictions(namespace),
-		pdbs:            clientset.PolicyV1().PodDisruptionBudgets(namespace),
-		deployments:     clientset.AppsV1().Deployments(namespace),
-		jobs:            clientset.BatchV1().Jobs(namespace),
-		leases:          clientset.CoordinationV1().Leases(namespace),
-		roles:           clientset.RbacV1().Roles(namespace),
-		roleBindings:    clientset.RbacV1().RoleBindings(namespace),
-		issuers:         issuers,
-		databases:       dynamicClient.Resource(postgresClusterResource).Namespace(namespace),
-		quorums:         dynamicClient.Resource(postgresFailoverQuorumResource).Namespace(namespace),
+		namespace:        namespace,
+		tls:              tlsConfig,
+		namespaces:       clientset.CoreV1().Namespaces(),
+		ingresses:        clientset.NetworkingV1().Ingresses(namespace),
+		services:         clientset.CoreV1().Services(namespace),
+		appSecrets:       clientset.CoreV1().Secrets(namespace),
+		nodes:            clientset.CoreV1().Nodes(),
+		pods:             clientset.CoreV1().Pods(namespace),
+		serviceAccounts:  clientset.CoreV1().ServiceAccounts(namespace),
+		pvcs:             clientset.CoreV1().PersistentVolumeClaims(namespace),
+		evictions:        clientset.PolicyV1().Evictions(namespace),
+		pdbs:             clientset.PolicyV1().PodDisruptionBudgets(namespace),
+		deployments:      clientset.AppsV1().Deployments(namespace),
+		jobs:             clientset.BatchV1().Jobs(namespace),
+		leases:           clientset.CoordinationV1().Leases(namespace),
+		roles:            clientset.RbacV1().Roles(namespace),
+		roleBindings:     clientset.RbacV1().RoleBindings(namespace),
+		issuers:          issuers,
+		databases:        dynamicClient.Resource(postgresClusterResource).Namespace(namespace),
+		quorums:          dynamicClient.Resource(postgresFailoverQuorumResource).Namespace(namespace),
+		middlewares:      dynamicClient.Resource(retryMiddlewareResource).Namespace(namespace),
+		serverTransports: dynamicClient.Resource(serversTransportResource).Namespace(namespace),
 	}, nil
 }
 
@@ -181,6 +197,7 @@ func (c *Controller) Delete(ctx context.Context, appName string) error {
 	return errors.Join(
 		c.deleteIngress(ctx, appName),
 		c.deleteService(ctx, appName),
+		c.deleteTrafficResilienceResources(ctx, appName),
 		c.deleteDeployment(ctx, appName),
 		c.deletePodDisruptionBudget(ctx, appName),
 		c.deleteAppSecret(ctx, appName),

@@ -12,6 +12,9 @@ const DefaultNamespace = "deployer-apps"
 const (
 	DefaultClusterIssuer = "deployer-letsencrypt"
 	DefaultACMEServer    = "https://acme-v02.api.letsencrypt.org/directory"
+
+	traefikRetryMiddlewareAnnotation  = "traefik.ingress.kubernetes.io/router.middlewares"
+	traefikServersTransportAnnotation = "traefik.ingress.kubernetes.io/service.serverstransport"
 )
 
 type TLSConfig struct {
@@ -117,6 +120,9 @@ func ManifestForApp(cfg appconfig.Config, namespace string, tlsConfig TLSConfig)
 				managedByLabel:           managedByDeployer,
 				"deployer.io/app":        cfg.Name,
 			},
+			Annotations: map[string]string{
+				traefikRetryMiddlewareAnnotation: traefikResourceReference(namespace, cfg.Name),
+			},
 		},
 		Spec: Spec{
 			IngressClassName: "traefik",
@@ -138,15 +144,17 @@ func ManifestForApp(cfg appconfig.Config, namespace string, tlsConfig TLSConfig)
 		},
 	}
 	if tlsConfig.Enabled() {
-		manifest.Metadata.Annotations = map[string]string{
-			"cert-manager.io/cluster-issuer":                   tlsConfig.ClusterIssuer,
-			"traefik.ingress.kubernetes.io/router.entrypoints": "websecure",
-			"traefik.ingress.kubernetes.io/router.tls":         "true",
-		}
+		manifest.Metadata.Annotations["cert-manager.io/cluster-issuer"] = tlsConfig.ClusterIssuer
+		manifest.Metadata.Annotations["traefik.ingress.kubernetes.io/router.entrypoints"] = "websecure"
+		manifest.Metadata.Annotations["traefik.ingress.kubernetes.io/router.tls"] = "true"
 		manifest.Spec.TLS = []TLS{{
 			Hosts:      []string{domain},
 			SecretName: cfg.Name + "-tls",
 		}}
 	}
 	return manifest, true, nil
+}
+
+func traefikResourceReference(namespace string, name string) string {
+	return namespace + "-" + name + "@kubernetescrd"
 }

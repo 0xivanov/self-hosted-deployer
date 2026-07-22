@@ -581,6 +581,16 @@ The platform can map resilience modes to Kubernetes primitives:
 - taints/tolerations
 - PodDisruptionBudgets
 
+Resilient stateless deployments keep every desired replica available during a
+rollout, add one temporary surge replica, and only advance after the new
+revision remains ready for a short stability window. Revision-aware topology
+spreading lets the surge replica share a node temporarily without allowing the
+completed revision to collapse onto one node.
+
+Public routes attach a Traefik retry middleware and a bounded backend dial
+timeout. This lets idempotent requests move to another healthy replica while
+Kubernetes is still removing a stale endpoint after a node network failure.
+
 Example topology spread:
 
 ```yaml
@@ -588,6 +598,8 @@ topologySpreadConstraints:
   - maxSkew: 1
     topologyKey: kubernetes.io/hostname
     whenUnsatisfiable: DoNotSchedule
+    matchLabelKeys:
+      - pod-template-hash
     labelSelector:
       matchLabels:
         app: my-api

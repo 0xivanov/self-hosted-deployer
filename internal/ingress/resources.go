@@ -36,6 +36,9 @@ func (c *Controller) reconcileAppResources(ctx context.Context, cfg appconfig.Co
 	if err := c.reconcileService(ctx, cfg); err != nil {
 		return err
 	}
+	if err := c.reconcileTrafficResilienceResources(ctx, cfg); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -316,11 +319,13 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 			TopologyKey:       "kubernetes.io/hostname",
 			WhenUnsatisfiable: whenUnsatisfiable,
 			LabelSelector:     &metav1.LabelSelector{MatchLabels: labels},
+			MatchLabelKeys:    []string{appsv1.DefaultDeploymentUniqueLabelKey},
 		}}
 	}
 	if cfg.Resilience.Mode == appconfig.ResilienceResilient {
-		maxUnavailable := intstr.FromInt32(1)
-		maxSurge := intstr.FromInt32(0)
+		deployment.Spec.MinReadySeconds = 10
+		maxUnavailable := intstr.FromInt32(0)
+		maxSurge := intstr.FromInt32(1)
 		deployment.Spec.Strategy = appsv1.DeploymentStrategy{
 			Type: appsv1.RollingUpdateDeploymentStrategyType,
 			RollingUpdate: &appsv1.RollingUpdateDeployment{
@@ -330,9 +335,12 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 		}
 		deployment.Spec.Template.Spec.Affinity = &corev1.Affinity{
 			PodAntiAffinity: &corev1.PodAntiAffinity{
-				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
-					LabelSelector: &metav1.LabelSelector{MatchLabels: labels},
-					TopologyKey:   "kubernetes.io/hostname",
+				PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{{
+					Weight: 100,
+					PodAffinityTerm: corev1.PodAffinityTerm{
+						LabelSelector: &metav1.LabelSelector{MatchLabels: labels},
+						TopologyKey:   "kubernetes.io/hostname",
+					},
 				}},
 			},
 		}
@@ -445,11 +453,16 @@ func secretForApp(cfg appconfig.Config, namespace string, secretValues map[strin
 func serviceForApp(cfg appconfig.Config, namespace string) *corev1.Service {
 	cfg.Normalize()
 	port := int32(cfg.Service.Port)
+	annotations := map[string]string{}
+	if strings.TrimSpace(cfg.Routing.Domain) != "" {
+		annotations[traefikServersTransportAnnotation] = traefikResourceReference(namespace, cfg.Name)
+	}
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      cfg.Name,
-			Namespace: namespace,
-			Labels:    managedAppLabels(cfg.Name),
+			Name:        cfg.Name,
+			Namespace:   namespace,
+			Labels:      managedAppLabels(cfg.Name),
+			Annotations: annotations,
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: appLabels(cfg.Name),

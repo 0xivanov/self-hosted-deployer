@@ -56,7 +56,8 @@ func TestControllerReconcilesAndDeletesAppResources(t *testing.T) {
 		t.Fatalf("get managed namespace: %v", err)
 	}
 	service, err := controller.services.Get(context.Background(), cfg.Name, metav1.GetOptions{})
-	if err != nil || service.Spec.Ports[0].Port != 3000 {
+	if err != nil || service.Spec.Ports[0].Port != 3000 ||
+		service.Annotations[traefikServersTransportAnnotation] != traefikResourceReference(DefaultNamespace, cfg.Name) {
 		t.Fatalf("unexpected service %#v: %v", service, err)
 	}
 	deployment, err := controller.deployments.Get(context.Background(), cfg.Name, metav1.GetOptions{})
@@ -95,6 +96,10 @@ func TestControllerReconcilesAndDeletesAppResources(t *testing.T) {
 	}
 	if _, err := controller.services.Get(context.Background(), cfg.Name, metav1.GetOptions{}); err != nil {
 		t.Fatalf("expected an app without a public route to retain its service: %v", err)
+	}
+	service, err = controller.services.Get(context.Background(), cfg.Name, metav1.GetOptions{})
+	if err != nil || service.Annotations[traefikServersTransportAnnotation] != "" {
+		t.Fatalf("expected private service without Traefik transport: %#v, %v", service, err)
 	}
 
 	if err := controller.Delete(context.Background(), cfg.Name); err != nil {
@@ -282,14 +287,18 @@ func TestDeploymentMapsResiliencePolicies(t *testing.T) {
 			t.Fatalf("render resilient deployment: %v", err)
 		}
 		if *deployment.Spec.Replicas != 2 ||
+			deployment.Spec.MinReadySeconds != 10 ||
 			len(deployment.Spec.Template.Spec.TopologySpreadConstraints) != 1 ||
 			deployment.Spec.Template.Spec.TopologySpreadConstraints[0].WhenUnsatisfiable != corev1.DoNotSchedule ||
+			len(deployment.Spec.Template.Spec.TopologySpreadConstraints[0].MatchLabelKeys) != 1 ||
+			deployment.Spec.Template.Spec.TopologySpreadConstraints[0].MatchLabelKeys[0] != appsv1.DefaultDeploymentUniqueLabelKey ||
 			deployment.Spec.Strategy.RollingUpdate == nil ||
-			deployment.Spec.Strategy.RollingUpdate.MaxUnavailable.IntVal != 1 ||
-			deployment.Spec.Strategy.RollingUpdate.MaxSurge.IntVal != 0 ||
+			deployment.Spec.Strategy.RollingUpdate.MaxUnavailable.IntVal != 0 ||
+			deployment.Spec.Strategy.RollingUpdate.MaxSurge.IntVal != 1 ||
 			deployment.Spec.Template.Spec.Affinity == nil ||
 			deployment.Spec.Template.Spec.Affinity.PodAntiAffinity == nil ||
-			len(deployment.Spec.Template.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution) != 1 {
+			len(deployment.Spec.Template.Spec.Affinity.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution) != 0 ||
+			len(deployment.Spec.Template.Spec.Affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution) != 1 {
 			t.Fatalf("unexpected resilient policy: %#v", deployment.Spec)
 		}
 		pdb := podDisruptionBudgetForApp(cfg, DefaultNamespace)

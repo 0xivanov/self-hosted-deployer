@@ -202,7 +202,9 @@ Inputs:
 Implementation Notes:
 
 - `basic`: one or configured replicas.
-- `resilient`: replicas >= 2 and topology spread.
+- `resilient`: replicas >= 2, zero unavailable replicas during rollout, one
+  surge replica, revision-aware topology spread, and a stable-readiness window.
+- Routed apps: bounded backend dial time plus retry on network failure.
 - `fallback`: prefer home nodes, allow VPS fallback.
 - `pinned`: node selector for selected node.
 
@@ -254,4 +256,3 @@ Dependencies:
 Out Of Scope:
 
 - Historical uptime.
-
