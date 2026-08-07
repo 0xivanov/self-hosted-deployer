@@ -118,6 +118,7 @@ jobs:
             dist/deployer-linux-arm64.tar.gz \
             dist/install-release.sh \
             dist/install-cnpg.sh \
+            dist/install-monitoring.sh \
             dist/checksums.txt
           gh release edit "$VERSION" --draft=false
           trap - ERR

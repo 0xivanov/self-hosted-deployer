@@ -49,6 +49,7 @@ make release
 - Environment examples: `deploy/env/`
 - Agent installer: `scripts/install-agent.sh`
 - CloudNativePG installer: `scripts/install-cnpg.sh`
+- Prometheus and Alertmanager installer: `scripts/install-monitoring.sh`
 - MVP smoke test: `scripts/smoke-test.sh`
 
 ## Protobuf

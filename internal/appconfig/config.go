@@ -29,6 +29,7 @@ type Config struct {
 	Name       string           `json:"name" yaml:"name"`
 	Image      string           `json:"image" yaml:"image"`
 	Service    ServiceConfig    `json:"service" yaml:"service"`
+	Metrics    *MetricsConfig   `json:"metrics,omitempty" yaml:"metrics,omitempty"`
 	Routing    RoutingConfig    `json:"routing" yaml:"routing"`
 	Deploy     DeployConfig     `json:"deploy" yaml:"deploy"`
 	Placement  PlacementConfig  `json:"placement" yaml:"placement"`
@@ -44,6 +45,11 @@ type ServiceConfig struct {
 }
 
 type HealthConfig struct {
+	Path string `json:"path" yaml:"path"`
+}
+
+type MetricsConfig struct {
+	Port int    `json:"port" yaml:"port"`
 	Path string `json:"path" yaml:"path"`
 }
 
@@ -91,6 +97,9 @@ func (c *Config) Normalize() {
 	c.Name = strings.TrimSpace(c.Name)
 	c.Image = strings.TrimSpace(c.Image)
 	c.Service.Health.Path = strings.TrimSpace(c.Service.Health.Path)
+	if c.Metrics != nil {
+		c.Metrics.Path = strings.TrimSpace(c.Metrics.Path)
+	}
 	c.Routing.Domain = strings.TrimSpace(c.Routing.Domain)
 	c.Deploy.Strategy = strings.TrimSpace(c.Deploy.Strategy)
 	c.Placement.Arch = strings.TrimSpace(c.Placement.Arch)
@@ -137,6 +146,20 @@ func (c Config) Validate() error {
 	}
 	if !strings.HasPrefix(c.Service.Health.Path, "/") {
 		return fmt.Errorf("service.health.path must start with /")
+	}
+	if c.Metrics != nil {
+		if c.Metrics.Port < 1 || c.Metrics.Port > 65535 {
+			return fmt.Errorf("metrics.port must be between 1 and 65535")
+		}
+		if c.Metrics.Port == c.Service.Port {
+			return fmt.Errorf("metrics.port must differ from service.port")
+		}
+		if c.Metrics.Path == "" {
+			return fmt.Errorf("metrics.path is required")
+		}
+		if !strings.HasPrefix(c.Metrics.Path, "/") {
+			return fmt.Errorf("metrics.path must start with /")
+		}
 	}
 	if c.Deploy.Replicas < 1 {
 		return fmt.Errorf("deploy.replicas must be at least 1")

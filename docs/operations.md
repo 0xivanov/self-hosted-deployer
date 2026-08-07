@@ -87,6 +87,58 @@ channel binding. Normal app deployment freezes database image, capacity,
 storage, and replication policy; use a dedicated CloudNativePG maintenance
 runbook for those operations.
 
+## Monitoring Setup
+
+Apps can opt into Prometheus discovery with a private metrics listener:
+
+```yaml
+metrics:
+  port: 9090
+  path: /metrics
+```
+
+The metrics port must differ from `service.port`. The deployer adds it to the
+pod and adds Prometheus discovery annotations, but does not add it to the app
+Service or public Ingress.
+
+Install the pinned Prometheus, Alertmanager, and kube-state-metrics stack on the
+k3s control-plane node:
+
+```bash
+sudo ./scripts/install-monitoring.sh
+```
+
+This first install uses a discard receiver unless an Alertmanager config is
+provided. To enable email, copy the example outside the repository, replace the
+SMTP and recipient values, restrict its permissions, and install it:
+
+```bash
+install -m 0600 deploy/monitoring/alertmanager-email.example.yml /tmp/alertmanager.yml
+editor /tmp/alertmanager.yml
+sudo ./scripts/install-monitoring.sh --alertmanager-config /tmp/alertmanager.yml
+rm /tmp/alertmanager.yml
+```
+
+The SMTP password is stored in the `alertmanager-config` Kubernetes Secret. It
+must never be committed. Any SMTP account supporting authenticated TLS works.
+For a free personal setup, a mailbox provider's SMTP endpoint and app password
+are sufficient.
+
+Prometheus retains up to 15 days or 4 GB, whichever is reached first.
+Alertmanager and Prometheus use local-path volumes pinned to the control-plane
+node. Their Services are cluster-private. Use port forwarding when inspecting
+them:
+
+```bash
+sudo k3s kubectl -n deployer-monitoring port-forward service/prometheus 9090:9090
+sudo k3s kubectl -n deployer-monitoring port-forward service/alertmanager 9093:9093
+```
+
+The default rules alert on unavailable deployments, failed scrapes, readiness,
+sustained error rate and latency, restart loops, stale maintenance workers, and
+failed notification delivery. Thresholds are intentionally sustained with
+`for` windows to avoid single-scrape noise.
+
 ## Worker Setup
 
 Create a join token from your local machine:
@@ -174,6 +226,7 @@ overwritten.
 - `deployer-linux-arm64.tar.gz`
 - `install-release.sh`
 - `install-cnpg.sh`
+- `install-monitoring.sh`
 - `checksums.txt`
 
 Use `deployer-linux-amd64.tar.gz` for amd64 VPS hosts and `deployer-linux-arm64.tar.gz` for 64-bit Raspberry Pi workers.

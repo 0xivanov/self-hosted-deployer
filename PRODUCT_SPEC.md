@@ -341,6 +341,10 @@ service:
   health:
     path: /health
 
+metrics:
+  port: 9090
+  path: /metrics
+
 routing:
   domain: api.example.com
 

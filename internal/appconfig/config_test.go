@@ -81,6 +81,30 @@ placement: {}
 	}
 }
 
+func TestParseAllowsInternalMetricsEndpoint(t *testing.T) {
+	cfg, err := Parse([]byte(`
+name: my-api
+image: ivan/my-api:1.0.0
+service:
+  port: 3000
+  health:
+    path: /health
+metrics:
+  port: 9090
+  path: /metrics
+routing: {}
+deploy:
+  replicas: 1
+placement: {}
+`))
+	if err != nil {
+		t.Fatalf("parse metrics config: %v", err)
+	}
+	if cfg.Metrics == nil || cfg.Metrics.Port != 9090 || cfg.Metrics.Path != "/metrics" {
+		t.Fatalf("unexpected metrics config: %#v", cfg.Metrics)
+	}
+}
+
 func TestParseRejectsUnknownFields(t *testing.T) {
 	_, err := Parse([]byte(validYAML + "\nunexpected: true\n"))
 	if err == nil || !strings.Contains(err.Error(), "field unexpected not found") {
@@ -118,6 +142,16 @@ func TestValidateIdentifiesExactFields(t *testing.T) {
 			name: "bad health path",
 			body: strings.Replace(validYAML, "path: /health", "path: health", 1),
 			want: "service.health.path must start with /",
+		},
+		{
+			name: "metrics shares public port",
+			body: validYAML + "\nmetrics:\n  port: 3000\n  path: /metrics\n",
+			want: "metrics.port must differ from service.port",
+		},
+		{
+			name: "bad metrics path",
+			body: validYAML + "\nmetrics:\n  port: 9090\n  path: metrics\n",
+			want: "metrics.path must start with /",
 		},
 		{
 			name: "bad replicas",

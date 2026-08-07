@@ -279,6 +279,27 @@ func TestControllerStatusUsesAvailableReplicas(t *testing.T) {
 }
 
 func TestDeploymentMapsResiliencePolicies(t *testing.T) {
+	t.Run("metrics use an annotated private container port", func(t *testing.T) {
+		cfg := testAppConfig()
+		cfg.Metrics = &appconfig.MetricsConfig{Port: 9090, Path: "/metrics"}
+		deployment, err := deploymentForApp(cfg, DefaultNamespace, "")
+		if err != nil {
+			t.Fatalf("render metrics deployment: %v", err)
+		}
+		container := deployment.Spec.Template.Spec.Containers[0]
+		if len(container.Ports) != 2 || container.Ports[1].Name != "metrics" || container.Ports[1].ContainerPort != 9090 {
+			t.Fatalf("unexpected container ports: %#v", container.Ports)
+		}
+		annotations := deployment.Spec.Template.Annotations
+		if annotations["prometheus.io/scrape"] != "true" || annotations["prometheus.io/path"] != "/metrics" || annotations["prometheus.io/port"] != "9090" {
+			t.Fatalf("unexpected metrics annotations: %#v", annotations)
+		}
+		service := serviceForApp(cfg, DefaultNamespace)
+		if len(service.Spec.Ports) != 1 || service.Spec.Ports[0].Name != "http" {
+			t.Fatalf("metrics port must not be public through the app service: %#v", service.Spec.Ports)
+		}
+	})
+
 	t.Run("any architecture does not constrain multi-architecture images", func(t *testing.T) {
 		cfg := testAppConfig()
 		cfg.Placement.Arch = appconfig.PlacementArchAny

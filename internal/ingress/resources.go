@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -412,6 +413,18 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 			},
 		},
 	}
+	if cfg.Metrics != nil {
+		metricsPort := int32(cfg.Metrics.Port)
+		deployment.Spec.Template.Annotations = map[string]string{
+			"prometheus.io/scrape": "true",
+			"prometheus.io/path":   cfg.Metrics.Path,
+			"prometheus.io/port":   strconv.Itoa(cfg.Metrics.Port),
+		}
+		deployment.Spec.Template.Spec.Containers[0].Ports = append(
+			deployment.Spec.Template.Spec.Containers[0].Ports,
+			corev1.ContainerPort{Name: "metrics", ContainerPort: metricsPort},
+		)
+	}
 	if arch := placementArchitecture(cfg.Placement.Arch); arch != "" {
 		deployment.Spec.Template.Spec.NodeSelector = map[string]string{"kubernetes.io/arch": arch}
 	}
@@ -476,7 +489,10 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 		if strings.TrimSpace(secretRevision) == "" {
 			return nil, fmt.Errorf("secret revision is missing")
 		}
-		deployment.Spec.Template.Annotations = map[string]string{secretHashAnnotation: secretRevision}
+		if deployment.Spec.Template.Annotations == nil {
+			deployment.Spec.Template.Annotations = map[string]string{}
+		}
+		deployment.Spec.Template.Annotations[secretHashAnnotation] = secretRevision
 		for _, name := range cfg.Secrets {
 			deployment.Spec.Template.Spec.Containers[0].Env = append(deployment.Spec.Template.Spec.Containers[0].Env, corev1.EnvVar{
 				Name: name,
