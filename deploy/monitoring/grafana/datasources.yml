@@ -1,0 +1,28 @@
+apiVersion: 1
+prune: true
+
+deleteDatasources:
+  - name: Alertmanager
+    orgId: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus.deployer-monitoring.svc.cluster.local:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      prometheusType: Prometheus
+      timeInterval: 15s
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki.deployer-monitoring.svc.cluster.local:3100
+    editable: false
+    jsonData:
+      maxLines: 1000

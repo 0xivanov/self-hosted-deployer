@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: Deployer
+    orgId: 1
+    folder: Deployer
+    folderUid: deployer
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards

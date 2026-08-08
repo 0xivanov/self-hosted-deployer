@@ -102,6 +102,21 @@ data:
           - targets:
               - kube-state-metrics.deployer-monitoring.svc.cluster.local:8080
 
+      - job_name: loki
+        static_configs:
+          - targets:
+              - loki.deployer-monitoring.svc.cluster.local:3100
+
+      - job_name: alloy
+        static_configs:
+          - targets:
+              - alloy.deployer-monitoring.svc.cluster.local:12345
+
+      - job_name: grafana
+        static_configs:
+          - targets:
+              - grafana.deployer-monitoring.svc.cluster.local:3000
+
       - job_name: deployer-apps
         kubernetes_sd_configs:
           - role: pod
@@ -251,7 +266,7 @@ data:
       - name: deployer-monitoring
         rules:
           - alert: DeployerMonitoringTargetDown
-            expr: up{job=~"prometheus|alertmanager|kube-state-metrics"} == 0
+            expr: up{job=~"prometheus|alertmanager|kube-state-metrics|loki|alloy|grafana"} == 0
             for: 2m
             labels:
               severity: critical

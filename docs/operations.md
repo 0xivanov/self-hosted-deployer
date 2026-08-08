@@ -101,12 +101,40 @@ The metrics port must differ from `service.port`. The deployer adds it to the
 pod and adds Prometheus discovery annotations, but does not add it to the app
 Service or public Ingress.
 
-Install the pinned Prometheus, Alertmanager, and kube-state-metrics stack on the
-k3s control-plane node:
+Install the pinned Prometheus, Alertmanager, Loki, Alloy, Grafana, and
+kube-state-metrics stack on the k3s control-plane node:
 
 ```bash
 sudo ./scripts/install-monitoring.sh
 ```
+
+This keeps every Service cluster-private. Grafana is available through port
+forwarding unless a public hostname is provided. To create an HTTPS route with
+local Grafana authentication, point the hostname at the VPS and run:
+
+```bash
+install -m 0600 /dev/null /tmp/grafana-password
+editor /tmp/grafana-password
+sudo ./scripts/install-monitoring.sh \
+  --grafana-domain grafana.example.com \
+  --grafana-admin-user admin \
+  --grafana-admin-password-file /tmp/grafana-password
+rm /tmp/grafana-password
+```
+
+The password must contain 16 through 128 characters. When no password file is
+provided on the first install, the installer creates a random administrator
+password in the `grafana-admin` Secret. Retrieve it from a trusted terminal:
+
+```bash
+sudo k3s kubectl -n deployer-monitoring get secret grafana-admin \
+  -o jsonpath='{.data.admin-password}' | base64 -d
+echo
+```
+
+Grafana disables anonymous access and user sign-up, uses secure strict-same-site
+cookies, and is exposed only through a cert-manager TLS Ingress. Prometheus,
+Loki, Alloy, and Alertmanager remain inaccessible from the public Ingress.
 
 This first install uses a discard receiver unless an Alertmanager config is
 provided. To enable email, copy the example outside the repository, replace the
@@ -124,14 +152,21 @@ must never be committed. Any SMTP account supporting authenticated TLS works.
 For a free personal setup, a mailbox provider's SMTP endpoint and app password
 are sufficient.
 
-Prometheus retains up to 15 days or 4 GB, whichever is reached first.
-Alertmanager and Prometheus use local-path volumes pinned to the control-plane
-node. Their Services are cluster-private. Use port forwarding when inspecting
-them:
+Prometheus retains up to 15 days or 4 GB, whichever is reached first. Loki uses
+TSDB indexes and filesystem chunks with seven-day retention. Alloy collects pod
+logs through the Kubernetes API and stores its read positions persistently.
+Grafana provisions Prometheus and Loki data sources plus Money Manager Backend
+and Cluster Logs dashboards from version-controlled files. Active Alertmanager
+alerts are displayed through Prometheus's `ALERTS` metric.
+
+Alertmanager, Prometheus, Loki, Alloy, and Grafana use local-path volumes pinned
+to the control-plane node. Use port forwarding when inspecting private
+interfaces:
 
 ```bash
 sudo k3s kubectl -n deployer-monitoring port-forward service/prometheus 9090:9090
 sudo k3s kubectl -n deployer-monitoring port-forward service/alertmanager 9093:9093
+sudo k3s kubectl -n deployer-monitoring port-forward service/grafana 3000:3000
 ```
 
 The default rules alert on unavailable deployments, failed scrapes, readiness,
