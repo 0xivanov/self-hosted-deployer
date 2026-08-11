@@ -7,7 +7,7 @@ global:
 
 route:
   receiver: email
-  group_by: [alertname, app, severity]
+  group_by: [alertname, app, node, severity]
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
@@ -23,4 +23,9 @@ inhibit_rules:
       - severity="critical"
     target_matchers:
       - severity="warning"
-    equal: [alertname, app]
+    equal: [app]
+  - source_matchers:
+      - alertname="DeployerNodeUnavailable"
+    target_matchers:
+      - alertname=~"DeployerAppTargetDown|DeployerAppNotReady|DeployerMaintenanceWorkerFailing"
+    equal: [node]

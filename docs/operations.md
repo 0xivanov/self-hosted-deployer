@@ -169,10 +169,12 @@ sudo k3s kubectl -n deployer-monitoring port-forward service/alertmanager 9093:9
 sudo k3s kubectl -n deployer-monitoring port-forward service/grafana 3000:3000
 ```
 
-The default rules alert on unavailable deployments, failed scrapes, readiness,
-sustained error rate and latency, restart loops, stale maintenance workers, and
-failed notification delivery. Thresholds are intentionally sustained with
-`for` windows to avoid single-scrape noise.
+The default rules identify application targets by Kubernetes hostname rather
+than pod IP. A single unavailable node, target, or replica is a warning. A
+deployment becomes critical only when none of its desired replicas are
+available. Node alerts inhibit duplicate target, readiness, and maintenance
+worker warnings for the same host. Thresholds use sustained `for` windows to
+avoid single-scrape noise.
 
 ## Worker Setup
 
