@@ -1,0 +1,18 @@
+[Unit]
+Description=Check customer HTTPS availability outside the target cluster
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+TimeoutStartSec=8min
+StateDirectory=deployer-external-monitor
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ExecStart=/usr/bin/python3 /usr/local/libexec/external-uptime-monitor.py --config /etc/deployer-external-monitor/config.json --state-directory /var/lib/deployer-external-monitor
