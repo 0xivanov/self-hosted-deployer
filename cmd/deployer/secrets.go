@@ -54,6 +54,7 @@ func (a cliApp) secretsSet(args []string, opts runtimeOptions, client platformCl
 		return 2
 	}
 	appName, name := flags.Arg(0), flags.Arg(1)
+	announceMutationTarget(a.stderr, opts)
 	if !flagWasSet(flags, "value") {
 		var err error
 		value, err = a.readSecretValue(name)
@@ -114,6 +115,7 @@ func (a cliApp) secretsRemove(args []string, opts runtimeOptions, client platfor
 		return 2
 	}
 	appName, name := flags.Arg(0), flags.Arg(1)
+	announceMutationTarget(a.stderr, opts)
 	if !yes {
 		fmt.Fprintf(a.stderr, "Remove secret %s from %s? [y/N]: ", name, appName)
 		answer, err := bufio.NewReader(a.stdin).ReadString('\n')

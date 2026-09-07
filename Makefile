@@ -71,8 +71,9 @@ proto:
 proto-lint:
 	$(BUF) lint
 
-proto-check: proto
-	git diff --exit-code -- proto internal/proto
+proto-check:
+	@tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+	$(BUF) generate --output "$$tmp" && diff -ru -x README.md internal/proto "$$tmp/internal/proto"
 
 clean:
 	rm -rf $(BIN_DIR) $(DIST_DIR)

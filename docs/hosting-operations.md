@@ -1,0 +1,13 @@
+# Hosting operations
+
+The deployer server writes a separate `mutation audit` record for authenticated mutating gRPC calls. Records include an explicit UTC timestamp, a generated correlation ID, an opaque token identifier, caller kind, optional agent node ID, the full RPC method, a small allowlisted target map, and the gRPC outcome code. The interceptor runs after authentication, so rejected bearer tokens do not create authenticated mutation records.
+
+Target values are limited to safe identifier characters and a bounded length. Deploy records extract only the application name from the submitted YAML. Secret values, YAML, protobuf payloads, response payloads, and status error text are never sent to the audit sink. The token identifier is a short digest derived from the stored token hash; raw bearer tokens and stored hashes are not logged.
+
+Configure the server's structured log output so `mutation audit` records are forwarded to storage outside the customer environment. The off-host destination must use separate per-environment credentials and prefixes, access controls for operators, encryption in transit and at rest, and a retention period appropriate to the support agreement. Verify forwarding and alert on delivery failures during onboarding and recovery drills.
+
+The audit sink is best effort. A sink or forwarding outage does not fail or roll back an API mutation, so this log is operational evidence rather than a durable compliance ledger. If durable compliance records are required, add a separately designed append-only service with delivery guarantees, retention controls, and its own security review before making that claim.
+
+During incident review, use the returned `x-request-id` response header to locate its mutation record. Generic gRPC logs currently contain method, status, and duration rather than that correlation ID. Do not copy request payloads or secret values into tickets or exported logs. Destructive operations must identify the selected customer environment in the operator workflow and retain the corresponding off-host audit records for the documented retention period.
+
+Run `deployer doctor --hosting` for a read-only hosting readiness report. It checks each application's declared hosting profile, desired replica health, and public route TLS and status through the control-plane API. It exits nonzero when those checks fail or when any required external gate remains unresolved. The report explicitly leaves backup and restore evidence, real alert delivery, external availability monitoring, off-host audit retention, fleet version pins, and CNI enforcement unresolved because the local doctor command cannot certify them. The existing `deployer doctor` command keeps its legacy checks and exit behavior.

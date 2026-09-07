@@ -1,0 +1,52 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Unit and compatibility tests
+        run: go test ./...
+      - name: Race tests
+        run: go test -race ./...
+      - name: Synthetic platform recovery drill
+        run: go test -tags=integration -race ./internal/backup
+      - name: Vet
+        run: go vet ./...
+      - name: Build
+        run: make build
+      - name: Shell lint
+        run: shellcheck scripts/*.sh tests/*.sh
+      - name: Release policy tests
+        run: sh tests/release-controls-test.sh
+      - name: Namespace budget tests
+        run: bash tests/hosting-namespace-test.sh
+      - name: Installer rollback tests (disposable container)
+        run: docker run --rm --network none -v "$PWD:/work:ro" -w /work ubuntu:24.04 sh tests/release-installer-test.sh
+      - name: Backup delivery failure cases and local repository drill
+        run: python3 tests/platform-backup-job-test.py && python3 tests/platform-backup-job-test.py --real
+
+      - name: Backup scheduler and metrics tests
+        run: python3 tests/platform-backup-wrapper-test.py && python3 tests/recovery-bundle-test.py && python3 tests/postgres-globals-backup-test.py && python3 tests/backup-metrics-test.py
+      - name: Hosting dashboard query checks
+        run: sh tests/hosting-dashboard-test.sh
+      - name: Set up Buf
+        run: go install github.com/bufbuild/buf/cmd/buf@v1.50.0
+      - name: Protobuf lint and generated code
+        run: buf lint && make proto-check

@@ -5,8 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"sort"
 	"strings"
+
+	clicore "github.com/0xivanov/self-hosted-deployer/internal/cli"
 )
 
 func renderLabels(labels map[string]string) string {
@@ -26,6 +29,31 @@ func valueOrDash(value string) string {
 		return "-"
 	}
 	return value
+}
+
+func announceMutationTarget(w io.Writer, opts runtimeOptions) {
+	if opts.context == "" {
+		return
+	}
+	fmt.Fprintf(w, "Target: context %s (%s)\n", opts.context, safeTargetEndpoint(opts.serverURL))
+}
+
+func safeTargetEndpoint(raw string) string {
+	normalized, err := clicore.NormalizeServerURL(raw)
+	if err != nil {
+		return "configured endpoint"
+	}
+	if !strings.Contains(normalized, "://") {
+		if at := strings.LastIndex(normalized, "@"); at >= 0 {
+			return normalized[at+1:]
+		}
+		return normalized
+	}
+	parsed, err := url.Parse(normalized)
+	if err != nil || parsed.Host == "" {
+		return "configured endpoint"
+	}
+	return parsed.Scheme + "://" + parsed.Host
 }
 
 func readLine(r io.Reader) (string, error) {
@@ -63,10 +91,12 @@ func usage(w io.Writer, flags *flag.FlagSet) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Commands:")
 	fmt.Fprintln(w, "  apps       List and inspect app desired state")
+	fmt.Fprintln(w, "  preflight  Validate desired state against the server without changes")
 	fmt.Fprintln(w, "  deploy     Submit deployer.yaml desired state")
 	fmt.Fprintln(w, "  status     Show live app replica and route health")
 	fmt.Fprintln(w, "  logs       Stream recent application pod logs")
 	fmt.Fprintln(w, "  login      Save CLI access to the control plane")
+	fmt.Fprintln(w, "  contexts   List or select customer control plane contexts")
 	fmt.Fprintln(w, "  nodes      Add, inspect, drain, remove, purge, and rename nodes")
 	fmt.Fprintln(w, "  routes     List and inspect public routes")
 	fmt.Fprintln(w, "  secrets    Set, list, and remove app secrets")

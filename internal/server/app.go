@@ -55,6 +55,25 @@ type AppRuntime interface {
 	Status(ctx context.Context, appName string) (string, error)
 }
 
+// HostingPreflightRuntime admits an opted-in workload before desired-state writes.
+type HostingPreflightRuntime interface {
+	PreflightHosting(context.Context, appconfig.Config) error
+}
+
+func preflightHosting(ctx context.Context, runtime AppRuntime, cfg appconfig.Config) error {
+	if cfg.Hosting == nil {
+		return nil
+	}
+	preflight, ok := runtime.(HostingPreflightRuntime)
+	if !ok {
+		return status.Error(codes.FailedPrecondition, "hosting profile is unsupported by this runtime")
+	}
+	if err := preflight.PreflightHosting(ctx, cfg); err != nil {
+		return status.Errorf(codes.FailedPrecondition, "hosting preflight: %v", err)
+	}
+	return nil
+}
+
 type DetailedAppRuntime interface {
 	StatusDetails(ctx context.Context, appName string) (state string, desiredReplicas int32, availableReplicas int32, err error)
 }
@@ -128,6 +147,9 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	if err := preflightHosting(ctx, s.runtime, cfg); err != nil {
+		return nil, err
+	}
 	if err := s.validateRequestedDomain(ctx, cfg.Name, cfg.Routing.Domain); err != nil {
 		return nil, err
 	}
@@ -158,6 +180,9 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	} else if err != nil {
 		return nil, status.Error(codes.Internal, "find app")
 	} else {
+		if err := rejectHostingProfileRemoval(cfg, app); err != nil {
+			return nil, err
+		}
 		wasDeleted := app.DeletedAt != nil
 		previous := app
 		app.Image = cfg.Image
@@ -247,8 +272,22 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	}, nil
 }
 
+func rejectHostingProfileRemoval(requested appconfig.Config, existing domain.App) error {
+	if requested.Hosting != nil {
+		return nil
+	}
+	previous, err := appconfig.FromJSON(existing.DesiredStateJSON)
+	if err != nil {
+		return status.Errorf(codes.FailedPrecondition, "existing app configuration cannot be read safely: %v", err)
+	}
+	if previous.Hosting != nil {
+		return status.Error(codes.FailedPrecondition, "hosting profile cannot be omitted when updating an opted-in app")
+	}
+	return nil
+}
+
 func (s AppService) rollbackAppUpdate(ctx context.Context, previous domain.App, now time.Time) error {
-	cfg, err := appconfig.FromJSON(previous.DesiredStateJSON)
+	cfg, err := parseStoredConfigForDeployment(previous.DesiredStateJSON)
 	if err != nil {
 		return fmt.Errorf("decode last applied app configuration: %w", err)
 	}
@@ -266,6 +305,19 @@ func (s AppService) rollbackAppUpdate(ctx context.Context, previous domain.App, 
 		rollbackErrors = append(rollbackErrors, fmt.Errorf("restore app route: %w", err))
 	}
 	return errors.Join(rollbackErrors...)
+}
+
+func parseStoredConfigForDeployment(data string) (appconfig.Config, error) {
+	cfg, err := appconfig.FromJSON(data)
+	if err != nil {
+		return appconfig.Config{}, err
+	}
+	if cfg.Hosting != nil {
+		if err := cfg.Validate(); err != nil {
+			return appconfig.Config{}, fmt.Errorf("validate stored desired state: %w", err)
+		}
+	}
+	return cfg, nil
 }
 
 func (s AppService) ListApps(ctx context.Context, _ *deployerv1.ListAppsRequest) (*deployerv1.ListAppsResponse, error) {

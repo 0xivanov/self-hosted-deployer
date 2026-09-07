@@ -1,0 +1,10 @@
+name: legacy-api
+image: example/legacy-api:1.2.3
+service:
+  port: 8080
+  health:
+    path: /health
+routing: {}
+deploy:
+  replicas: 1
+placement: {}

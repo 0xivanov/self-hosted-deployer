@@ -1,0 +1,102 @@
+rule_files:
+  - /checks/prometheus-backup-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: healthy backup stays quiet
+    input_series:
+      - series: 'up{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '1x11'
+      - series: 'deployer_platform_backup_last_run_success{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '1x11'
+      - series: 'deployer_platform_backup_last_success_timestamp_seconds{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '1000x11'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DeployerPlatformBackupFailed
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: DeployerPlatformBackupStale
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: DeployerPlatformBackupMetricsMissing
+        exp_alerts: []
+
+  - name: failed backup fires after five minutes
+    input_series:
+      - series: 'up{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '1x11'
+      - series: 'deployer_platform_backup_last_run_success{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '0x11'
+      - series: 'deployer_platform_backup_last_success_timestamp_seconds{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '1000x11'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DeployerPlatformBackupFailed
+        exp_alerts:
+          - exp_labels:
+              alertname: DeployerPlatformBackupFailed
+              severity: critical
+              environment: legacy-vps
+              job: deployer-platform-backup
+            exp_annotations:
+              summary: "Platform backup failed on legacy-vps"
+              description: "The most recent platform backup run reported failure for five minutes."
+
+  - name: stale backup fires after thirty-six hours
+    input_series:
+      - series: 'up{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '1x2221'
+      - series: 'deployer_platform_backup_last_run_success{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '1x2221'
+      - series: 'deployer_platform_backup_last_success_timestamp_seconds{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '0x2221'
+    alert_rule_test:
+      - eval_time: 37h
+        alertname: DeployerPlatformBackupStale
+        exp_alerts:
+          - exp_labels:
+              alertname: DeployerPlatformBackupStale
+              severity: critical
+              environment: legacy-vps
+              job: deployer-platform-backup
+            exp_annotations:
+              summary: "Platform backup is stale on legacy-vps"
+              description: "The last successful platform backup is more than 36 hours old."
+
+  - name: missing target fires after five minutes
+    input_series:
+      - series: 'up{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '0x11'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DeployerPlatformBackupMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              alertname: DeployerPlatformBackupMetricsMissing
+              severity: critical
+              environment: legacy-vps
+              job: deployer-platform-backup
+            exp_annotations:
+              summary: "Platform backup metrics are missing on legacy-vps"
+              description: "Prometheus cannot scrape the platform backup metrics exporter."
+
+  - name: partial exposition fires after five minutes
+    input_series:
+      - series: 'up{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '1x11'
+      - series: 'deployer_platform_backup_last_run_success{job="deployer-platform-backup",environment="legacy-vps"}'
+        values: '1x11'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DeployerPlatformBackupMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              alertname: DeployerPlatformBackupMetricsMissing
+              severity: critical
+              environment: legacy-vps
+              job: deployer-platform-backup
+            exp_annotations:
+              summary: "Platform backup metrics are missing on legacy-vps"
+              description: "Prometheus cannot scrape the platform backup metrics exporter."

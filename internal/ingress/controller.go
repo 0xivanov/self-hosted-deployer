@@ -73,9 +73,11 @@ type Controller struct {
 	namespaces       coretyped.NamespaceInterface
 	ingresses        networkingtyped.IngressInterface
 	services         coretyped.ServiceInterface
+	networkPolicies  networkingtyped.NetworkPolicyInterface
 	appSecrets       coretyped.SecretInterface
 	nodes            coretyped.NodeInterface
 	pods             coretyped.PodInterface
+	capacityPods     coretyped.PodInterface
 	serviceAccounts  coretyped.ServiceAccountInterface
 	pvcs             coretyped.PersistentVolumeClaimInterface
 	evictions        policytyped.EvictionInterface
@@ -123,9 +125,11 @@ func NewController(cfg ControllerConfig) (*Controller, error) {
 		namespaces:       clientset.CoreV1().Namespaces(),
 		ingresses:        clientset.NetworkingV1().Ingresses(namespace),
 		services:         clientset.CoreV1().Services(namespace),
+		networkPolicies:  clientset.NetworkingV1().NetworkPolicies(namespace),
 		appSecrets:       clientset.CoreV1().Secrets(namespace),
 		nodes:            clientset.CoreV1().Nodes(),
 		pods:             clientset.CoreV1().Pods(namespace),
+		capacityPods:     clientset.CoreV1().Pods(""),
 		serviceAccounts:  clientset.CoreV1().ServiceAccounts(namespace),
 		pvcs:             clientset.CoreV1().PersistentVolumeClaims(namespace),
 		evictions:        clientset.PolicyV1().Evictions(namespace),
@@ -148,6 +152,12 @@ func (c *Controller) TLSEnabled() bool {
 }
 
 func (c *Controller) Reconcile(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string) error {
+	if err := c.validateHostingRuntime(cfg); err != nil {
+		return err
+	}
+	if err := c.PreflightHosting(ctx, cfg); err != nil {
+		return err
+	}
 	if err := c.ensureSchedulableWorker(ctx, cfg); err != nil {
 		return err
 	}
@@ -195,6 +205,31 @@ func (c *Controller) Reconcile(ctx context.Context, cfg appconfig.Config, secret
 	return nil
 }
 
+// PreflightHosting verifies capacity for an explicitly opted-in hosting
+// profile without mutating Kubernetes resources.
+func (c *Controller) PreflightHosting(ctx context.Context, cfg appconfig.Config) error {
+	if cfg.Hosting == nil {
+		return nil
+	}
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	if err := c.validateHostingRuntime(cfg); err != nil {
+		return err
+	}
+	return c.preflightHostingCapacity(ctx, cfg)
+}
+
+func (c *Controller) validateHostingRuntime(cfg appconfig.Config) error {
+	if cfg.Hosting == nil {
+		return nil
+	}
+	if c.nodes == nil || c.deployments == nil || c.networkPolicies == nil {
+		return fmt.Errorf("hosting profile v1 is unsupported by this runtime: Kubernetes node, Deployment, and NetworkPolicy clients are required")
+	}
+	return nil
+}
+
 func (c *Controller) Delete(ctx context.Context, appName string) error {
 	appName = strings.TrimSpace(appName)
 	if appName == "" {
@@ -202,6 +237,7 @@ func (c *Controller) Delete(ctx context.Context, appName string) error {
 	}
 	return errors.Join(
 		c.deleteIngress(ctx, appName),
+		c.deleteHostingNetworkPolicy(ctx, appName),
 		c.deleteService(ctx, appName),
 		c.deleteTrafficResilienceResources(ctx, appName),
 		c.deleteDeployment(ctx, appName),

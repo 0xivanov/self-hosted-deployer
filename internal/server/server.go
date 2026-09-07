@@ -75,6 +75,7 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		grpc.ChainUnaryInterceptor(
 			UnaryLoggingInterceptor(logger),
 			auth.UnaryInterceptor(),
+			NewMutationAuditInterceptor(newSlogMutationAuditSink(logger)),
 		),
 		grpc.ChainStreamInterceptor(
 			StreamLoggingInterceptor(logger),

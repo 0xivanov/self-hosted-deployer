@@ -1,0 +1,102 @@
+rule_files:
+  - /checks/prometheus-recovery-backup-rules.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: healthy recovery backup stays quiet
+    input_series:
+      - series: 'up{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '1x11'
+      - series: 'deployer_platform_backup_last_run_success{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '1x11'
+      - series: 'deployer_platform_backup_last_success_timestamp_seconds{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '1000x11'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DeployerRecoveryBackupFailed
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: DeployerRecoveryBackupStale
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: DeployerRecoveryBackupMetricsMissing
+        exp_alerts: []
+
+  - name: failed recovery backup fires after five minutes
+    input_series:
+      - series: 'up{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '1x11'
+      - series: 'deployer_platform_backup_last_run_success{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '0x11'
+      - series: 'deployer_platform_backup_last_success_timestamp_seconds{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '1000x11'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DeployerRecoveryBackupFailed
+        exp_alerts:
+          - exp_labels:
+              alertname: DeployerRecoveryBackupFailed
+              severity: critical
+              environment: legacy-vps
+              job: deployer-recovery-backup
+            exp_annotations:
+              summary: "Recovery backup failed on legacy-vps"
+              description: "The most recent recovery backup run reported failure for five minutes."
+
+  - name: stale recovery backup fires after thirty-six hours
+    input_series:
+      - series: 'up{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '1x2221'
+      - series: 'deployer_platform_backup_last_run_success{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '1x2221'
+      - series: 'deployer_platform_backup_last_success_timestamp_seconds{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '0x2221'
+    alert_rule_test:
+      - eval_time: 37h
+        alertname: DeployerRecoveryBackupStale
+        exp_alerts:
+          - exp_labels:
+              alertname: DeployerRecoveryBackupStale
+              severity: critical
+              environment: legacy-vps
+              job: deployer-recovery-backup
+            exp_annotations:
+              summary: "Recovery backup is stale on legacy-vps"
+              description: "The last successful recovery backup is more than 36 hours old."
+
+  - name: missing recovery target fires after five minutes
+    input_series:
+      - series: 'up{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '0x11'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DeployerRecoveryBackupMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              alertname: DeployerRecoveryBackupMetricsMissing
+              severity: critical
+              environment: legacy-vps
+              job: deployer-recovery-backup
+            exp_annotations:
+              summary: "Recovery backup metrics are missing on legacy-vps"
+              description: "Prometheus cannot scrape the recovery backup metrics exporter."
+
+  - name: partial recovery exposition fires after five minutes
+    input_series:
+      - series: 'up{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '1x11'
+      - series: 'deployer_platform_backup_last_run_success{job="deployer-recovery-backup",environment="legacy-vps"}'
+        values: '1x11'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: DeployerRecoveryBackupMetricsMissing
+        exp_alerts:
+          - exp_labels:
+              alertname: DeployerRecoveryBackupMetricsMissing
+              severity: critical
+              environment: legacy-vps
+              job: deployer-recovery-backup
+            exp_annotations:
+              summary: "Recovery backup metrics are missing on legacy-vps"
+              description: "Prometheus cannot scrape the recovery backup metrics exporter."

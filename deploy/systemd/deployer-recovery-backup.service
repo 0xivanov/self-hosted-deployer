@@ -1,0 +1,24 @@
+[Unit]
+Description=Run the Self-Hosted Deployer recovery backup
+Documentation=https://github.com/0xivanov/self-hosted-deployer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/deployer/backup/offsite.env
+TimeoutStartSec=30min
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/deployer/recovery-backup-work /var/lib/deployer/recovery-backup-status
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ExecStartPre=/usr/bin/install -d -o root -g root -m 0700 /var/lib/deployer/recovery-backup-work /var/lib/deployer/recovery-backup-status
+ExecStart=/usr/bin/python3 /usr/local/libexec/deployer-platform-backup.py --state-directory /var/lib/deployer/recovery-backup-status -- /usr/bin/python3 /usr/local/libexec/backup-recovery-offsite.py --config /etc/deployer/backup/recovery.json --work-root /var/lib/deployer/recovery-backup-work --restic-binary /usr/local/bin/restic --environment legacy-vps

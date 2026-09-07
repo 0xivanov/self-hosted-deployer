@@ -81,6 +81,7 @@ func (a cliApp) nodesAdd(args []string, opts runtimeOptions, client platformClie
 		labels["role"] = *role
 	}
 
+	announceMutationTarget(a.stderr, opts)
 	result, err := client.CreateJoinToken(context.Background(), flags.Arg(0), labels)
 	if err != nil {
 		fmt.Fprintln(a.stderr, err)
@@ -170,6 +171,7 @@ func (a cliApp) nodesDrain(args []string, opts runtimeOptions, client platformCl
 		fmt.Fprintln(a.stderr, "usage: deployer nodes drain <name-or-id>")
 		return 2
 	}
+	announceMutationTarget(a.stderr, opts)
 	node, err := client.DrainNode(context.Background(), args[0])
 	if err != nil {
 		fmt.Fprintln(a.stderr, err)
@@ -183,6 +185,7 @@ func (a cliApp) nodesUncordon(args []string, opts runtimeOptions, client platfor
 		fmt.Fprintln(a.stderr, "usage: deployer nodes uncordon <name-or-id>")
 		return 2
 	}
+	announceMutationTarget(a.stderr, opts)
 	node, err := client.UncordonNode(context.Background(), args[0])
 	if err != nil {
 		fmt.Fprintln(a.stderr, err)
@@ -204,6 +207,7 @@ func (a cliApp) nodesRemove(args []string, opts runtimeOptions, client platformC
 		return 2
 	}
 	ref := flags.Arg(0)
+	announceMutationTarget(a.stderr, opts)
 	if !yes {
 		fmt.Fprintf(a.stderr, "Remove node %s and revoke its identity? [y/N]: ", ref)
 		answer, err := bufio.NewReader(a.stdin).ReadString('\n')
@@ -238,6 +242,7 @@ func (a cliApp) nodesPurge(args []string, opts runtimeOptions, client platformCl
 		return 2
 	}
 	ref := flags.Arg(0)
+	announceMutationTarget(a.stderr, opts)
 	if !yes {
 		fmt.Fprintf(a.stderr, "Permanently purge node %s, revoke its identity, and free its name/IP? [y/N]: ", ref)
 		answer, err := bufio.NewReader(a.stdin).ReadString('\n')
@@ -272,6 +277,7 @@ func (a cliApp) nodesRename(args []string, opts runtimeOptions, client platformC
 		fmt.Fprintln(a.stderr, "usage: deployer nodes rename <name-or-id> <new-name>")
 		return 2
 	}
+	announceMutationTarget(a.stderr, opts)
 	node, err := client.RenameNode(context.Background(), args[0], args[1])
 	if err != nil {
 		fmt.Fprintln(a.stderr, err)

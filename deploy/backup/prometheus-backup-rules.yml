@@ -1,0 +1,42 @@
+groups:
+  - name: deployer-platform-backup
+    rules:
+      - alert: DeployerPlatformBackupFailed
+        expr: deployer_platform_backup_last_run_success{job="deployer-platform-backup"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          environment: legacy-vps
+        annotations:
+          summary: "Platform backup failed on {{ $labels.environment }}"
+          description: "The most recent platform backup run reported failure for five minutes."
+
+      - alert: DeployerPlatformBackupStale
+        expr: time() - deployer_platform_backup_last_success_timestamp_seconds{job="deployer-platform-backup"} > 36 * 60 * 60
+        for: 5m
+        labels:
+          severity: critical
+          environment: legacy-vps
+        annotations:
+          summary: "Platform backup is stale on {{ $labels.environment }}"
+          description: "The last successful platform backup is more than 36 hours old."
+
+      - alert: DeployerPlatformBackupMetricsMissing
+        expr: |
+          (up{job="deployer-platform-backup"} == 0)
+          or absent(up{job="deployer-platform-backup"})
+          or (
+            up{job="deployer-platform-backup"} == 1
+            and on (job)
+            (
+              absent(deployer_platform_backup_last_run_success{job="deployer-platform-backup"})
+              or absent(deployer_platform_backup_last_success_timestamp_seconds{job="deployer-platform-backup"})
+            )
+          )
+        for: 5m
+        labels:
+          severity: critical
+          environment: legacy-vps
+        annotations:
+          summary: "Platform backup metrics are missing on {{ $labels.environment }}"
+          description: "Prometheus cannot scrape the platform backup metrics exporter."

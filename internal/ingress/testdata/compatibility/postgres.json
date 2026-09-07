@@ -1,0 +1,166 @@
+{
+  "deployment": {
+    "metadata": {
+      "name": "reports",
+      "namespace": "deployer-apps",
+      "creationTimestamp": null,
+      "labels": {
+        "app.kubernetes.io/managed-by": "deployer",
+        "app.kubernetes.io/name": "reports",
+        "deployer.io/app": "reports"
+      }
+    },
+    "spec": {
+      "replicas": 2,
+      "selector": {
+        "matchLabels": {
+          "app.kubernetes.io/name": "reports",
+          "deployer.io/app": "reports"
+        }
+      },
+      "template": {
+        "metadata": {
+          "creationTimestamp": null,
+          "labels": {
+            "app.kubernetes.io/name": "reports",
+            "deployer.io/app": "reports",
+            "deployer.io/resilience-mode": "basic",
+            "deployer.io/state-mode": "stateless"
+          }
+        },
+        "spec": {
+          "containers": [
+            {
+              "name": "reports",
+              "image": "example/reports:4.0.0",
+              "ports": [
+                {
+                  "name": "http",
+                  "containerPort": 8080
+                }
+              ],
+              "env": [
+                {
+                  "name": "DATABASE_URL",
+                  "valueFrom": {
+                    "secretKeyRef": {
+                      "name": "reports-db-app",
+                      "key": "uri"
+                    }
+                  }
+                },
+                {
+                  "name": "PGSSLMODE",
+                  "value": "require"
+                },
+                {
+                  "name": "PGCHANNELBINDING",
+                  "value": "require"
+                },
+                {
+                  "name": "PGREQUIREAUTH",
+                  "value": "scram-sha-256"
+                }
+              ],
+              "resources": {},
+              "readinessProbe": {
+                "httpGet": {
+                  "path": "/health",
+                  "port": 8080
+                }
+              }
+            }
+          ],
+          "nodeSelector": {
+            "kubernetes.io/arch": "arm64"
+          }
+        }
+      },
+      "strategy": {}
+    },
+    "status": {}
+  },
+  "postgres": {
+    "apiVersion": "postgresql.cnpg.io/v1",
+    "kind": "Cluster",
+    "metadata": {
+      "labels": {
+        "app.kubernetes.io/component": "database",
+        "app.kubernetes.io/instance": "reports-db",
+        "app.kubernetes.io/managed-by": "deployer",
+        "app.kubernetes.io/name": "reports-db",
+        "deployer.io/database-for": "reports",
+        "deployer.io/retention-policy": "retain"
+      },
+      "name": "reports-db",
+      "namespace": "deployer-apps"
+    },
+    "spec": {
+      "affinity": {
+        "enablePodAntiAffinity": true,
+        "nodeSelector": {
+          "kubernetes.io/arch": "arm64"
+        },
+        "podAntiAffinityType": "required",
+        "topologyKey": "kubernetes.io/hostname"
+      },
+      "bootstrap": {
+        "initdb": {
+          "dataChecksums": true,
+          "database": "reports",
+          "owner": "reports"
+        }
+      },
+      "imageName": "ghcr.io/cloudnative-pg/postgresql:17.2@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "instances": 3,
+      "postgresql": {
+        "parameters": {
+          "password_encryption": "scram-sha-256"
+        },
+        "pg_hba": [
+          "hostnossl all all all reject",
+          "hostssl reports reports all scram-sha-256"
+        ],
+        "synchronous": {
+          "dataDurability": "required",
+          "failoverQuorum": true,
+          "method": "any",
+          "number": 1
+        }
+      },
+      "storage": {
+        "size": "20Gi",
+        "storageClass": "local-path"
+      }
+    }
+  },
+  "service": {
+    "metadata": {
+      "name": "reports",
+      "namespace": "deployer-apps",
+      "creationTimestamp": null,
+      "labels": {
+        "app.kubernetes.io/managed-by": "deployer",
+        "app.kubernetes.io/name": "reports",
+        "deployer.io/app": "reports"
+      }
+    },
+    "spec": {
+      "ports": [
+        {
+          "name": "http",
+          "port": 8080,
+          "targetPort": 8080
+        }
+      ],
+      "selector": {
+        "app.kubernetes.io/name": "reports",
+        "deployer.io/app": "reports"
+      },
+      "type": "ClusterIP"
+    },
+    "status": {
+      "loadBalancer": {}
+    }
+  }
+}

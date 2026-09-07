@@ -32,6 +32,8 @@ func (a cliApp) parseRoot(args []string) (cliOptions, []string, int, bool) {
 	}
 
 	opts.outputSet = flagWasSet(flags, "output")
+	opts.serverSet = flagWasSet(flags, "server")
+	opts.tokenSet = flagWasSet(flags, "token")
 	if opts.output == "" {
 		opts.output = clicore.OutputHuman
 	}
@@ -58,6 +60,10 @@ func (a cliApp) dispatch(args []string, opts cliOptions) int {
 		return printVersion(a.stdout, a.stderr, opts.output)
 	case "login":
 		return a.login(args[1:], opts)
+	case "contexts":
+		return a.contexts(args[1:], opts)
+	case "preflight":
+		return a.preflight(args[1:], opts)
 	case "deploy":
 		return a.deploy(args[1:], opts)
 	case "apps":
@@ -94,6 +100,9 @@ func rootFlags(output io.Writer, opts *cliOptions) *flag.FlagSet {
 	flags.StringVar(&opts.serverURL, "server", "", "control plane server URL")
 	flags.StringVar(&opts.token, "token", "", "admin bearer token")
 	flags.StringVar(&opts.configPath, "config", "", "path to CLI config file")
+	flags.StringVar(&opts.context, "context", "", "named customer context")
+	flags.StringVar(&opts.environmentID, "environment-id", "", "customer environment identifier for a named context")
+	flags.StringVar(&opts.customerLabel, "customer-label", "", "customer label for a named context")
 	flags.StringVar(&opts.output, "output", "", "output format: human or json")
 	flags.BoolVar(&opts.showVersion, "version", false, "print version information")
 	return flags

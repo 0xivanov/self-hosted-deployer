@@ -20,6 +20,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	AppService_DeployApp_FullMethodName         = "/deployer.v1.AppService/DeployApp"
+	AppService_PreflightApp_FullMethodName      = "/deployer.v1.AppService/PreflightApp"
 	AppService_ListApps_FullMethodName          = "/deployer.v1.AppService/ListApps"
 	AppService_InspectApp_FullMethodName        = "/deployer.v1.AppService/InspectApp"
 	AppService_DeleteApp_FullMethodName         = "/deployer.v1.AppService/DeleteApp"
@@ -35,6 +36,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AppServiceClient interface {
 	DeployApp(ctx context.Context, in *DeployAppRequest, opts ...grpc.CallOption) (*DeployAppResponse, error)
+	PreflightApp(ctx context.Context, in *PreflightAppRequest, opts ...grpc.CallOption) (*PreflightAppResponse, error)
 	ListApps(ctx context.Context, in *ListAppsRequest, opts ...grpc.CallOption) (*ListAppsResponse, error)
 	InspectApp(ctx context.Context, in *InspectAppRequest, opts ...grpc.CallOption) (*InspectAppResponse, error)
 	DeleteApp(ctx context.Context, in *DeleteAppRequest, opts ...grpc.CallOption) (*DeleteAppResponse, error)
@@ -57,6 +59,16 @@ func (c *appServiceClient) DeployApp(ctx context.Context, in *DeployAppRequest, 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeployAppResponse)
 	err := c.cc.Invoke(ctx, AppService_DeployApp_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *appServiceClient) PreflightApp(ctx context.Context, in *PreflightAppRequest, opts ...grpc.CallOption) (*PreflightAppResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PreflightAppResponse)
+	err := c.cc.Invoke(ctx, AppService_PreflightApp_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -157,6 +169,7 @@ func (c *appServiceClient) InspectRoute(ctx context.Context, in *InspectRouteReq
 // for forward compatibility.
 type AppServiceServer interface {
 	DeployApp(context.Context, *DeployAppRequest) (*DeployAppResponse, error)
+	PreflightApp(context.Context, *PreflightAppRequest) (*PreflightAppResponse, error)
 	ListApps(context.Context, *ListAppsRequest) (*ListAppsResponse, error)
 	InspectApp(context.Context, *InspectAppRequest) (*InspectAppResponse, error)
 	DeleteApp(context.Context, *DeleteAppRequest) (*DeleteAppResponse, error)
@@ -177,6 +190,9 @@ type UnimplementedAppServiceServer struct{}
 
 func (UnimplementedAppServiceServer) DeployApp(context.Context, *DeployAppRequest) (*DeployAppResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeployApp not implemented")
+}
+func (UnimplementedAppServiceServer) PreflightApp(context.Context, *PreflightAppRequest) (*PreflightAppResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PreflightApp not implemented")
 }
 func (UnimplementedAppServiceServer) ListApps(context.Context, *ListAppsRequest) (*ListAppsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListApps not implemented")
@@ -237,6 +253,24 @@ func _AppService_DeployApp_Handler(srv interface{}, ctx context.Context, dec fun
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AppServiceServer).DeployApp(ctx, req.(*DeployAppRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AppService_PreflightApp_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PreflightAppRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServiceServer).PreflightApp(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppService_PreflightApp_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServiceServer).PreflightApp(ctx, req.(*PreflightAppRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -388,6 +422,10 @@ var AppService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeployApp",
 			Handler:    _AppService_DeployApp_Handler,
+		},
+		{
+			MethodName: "PreflightApp",
+			Handler:    _AppService_PreflightApp_Handler,
 		},
 		{
 			MethodName: "ListApps",

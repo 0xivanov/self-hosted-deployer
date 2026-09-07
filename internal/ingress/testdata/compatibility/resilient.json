@@ -1,0 +1,200 @@
+{
+  "deployment": {
+    "metadata": {
+      "name": "resilient-api",
+      "namespace": "deployer-apps",
+      "creationTimestamp": null,
+      "labels": {
+        "app.kubernetes.io/managed-by": "deployer",
+        "app.kubernetes.io/name": "resilient-api",
+        "deployer.io/app": "resilient-api"
+      }
+    },
+    "spec": {
+      "replicas": 2,
+      "selector": {
+        "matchLabels": {
+          "app.kubernetes.io/name": "resilient-api",
+          "deployer.io/app": "resilient-api"
+        }
+      },
+      "template": {
+        "metadata": {
+          "creationTimestamp": null,
+          "labels": {
+            "app.kubernetes.io/name": "resilient-api",
+            "deployer.io/app": "resilient-api",
+            "deployer.io/resilience-mode": "resilient",
+            "deployer.io/state-mode": "stateless"
+          }
+        },
+        "spec": {
+          "containers": [
+            {
+              "name": "resilient-api",
+              "image": "example/resilient-api:2.0.0",
+              "ports": [
+                {
+                  "name": "http",
+                  "containerPort": 8080
+                }
+              ],
+              "resources": {},
+              "readinessProbe": {
+                "httpGet": {
+                  "path": "/ready",
+                  "port": 8080
+                }
+              }
+            }
+          ],
+          "nodeSelector": {
+            "kubernetes.io/arch": "amd64"
+          },
+          "affinity": {
+            "podAntiAffinity": {
+              "preferredDuringSchedulingIgnoredDuringExecution": [
+                {
+                  "weight": 100,
+                  "podAffinityTerm": {
+                    "labelSelector": {
+                      "matchLabels": {
+                        "app.kubernetes.io/name": "resilient-api",
+                        "deployer.io/app": "resilient-api"
+                      }
+                    },
+                    "topologyKey": "kubernetes.io/hostname"
+                  }
+                }
+              ]
+            }
+          },
+          "topologySpreadConstraints": [
+            {
+              "maxSkew": 1,
+              "topologyKey": "kubernetes.io/hostname",
+              "whenUnsatisfiable": "DoNotSchedule",
+              "labelSelector": {
+                "matchLabels": {
+                  "app.kubernetes.io/name": "resilient-api",
+                  "deployer.io/app": "resilient-api"
+                }
+              },
+              "matchLabelKeys": [
+                "pod-template-hash"
+              ]
+            }
+          ]
+        }
+      },
+      "strategy": {
+        "type": "RollingUpdate",
+        "rollingUpdate": {
+          "maxUnavailable": 0,
+          "maxSurge": 1
+        }
+      },
+      "minReadySeconds": 10
+    },
+    "status": {}
+  },
+  "ingress": {
+    "apiVersion": "networking.k8s.io/v1",
+    "kind": "Ingress",
+    "metadata": {
+      "name": "resilient-api",
+      "namespace": "deployer-apps",
+      "labels": {
+        "app.kubernetes.io/managed-by": "deployer",
+        "app.kubernetes.io/name": "resilient-api",
+        "deployer.io/app": "resilient-api"
+      },
+      "annotations": {
+        "traefik.ingress.kubernetes.io/router.middlewares": "deployer-apps-resilient-api@kubernetescrd"
+      }
+    },
+    "spec": {
+      "ingressClassName": "traefik",
+      "rules": [
+        {
+          "host": "api.example.test",
+          "http": {
+            "paths": [
+              {
+                "path": "/",
+                "pathType": "Prefix",
+                "backend": {
+                  "service": {
+                    "name": "resilient-api",
+                    "port": {
+                      "number": 8080
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "pdb": {
+    "metadata": {
+      "name": "resilient-api",
+      "namespace": "deployer-apps",
+      "creationTimestamp": null,
+      "labels": {
+        "app.kubernetes.io/managed-by": "deployer",
+        "app.kubernetes.io/name": "resilient-api",
+        "deployer.io/app": "resilient-api"
+      }
+    },
+    "spec": {
+      "minAvailable": 1,
+      "selector": {
+        "matchLabels": {
+          "app.kubernetes.io/name": "resilient-api",
+          "deployer.io/app": "resilient-api"
+        }
+      }
+    },
+    "status": {
+      "disruptionsAllowed": 0,
+      "currentHealthy": 0,
+      "desiredHealthy": 0,
+      "expectedPods": 0
+    }
+  },
+  "service": {
+    "metadata": {
+      "name": "resilient-api",
+      "namespace": "deployer-apps",
+      "creationTimestamp": null,
+      "labels": {
+        "app.kubernetes.io/managed-by": "deployer",
+        "app.kubernetes.io/name": "resilient-api",
+        "deployer.io/app": "resilient-api"
+      },
+      "annotations": {
+        "traefik.ingress.kubernetes.io/service.serverstransport": "deployer-apps-resilient-api@kubernetescrd"
+      }
+    },
+    "spec": {
+      "ports": [
+        {
+          "name": "http",
+          "port": 8080,
+          "targetPort": 8080
+        }
+      ],
+      "selector": {
+        "app.kubernetes.io/name": "resilient-api",
+        "deployer.io/app": "resilient-api"
+      },
+      "type": "ClusterIP"
+    },
+    "status": {
+      "loadBalancer": {}
+    }
+  }
+}

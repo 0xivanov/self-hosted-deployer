@@ -49,6 +49,7 @@ func (a cliApp) deploy(args []string, opts cliOptions) int {
 	}
 	defer closeClient()
 
+	announceMutationTarget(a.stderr, resolved)
 	result, err := client.DeployApp(context.Background(), string(data))
 	if err != nil {
 		fmt.Fprintln(a.stderr, err)

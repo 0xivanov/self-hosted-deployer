@@ -72,6 +72,9 @@ jobs:
       - name: Race test
         run: go test -race ./...
 
+      - name: Synthetic platform recovery drill
+        run: go test -tags=integration -race ./internal/backup
+
       - name: Vet
         run: go vet ./...
 
@@ -82,7 +85,21 @@ jobs:
         run: make proto-check
 
       - name: Shell lint
-        run: shellcheck scripts/*.sh
+        run: shellcheck scripts/*.sh tests/*.sh
+
+      - name: Release policy and namespace tests
+        run: sh tests/release-controls-test.sh && bash tests/hosting-namespace-test.sh
+
+      - name: Installer rollback tests (disposable container)
+        run: docker run --rm --network none -v "$PWD:/work:ro" -w /work ubuntu:24.04 sh tests/release-installer-test.sh
+
+      - name: Backup delivery failure cases and local repository drill
+        run: python3 tests/platform-backup-job-test.py && python3 tests/platform-backup-job-test.py --real
+
+      - name: Backup scheduler and metrics tests
+        run: python3 tests/platform-backup-wrapper-test.py && python3 tests/recovery-bundle-test.py && python3 tests/postgres-globals-backup-test.py && python3 tests/backup-metrics-test.py
+      - name: Hosting dashboard query checks
+        run: sh tests/hosting-dashboard-test.sh
 
       - name: Build packages
         run: |

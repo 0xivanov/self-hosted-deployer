@@ -1,0 +1,18 @@
+name: reports
+image: example/reports:4.0.0
+service:
+  port: 8080
+  health:
+    path: /health
+routing: {}
+deploy:
+  replicas: 2
+placement:
+  arch: linux/arm64
+database:
+  postgres:
+    image: ghcr.io/cloudnative-pg/postgresql:17.2@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    database: reports
+    owner: reports
+    storage:
+      size: 20Gi

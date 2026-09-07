@@ -3,9 +3,43 @@ set -eu
 
 REPO="0xivanov/self-hosted-deployer"
 ROLE=""
+POLICY_FILE=${DEPLOYER_UPDATE_POLICY_FILE:-/etc/deployer/update-policy.conf}
+UPDATE_LOCK=${DEPLOYER_UPDATE_LOCK:-/run/deployer-auto-update.lock}
+BIN_DIR=${DEPLOYER_BIN_DIR:-/usr/local/bin}
+SBIN_DIR=${DEPLOYER_SBIN_DIR:-/usr/local/sbin}
+SYSTEMD_DIR=${DEPLOYER_SYSTEMD_DIR:-/etc/systemd/system}
+ROLLBACK_ROOT=${DEPLOYER_ROLLBACK_ROOT:-/var/lib/deployer/rollback}
 
 usage() {
-  echo "Usage: auto-update.sh --role server|agent [--repo OWNER/REPO]" >&2
+  echo "Usage: auto-update.sh --role server|agent [--repo OWNER/REPO] [--policy-file FILE]" >&2
+}
+
+policy_mode="latest"
+policy_version=""
+
+read_policy() {
+  if [ -e "$POLICY_FILE" ] || [ -L "$POLICY_FILE" ]; then
+    [ -f "$POLICY_FILE" ] || { echo "invalid update policy: path is not a regular file" >&2; return 1; }
+  else
+    return 0
+  fi
+  policy_mode=""
+  policy_version=""
+  seen_mode="0"
+  seen_version="0"
+  while IFS='=' read -r key value || [ -n "$key" ]; do
+    case "$key" in
+      ''|'#'*) continue ;;
+      mode) [ "$seen_mode" = "0" ] || { echo "invalid update policy: duplicate mode" >&2; return 1; }; policy_mode=$value; seen_mode="1" ;;
+      version) [ "$seen_version" = "0" ] || { echo "invalid update policy: duplicate version" >&2; return 1; }; policy_version=$value; seen_version="1" ;;
+      *) echo "invalid update policy: unknown key $key" >&2; return 1 ;;
+    esac
+  done <"$POLICY_FILE"
+  case "$policy_mode" in
+    manual|latest) [ -z "$policy_version" ] || { echo "invalid update policy: version is only valid for pinned mode" >&2; return 1; } ;;
+    pinned) [ -n "$policy_version" ] || { echo "invalid update policy: pinned mode requires version" >&2; return 1; } ;;
+    *) echo "invalid update policy: mode must be manual, pinned, or latest" >&2; return 1 ;;
+  esac
 }
 
 while [ "$#" -gt 0 ]; do
@@ -18,6 +52,11 @@ while [ "$#" -gt 0 ]; do
     --repo)
       [ "$#" -ge 2 ] || { usage; exit 2; }
       REPO="$2"
+      shift 2
+      ;;
+    --policy-file)
+      [ "$#" -ge 2 ] || { usage; exit 2; }
+      POLICY_FILE=$2
       shift 2
       ;;
     --help|-h)
@@ -48,31 +87,54 @@ case "$ROLE" in
 esac
 
 [ "$(id -u)" = "0" ] || { echo "auto-update must run as root" >&2; exit 1; }
-command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
 command -v flock >/dev/null 2>&1 || { echo "flock is required" >&2; exit 1; }
+read_policy || exit 1
+if [ "$policy_mode" != "manual" ]; then
+  command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
+fi
 
-exec 9>/run/deployer-auto-update.lock
+exec 9>"$UPDATE_LOCK"
 if ! flock -n 9; then
   echo "another deployer update is already running"
   exit 0
 fi
 
+case "$ROLE" in
+  server) BINARY="$BIN_DIR/deployer-server" ;;
+  agent) BINARY="$BIN_DIR/deployer-agent" ;;
+esac
 current=$($BINARY version | sed -n 's/^version=\([^ ]*\).*/\1/p')
 [ -n "$current" ] || { echo "cannot determine installed version" >&2; exit 1; }
 
-latest_url=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")
-latest=${latest_url##*/}
-case "$latest" in
-  v[0-9]*.[0-9]*.[0-9]*) ;;
-  *) echo "invalid latest release tag: $latest" >&2; exit 1 ;;
-esac
+echo "$ROLE update policy=${policy_mode} effective-version=${policy_version:-latest} installed-version=$current"
+if [ "$policy_mode" = "manual" ]; then
+  echo "automatic updates are disabled by the manual update policy"
+  exit 0
+fi
 
+if [ "$policy_mode" = "pinned" ]; then
+  latest=$policy_version
+else
+  latest_url=$(curl -fsSL -o /dev/null -w '%{url_effective}' "https://github.com/$REPO/releases/latest")
+  latest=${latest_url##*/}
+fi
 semver_parts() {
+  # Bound numeric components before shell arithmetic; require one exact tag.
+  case "$1" in *'
+'*) return 1 ;; esac
+  printf '%s\n' "$1" | LC_ALL=C grep -Eq '^v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$' || return 1
   version=${1#v}
   core=${version%%-*}
   prerelease=""
   if [ "$core" != "$version" ]; then
     prerelease=${version#*-}
+    case "$prerelease" in ''|*[!0-9A-Za-z.-]*) return 1 ;; esac
+    old_ifs=$IFS
+    IFS=.
+    for identifier in $prerelease; do
+      [ -n "$identifier" ] || { IFS=$old_ifs; return 1; }
+    done
+    IFS=$old_ifs
   fi
   major=${core%%.*}
   remainder=${core#*.}
@@ -88,6 +150,11 @@ semver_parts() {
   printf '%s:%s:%s:%s\n' "$major" "$minor" "$patch" "${prerelease:-_release}"
 }
 
+valid_release_tag() {
+  semver_parts "$1" >/dev/null 2>&1
+}
+
+valid_release_tag "$latest" || { echo "invalid release tag: $latest" >&2; exit 1; }
 current_parts=$(semver_parts "$current") || { echo "invalid installed version: $current" >&2; exit 1; }
 latest_parts=$(semver_parts "$latest") || { echo "invalid latest release version: $latest" >&2; exit 1; }
 IFS=: read -r current_major current_minor current_patch current_prerelease <<EOF
@@ -119,7 +186,7 @@ if [ "$forward" != "1" ]; then
   exit 1
 fi
 
-rollback_dir="/var/lib/deployer/rollback/$ROLE"
+rollback_dir="$ROLLBACK_ROOT/$ROLE"
 failed_version_file="$rollback_dir/failed-version"
 install -d -m 0700 "$rollback_dir"
 if [ -f "$failed_version_file" ]; then
@@ -170,30 +237,32 @@ case "$ROLE" in
     ;;
 esac
 
-snapshot_file /usr/local/bin/deployer cli
+snapshot_file "$BIN_DIR/deployer" cli
 snapshot_file "$BINARY" role-binary
-snapshot_file /usr/local/sbin/deployer-auto-update updater
-snapshot_file /usr/local/sbin/deployer-install-release installer
-snapshot_file "/etc/systemd/system/$role_unit" role-unit
-snapshot_file "/etc/systemd/system/$updater_unit" updater-unit
-snapshot_file "/etc/systemd/system/$timer_unit" timer-unit
+snapshot_file "$SBIN_DIR/deployer-auto-update" updater
+snapshot_file "$SBIN_DIR/deployer-install-release" installer
+snapshot_file "$SYSTEMD_DIR/$role_unit" role-unit
+snapshot_file "$SYSTEMD_DIR/$updater_unit" updater-unit
+snapshot_file "$SYSTEMD_DIR/$timer_unit" timer-unit
+snapshot_file "$POLICY_FILE" update-policy
 
 restore_release() {
-  restore_file /usr/local/bin/deployer cli 0755
+  restore_file "$BIN_DIR/deployer" cli 0755
   restore_file "$BINARY" role-binary 0755
-  restore_file /usr/local/sbin/deployer-auto-update updater 0755
-  restore_file /usr/local/sbin/deployer-install-release installer 0755
-  restore_file "/etc/systemd/system/$role_unit" role-unit 0644
-  restore_file "/etc/systemd/system/$updater_unit" updater-unit 0644
-  restore_file "/etc/systemd/system/$timer_unit" timer-unit 0644
+  restore_file "$SBIN_DIR/deployer-auto-update" updater 0755
+  restore_file "$SBIN_DIR/deployer-install-release" installer 0755
+  restore_file "$SYSTEMD_DIR/$role_unit" role-unit 0644
+  restore_file "$SYSTEMD_DIR/$updater_unit" updater-unit 0644
+  restore_file "$SYSTEMD_DIR/$timer_unit" timer-unit 0644
+  restore_file "$POLICY_FILE" update-policy 0644
 }
 
-installer=/usr/local/sbin/deployer-install-release
+installer="$SBIN_DIR/deployer-install-release"
 if [ ! -x "$installer" ]; then
   echo "trusted local release installer is missing: $installer" >&2
   exit 1
 fi
-if ! "$installer" --repo "$REPO" --version "$latest" --role "$ROLE" --no-restart --no-enable-timer; then
+if ! "$installer" --repo "$REPO" --version "$latest" --role "$ROLE" --policy-file "$POLICY_FILE" --no-restart --no-enable-timer; then
   echo "release installation failed; restoring $current files" >&2
   printf '%s\n' "$latest" >"$failed_version_file"
   restore_release

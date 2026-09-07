@@ -77,6 +77,13 @@ func (s SecretService) SetSecret(ctx context.Context, req *deployerv1.SetSecretR
 	if err != nil {
 		return nil, err
 	}
+	cfg, err := parseStoredConfigForDeployment(app.DesiredStateJSON)
+	if err != nil {
+		return nil, status.Error(codes.FailedPrecondition, "stored app configuration is invalid")
+	}
+	if err := preflightHosting(ctx, s.runtime, cfg); err != nil {
+		return nil, err
+	}
 	eventType := domain.EventTypeSecretCreated
 	eventMessage := "created"
 	if _, err := s.secrets.Find(ctx, app.ID, name); err == nil {
@@ -141,7 +148,7 @@ func (s SecretService) DeleteSecret(ctx context.Context, req *deployerv1.DeleteS
 	if err != nil {
 		return nil, err
 	}
-	cfg, err := appconfig.FromJSON(app.DesiredStateJSON)
+	cfg, err := parseStoredConfigForDeployment(app.DesiredStateJSON)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "decode desired state")
 	}
@@ -201,7 +208,7 @@ func (s SecretService) reconcileReferencedSecret(ctx context.Context, app domain
 	if s.runtime == nil {
 		return nil
 	}
-	cfg, err := appconfig.FromJSON(app.DesiredStateJSON)
+	cfg, err := parseStoredConfigForDeployment(app.DesiredStateJSON)
 	if err != nil {
 		return status.Error(codes.Internal, "decode desired state")
 	}

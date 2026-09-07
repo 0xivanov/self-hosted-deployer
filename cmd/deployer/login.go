@@ -54,17 +54,46 @@ func (a cliApp) login(args []string, opts cliOptions) int {
 		return 1
 	}
 
-	cfg := clicore.Config{
-		ServerURL:  serverURL,
-		AdminToken: token,
-		Output:     output,
+	cfg, loadErr := clicore.LoadConfig(opts.configPath)
+	if errors.Is(loadErr, clicore.ErrConfigNotFound) {
+		cfg = clicore.Config{}
+	} else if loadErr != nil {
+		fmt.Fprintln(a.stderr, loadErr)
+		return 1
+	}
+	cfg.Output = output
+	if contextName := strings.TrimSpace(opts.context); contextName != "" {
+		if cfg.Contexts == nil {
+			contexts := make(map[string]clicore.Context)
+			cfg.Contexts = &contexts
+		}
+		entry := (*cfg.Contexts)[contextName]
+		entry.ServerURL = serverURL
+		entry.AdminToken = token
+		entry.CredentialRef = "inline"
+		if opts.environmentID != "" {
+			entry.EnvironmentID = opts.environmentID
+		}
+		if opts.customerLabel != "" {
+			entry.CustomerLabel = opts.customerLabel
+		}
+		(*cfg.Contexts)[contextName] = entry
+		cfg.CurrentContext = contextName
+	} else {
+		cfg.ServerURL = serverURL
+		cfg.AdminToken = token
+		cfg.CurrentContext = ""
 	}
 	if err := clicore.SaveConfig(opts.configPath, cfg); err != nil {
 		fmt.Fprintln(a.stderr, err)
 		return 1
 	}
 
-	fmt.Fprintf(a.stdout, "logged in to %s\n", serverURL)
+	if contextName := strings.TrimSpace(opts.context); contextName != "" {
+		fmt.Fprintf(a.stdout, "logged in to context %s (%s)\n", contextName, serverURL)
+	} else {
+		fmt.Fprintf(a.stdout, "logged in to %s\n", serverURL)
+	}
 	return 0
 }
 

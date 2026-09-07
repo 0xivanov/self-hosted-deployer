@@ -6,6 +6,7 @@ option go_package = "github.com/0xivanov/self-hosted-deployer/internal/proto/dep
 
 service AppService {
   rpc DeployApp(DeployAppRequest) returns (DeployAppResponse);
+  rpc PreflightApp(PreflightAppRequest) returns (PreflightAppResponse);
   rpc ListApps(ListAppsRequest) returns (ListAppsResponse);
   rpc InspectApp(InspectAppRequest) returns (InspectAppResponse);
   rpc DeleteApp(DeleteAppRequest) returns (DeleteAppResponse);
@@ -51,6 +52,15 @@ message DeployAppRequest {
 message DeployAppResponse {
   App app = 1;
   Deployment deployment = 2;
+}
+
+message PreflightAppRequest {
+  string deployer_yaml = 1;
+}
+
+message PreflightAppResponse {
+  string desired_state = 1;
+  repeated string warnings = 2;
 }
 
 message ListAppsRequest {

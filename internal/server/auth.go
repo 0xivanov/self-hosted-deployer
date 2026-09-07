@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 	"time"
@@ -125,7 +127,7 @@ func (a Authenticator) authenticate(ctx context.Context, fullMethod string) (Cal
 		if err := a.repos.AdminTokens.MarkUsed(ctx, tokenHash, now); err != nil {
 			return Caller{}, status.Error(codes.Internal, "record admin token usage")
 		}
-		return Caller{Kind: CallerAdmin}, nil
+		return Caller{Kind: CallerAdmin, TokenID: opaqueTokenID(tokenHash)}, nil
 	case security.AgentTokenPrefix:
 		token, err := a.repos.AgentTokens.FindByHash(ctx, tokenHash)
 		if errors.Is(err, db.ErrNotFound) {
@@ -143,12 +145,17 @@ func (a Authenticator) authenticate(ctx context.Context, fullMethod string) (Cal
 		if err := a.repos.AgentTokens.MarkUsed(ctx, tokenHash, now); err != nil {
 			return Caller{}, status.Error(codes.Internal, "record agent token usage")
 		}
-		return Caller{Kind: CallerAgent, NodeID: token.NodeID}, nil
+		return Caller{Kind: CallerAgent, NodeID: token.NodeID, TokenID: opaqueTokenID(tokenHash)}, nil
 	case security.JoinTokenPrefix:
 		return Caller{}, status.Error(codes.PermissionDenied, "join tokens must be sent to JoinNode")
 	default:
 		return Caller{}, status.Error(codes.Unauthenticated, "invalid bearer token")
 	}
+}
+
+func opaqueTokenID(storedTokenHash string) string {
+	digest := sha256.Sum256([]byte(storedTokenHash))
+	return hex.EncodeToString(digest[:8])
 }
 
 func bearerToken(ctx context.Context) (string, error) {

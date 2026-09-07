@@ -2,17 +2,25 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"strings"
 
 	clicore "github.com/0xivanov/self-hosted-deployer/internal/cli"
 )
 
 type cliOptions struct {
-	serverURL   string
-	token       string
-	configPath  string
-	output      string
-	outputSet   bool
-	showVersion bool
+	serverURL     string
+	serverSet     bool
+	token         string
+	tokenSet      bool
+	configPath    string
+	context       string
+	environmentID string
+	customerLabel string
+	output        string
+	outputSet     bool
+	showVersion   bool
 }
 
 func (o cliOptions) validate() error {
@@ -20,9 +28,12 @@ func (o cliOptions) validate() error {
 }
 
 type runtimeOptions struct {
-	serverURL string
-	token     string
-	output    string
+	serverURL     string
+	token         string
+	output        string
+	context       string
+	environmentID string
+	customerLabel string
 }
 
 func resolveRuntimeOptions(opts cliOptions) (runtimeOptions, error) {
@@ -31,13 +42,37 @@ func resolveRuntimeOptions(opts cliOptions) (runtimeOptions, error) {
 		return runtimeOptions{}, err
 	}
 
-	resolved := runtimeOptions{
-		serverURL: cfg.ServerURL,
-		token:     cfg.AdminToken,
-		output:    cfg.Output,
-	}
+	resolved := runtimeOptions{serverURL: cfg.ServerURL, token: cfg.AdminToken, output: cfg.Output}
 	if resolved.output == "" {
 		resolved.output = clicore.OutputHuman
+	}
+	selectedContext := strings.TrimSpace(opts.context)
+	if selectedContext == "" {
+		selectedContext = strings.TrimSpace(os.Getenv("DEPLOYER_CONTEXT"))
+	}
+	if selectedContext == "" {
+		selectedContext = strings.TrimSpace(cfg.CurrentContext)
+	}
+	contextSelected := selectedContext != ""
+	if contextSelected {
+		ctx, contextErr := cfg.Context(selectedContext)
+		if contextErr != nil {
+			return runtimeOptions{}, contextErr
+		}
+		if ctx.ServerIdentity != "" {
+			return runtimeOptions{}, errors.New("server identity binding is not supported by this client; do not use this context until identity verification is implemented")
+		}
+		resolved.context = selectedContext
+		resolved.serverURL = ctx.ServerURL
+		resolved.token, contextErr = clicore.ResolveContextCredential(ctx)
+		if contextErr != nil {
+			return runtimeOptions{}, fmt.Errorf("resolve context %q: %w", selectedContext, contextErr)
+		}
+		resolved.environmentID = ctx.EnvironmentID
+		resolved.customerLabel = ctx.CustomerLabel
+	}
+	if contextSelected && (opts.serverSet || opts.serverURL != "") {
+		return runtimeOptions{}, errors.New("cannot override a named context endpoint; select another context instead")
 	}
 	if opts.serverURL != "" {
 		resolved.serverURL = opts.serverURL

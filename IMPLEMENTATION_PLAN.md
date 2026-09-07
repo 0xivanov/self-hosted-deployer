@@ -6,6 +6,11 @@ The main product spec remains the north star:
 
 - [PRODUCT_SPEC.md](PRODUCT_SPEC.md)
 
+The proposed managed hosting POC extension, including compatibility gates and the existing three-node rollout procedure, is tracked separately:
+
+- [Managed Hosting POC Upgrade Plan](docs/hosting-poc-plan.md)
+- [Hosting implementation status and remaining gates](docs/hosting-implementation-status.md)
+
 ## Delivery Strategy
 
 Build the platform as a thin vertical slice first, then deepen each subsystem. The CLI must be implemented in Go. The server and agent should also be implemented in Go unless a later design decision explicitly changes that.

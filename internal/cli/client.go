@@ -150,6 +150,11 @@ type DeployResult struct {
 	Deployment DeploymentInfo `json:"deployment"`
 }
 
+type PreflightResult struct {
+	DesiredState string   `json:"desired_state"`
+	Warnings     []string `json:"warnings"`
+}
+
 type AppInspectResult struct {
 	App         AppInfo          `json:"app"`
 	Deployments []DeploymentInfo `json:"deployments"`
@@ -411,6 +416,17 @@ func (c *PlatformClient) DeployApp(ctx context.Context, deployerYAML string) (De
 		App:        app,
 		Deployment: deploymentInfo(response.GetDeployment()),
 	}, nil
+}
+
+func (c *PlatformClient) PreflightApp(ctx context.Context, deployerYAML string) (PreflightResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	response, err := c.appClient.PreflightApp(ctx, &deployerv1.PreflightAppRequest{DeployerYaml: deployerYAML})
+	if err != nil {
+		return PreflightResult{}, DecodeRPCError(err)
+	}
+	return PreflightResult{DesiredState: response.GetDesiredState(), Warnings: append([]string(nil), response.GetWarnings()...)}, nil
 }
 
 func (c *PlatformClient) ListApps(ctx context.Context) ([]AppInfo, error) {

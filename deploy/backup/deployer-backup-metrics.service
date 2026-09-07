@@ -1,0 +1,31 @@
+[Unit]
+Description=Self-Hosted Deployer platform backup metrics exporter
+Documentation=https://github.com/0xivanov/self-hosted-deployer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+ExecStart=/usr/bin/python3 /usr/local/libexec/serve-backup-metrics.py --listen 10.8.0.1 --port 9708 --metrics-file /var/lib/deployer/backup-status/platform-backup.prom
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6
+CapabilityBoundingSet=
+ReadOnlyPaths=/var/lib/deployer/backup-status
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

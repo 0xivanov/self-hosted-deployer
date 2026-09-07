@@ -1,0 +1,42 @@
+groups:
+  - name: deployer-recovery-backup
+    rules:
+      - alert: DeployerRecoveryBackupFailed
+        expr: deployer_platform_backup_last_run_success{job="deployer-recovery-backup"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          environment: legacy-vps
+        annotations:
+          summary: "Recovery backup failed on {{ $labels.environment }}"
+          description: "The most recent recovery backup run reported failure for five minutes."
+
+      - alert: DeployerRecoveryBackupStale
+        expr: time() - deployer_platform_backup_last_success_timestamp_seconds{job="deployer-recovery-backup"} > 36 * 60 * 60
+        for: 5m
+        labels:
+          severity: critical
+          environment: legacy-vps
+        annotations:
+          summary: "Recovery backup is stale on {{ $labels.environment }}"
+          description: "The last successful recovery backup is more than 36 hours old."
+
+      - alert: DeployerRecoveryBackupMetricsMissing
+        expr: |
+          (up{job="deployer-recovery-backup"} == 0)
+          or absent(up{job="deployer-recovery-backup"})
+          or (
+            up{job="deployer-recovery-backup"} == 1
+            and on (job)
+            (
+              absent(deployer_platform_backup_last_run_success{job="deployer-recovery-backup"})
+              or absent(deployer_platform_backup_last_success_timestamp_seconds{job="deployer-recovery-backup"})
+            )
+          )
+        for: 5m
+        labels:
+          severity: critical
+          environment: legacy-vps
+        annotations:
+          summary: "Recovery backup metrics are missing on {{ $labels.environment }}"
+          description: "Prometheus cannot scrape the recovery backup metrics exporter."

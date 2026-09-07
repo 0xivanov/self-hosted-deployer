@@ -1,0 +1,17 @@
+[Unit]
+Description=Capture PostgreSQL globals for recovery backup
+Documentation=https://github.com/0xivanov/self-hosted-deployer
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+TimeoutStartSec=90s
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/money-manager
+RestrictAddressFamilies=AF_UNIX
+ExecStart=/usr/bin/python3 /usr/local/libexec/backup-postgres-globals.py --pg-dumpall /usr/lib/postgresql/17/bin/pg_dumpall --output /var/backups/money-manager/postgres-globals.sql

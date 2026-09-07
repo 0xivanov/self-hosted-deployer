@@ -1,0 +1,9 @@
+[Unit]
+Description=Run the Self-Hosted Deployer platform backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Europe/Sofia
+Persistent=true
+
+[Install]
+WantedBy=timers.target

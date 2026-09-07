@@ -44,6 +44,8 @@ func run(args []string) int {
 
 	if flags.NArg() > 0 {
 		switch flags.Arg(0) {
+		case "backup":
+			return backupCommand(flags.Args()[1:])
 		case "bootstrap":
 			return bootstrap(flags.Args()[1:])
 		case "help":

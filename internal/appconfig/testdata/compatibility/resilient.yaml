@@ -1,0 +1,15 @@
+name: resilient-api
+image: example/resilient-api:2.0.0
+service:
+  port: 8080
+  health:
+    path: /ready
+routing:
+  domain: api.example.test
+deploy:
+  replicas: 2
+placement:
+  arch: linux/amd64
+  spread: true
+resilience:
+  mode: resilient

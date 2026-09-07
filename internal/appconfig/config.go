@@ -37,6 +37,7 @@ type Config struct {
 	State      StateConfig      `json:"state" yaml:"state"`
 	Resilience ResilienceConfig `json:"resilience" yaml:"resilience"`
 	Database   DatabaseConfig   `json:"database,omitempty" yaml:"database,omitempty"`
+	Hosting    *HostingConfig   `json:"hosting,omitempty" yaml:"hosting,omitempty"`
 }
 
 type ServiceConfig struct {
@@ -197,6 +198,16 @@ func (c Config) Validate() error {
 	}
 	if err := c.Database.validate(c.Name, c.Placement.Arch, seenSecrets); err != nil {
 		return err
+	}
+	hostingReplicas := c.Deploy.Replicas
+	if c.Resilience.Mode == ResilienceResilient && hostingReplicas < 2 {
+		hostingReplicas = 2
+	}
+	if err := c.Hosting.Validate(hostingReplicas); err != nil {
+		return err
+	}
+	if c.Hosting != nil && c.Database.Postgres != nil && c.Database.Postgres.ConnectionMode == PostgresConnectionModeManaged {
+		return fmt.Errorf("hosting profile v1 cannot be combined with managed PostgreSQL until NetworkPolicy database paths are qualified")
 	}
 	return nil
 }

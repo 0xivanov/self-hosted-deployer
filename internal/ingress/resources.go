@@ -27,6 +27,9 @@ func (c *Controller) reconcileAppResources(ctx context.Context, cfg appconfig.Co
 	if err := c.reconcileNamespace(ctx); err != nil {
 		return err
 	}
+	if err := c.reconcileHostingNetworkPolicy(ctx, cfg); err != nil {
+		return err
+	}
 	if err := c.reconcilePostgres(ctx, cfg); err != nil {
 		return err
 	}
@@ -375,6 +378,15 @@ func (c *Controller) deleteAppSecret(ctx context.Context, appName string) error 
 
 func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision string) (*appsv1.Deployment, error) {
 	cfg.Normalize()
+	if cfg.Hosting != nil {
+		hostingReplicas := cfg.Deploy.Replicas
+		if cfg.Resilience.Mode == appconfig.ResilienceResilient && hostingReplicas < 2 {
+			hostingReplicas = 2
+		}
+		if err := cfg.Hosting.Validate(hostingReplicas); err != nil {
+			return nil, err
+		}
+	}
 	labels := appLabels(cfg.Name)
 	podLabels := appLabels(cfg.Name)
 	podLabels["deployer.io/state-mode"] = cfg.State.Mode
@@ -412,6 +424,22 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 				},
 			},
 		},
+	}
+	if cfg.Hosting != nil {
+		resources, err := cfg.Hosting.ResourceRequirements()
+		if err != nil {
+			return nil, err
+		}
+		allowPrivilegeEscalation := false
+		runAsNonRoot := true
+		deployment.Spec.Template.Spec.AutomountServiceAccountToken = boolPtr(false)
+		deployment.Spec.Template.Spec.Containers[0].Resources = resources
+		deployment.Spec.Template.Spec.Containers[0].SecurityContext = &corev1.SecurityContext{
+			AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+			RunAsNonRoot:             &runAsNonRoot,
+			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+			SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+		}
 	}
 	if cfg.Metrics != nil {
 		metricsPort := int32(cfg.Metrics.Port)
@@ -520,6 +548,8 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 	}
 	return deployment, nil
 }
+
+func boolPtr(value bool) *bool { return &value }
 
 func podDisruptionBudgetForApp(cfg appconfig.Config, namespace string) *policyv1.PodDisruptionBudget {
 	minAvailable := intstr.FromInt32(1)

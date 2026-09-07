@@ -377,6 +377,102 @@ func (x *DeployAppResponse) GetDeployment() *Deployment {
 	return nil
 }
 
+type PreflightAppRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DeployerYaml  string                 `protobuf:"bytes,1,opt,name=deployer_yaml,json=deployerYaml,proto3" json:"deployer_yaml,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreflightAppRequest) Reset() {
+	*x = PreflightAppRequest{}
+	mi := &file_deployer_v1_app_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreflightAppRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreflightAppRequest) ProtoMessage() {}
+
+func (x *PreflightAppRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_deployer_v1_app_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreflightAppRequest.ProtoReflect.Descriptor instead.
+func (*PreflightAppRequest) Descriptor() ([]byte, []int) {
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *PreflightAppRequest) GetDeployerYaml() string {
+	if x != nil {
+		return x.DeployerYaml
+	}
+	return ""
+}
+
+type PreflightAppResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DesiredState  string                 `protobuf:"bytes,1,opt,name=desired_state,json=desiredState,proto3" json:"desired_state,omitempty"`
+	Warnings      []string               `protobuf:"bytes,2,rep,name=warnings,proto3" json:"warnings,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PreflightAppResponse) Reset() {
+	*x = PreflightAppResponse{}
+	mi := &file_deployer_v1_app_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PreflightAppResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PreflightAppResponse) ProtoMessage() {}
+
+func (x *PreflightAppResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_deployer_v1_app_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PreflightAppResponse.ProtoReflect.Descriptor instead.
+func (*PreflightAppResponse) Descriptor() ([]byte, []int) {
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *PreflightAppResponse) GetDesiredState() string {
+	if x != nil {
+		return x.DesiredState
+	}
+	return ""
+}
+
+func (x *PreflightAppResponse) GetWarnings() []string {
+	if x != nil {
+		return x.Warnings
+	}
+	return nil
+}
+
 type ListAppsRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
@@ -387,7 +483,7 @@ type ListAppsRequest struct {
 
 func (x *ListAppsRequest) Reset() {
 	*x = ListAppsRequest{}
-	mi := &file_deployer_v1_app_proto_msgTypes[5]
+	mi := &file_deployer_v1_app_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -399,7 +495,7 @@ func (x *ListAppsRequest) String() string {
 func (*ListAppsRequest) ProtoMessage() {}
 
 func (x *ListAppsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[5]
+	mi := &file_deployer_v1_app_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -412,7 +508,7 @@ func (x *ListAppsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAppsRequest.ProtoReflect.Descriptor instead.
 func (*ListAppsRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{5}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ListAppsRequest) GetPageSize() int32 {
@@ -439,7 +535,7 @@ type ListAppsResponse struct {
 
 func (x *ListAppsResponse) Reset() {
 	*x = ListAppsResponse{}
-	mi := &file_deployer_v1_app_proto_msgTypes[6]
+	mi := &file_deployer_v1_app_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -451,7 +547,7 @@ func (x *ListAppsResponse) String() string {
 func (*ListAppsResponse) ProtoMessage() {}
 
 func (x *ListAppsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[6]
+	mi := &file_deployer_v1_app_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -464,7 +560,7 @@ func (x *ListAppsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAppsResponse.ProtoReflect.Descriptor instead.
 func (*ListAppsResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{6}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListAppsResponse) GetApps() []*App {
@@ -490,7 +586,7 @@ type InspectAppRequest struct {
 
 func (x *InspectAppRequest) Reset() {
 	*x = InspectAppRequest{}
-	mi := &file_deployer_v1_app_proto_msgTypes[7]
+	mi := &file_deployer_v1_app_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -502,7 +598,7 @@ func (x *InspectAppRequest) String() string {
 func (*InspectAppRequest) ProtoMessage() {}
 
 func (x *InspectAppRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[7]
+	mi := &file_deployer_v1_app_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -515,7 +611,7 @@ func (x *InspectAppRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectAppRequest.ProtoReflect.Descriptor instead.
 func (*InspectAppRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{7}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *InspectAppRequest) GetName() string {
@@ -536,7 +632,7 @@ type InspectAppResponse struct {
 
 func (x *InspectAppResponse) Reset() {
 	*x = InspectAppResponse{}
-	mi := &file_deployer_v1_app_proto_msgTypes[8]
+	mi := &file_deployer_v1_app_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -548,7 +644,7 @@ func (x *InspectAppResponse) String() string {
 func (*InspectAppResponse) ProtoMessage() {}
 
 func (x *InspectAppResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[8]
+	mi := &file_deployer_v1_app_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -561,7 +657,7 @@ func (x *InspectAppResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectAppResponse.ProtoReflect.Descriptor instead.
 func (*InspectAppResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{8}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *InspectAppResponse) GetApp() *App {
@@ -594,7 +690,7 @@ type DeleteAppRequest struct {
 
 func (x *DeleteAppRequest) Reset() {
 	*x = DeleteAppRequest{}
-	mi := &file_deployer_v1_app_proto_msgTypes[9]
+	mi := &file_deployer_v1_app_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -606,7 +702,7 @@ func (x *DeleteAppRequest) String() string {
 func (*DeleteAppRequest) ProtoMessage() {}
 
 func (x *DeleteAppRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[9]
+	mi := &file_deployer_v1_app_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -619,7 +715,7 @@ func (x *DeleteAppRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAppRequest.ProtoReflect.Descriptor instead.
 func (*DeleteAppRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{9}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DeleteAppRequest) GetName() string {
@@ -638,7 +734,7 @@ type DeleteAppResponse struct {
 
 func (x *DeleteAppResponse) Reset() {
 	*x = DeleteAppResponse{}
-	mi := &file_deployer_v1_app_proto_msgTypes[10]
+	mi := &file_deployer_v1_app_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -650,7 +746,7 @@ func (x *DeleteAppResponse) String() string {
 func (*DeleteAppResponse) ProtoMessage() {}
 
 func (x *DeleteAppResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[10]
+	mi := &file_deployer_v1_app_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -663,7 +759,7 @@ func (x *DeleteAppResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteAppResponse.ProtoReflect.Descriptor instead.
 func (*DeleteAppResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{10}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DeleteAppResponse) GetApp() *App {
@@ -682,7 +778,7 @@ type GetAppRequest struct {
 
 func (x *GetAppRequest) Reset() {
 	*x = GetAppRequest{}
-	mi := &file_deployer_v1_app_proto_msgTypes[11]
+	mi := &file_deployer_v1_app_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -694,7 +790,7 @@ func (x *GetAppRequest) String() string {
 func (*GetAppRequest) ProtoMessage() {}
 
 func (x *GetAppRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[11]
+	mi := &file_deployer_v1_app_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -707,7 +803,7 @@ func (x *GetAppRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAppRequest.ProtoReflect.Descriptor instead.
 func (*GetAppRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{11}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetAppRequest) GetName() string {
@@ -728,7 +824,7 @@ type GetAppResponse struct {
 
 func (x *GetAppResponse) Reset() {
 	*x = GetAppResponse{}
-	mi := &file_deployer_v1_app_proto_msgTypes[12]
+	mi := &file_deployer_v1_app_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -740,7 +836,7 @@ func (x *GetAppResponse) String() string {
 func (*GetAppResponse) ProtoMessage() {}
 
 func (x *GetAppResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[12]
+	mi := &file_deployer_v1_app_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -753,7 +849,7 @@ func (x *GetAppResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAppResponse.ProtoReflect.Descriptor instead.
 func (*GetAppResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{12}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *GetAppResponse) GetApp() *App {
@@ -786,7 +882,7 @@ type GetAppStatusRequest struct {
 
 func (x *GetAppStatusRequest) Reset() {
 	*x = GetAppStatusRequest{}
-	mi := &file_deployer_v1_app_proto_msgTypes[13]
+	mi := &file_deployer_v1_app_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -798,7 +894,7 @@ func (x *GetAppStatusRequest) String() string {
 func (*GetAppStatusRequest) ProtoMessage() {}
 
 func (x *GetAppStatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[13]
+	mi := &file_deployer_v1_app_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -811,7 +907,7 @@ func (x *GetAppStatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAppStatusRequest.ProtoReflect.Descriptor instead.
 func (*GetAppStatusRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{13}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *GetAppStatusRequest) GetName() string {
@@ -838,7 +934,7 @@ type GetAppStatusResponse struct {
 
 func (x *GetAppStatusResponse) Reset() {
 	*x = GetAppStatusResponse{}
-	mi := &file_deployer_v1_app_proto_msgTypes[14]
+	mi := &file_deployer_v1_app_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -850,7 +946,7 @@ func (x *GetAppStatusResponse) String() string {
 func (*GetAppStatusResponse) ProtoMessage() {}
 
 func (x *GetAppStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[14]
+	mi := &file_deployer_v1_app_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -863,7 +959,7 @@ func (x *GetAppStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetAppStatusResponse.ProtoReflect.Descriptor instead.
 func (*GetAppStatusResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{14}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GetAppStatusResponse) GetApp() *App {
@@ -943,7 +1039,7 @@ type DatabaseStatus struct {
 
 func (x *DatabaseStatus) Reset() {
 	*x = DatabaseStatus{}
-	mi := &file_deployer_v1_app_proto_msgTypes[15]
+	mi := &file_deployer_v1_app_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -955,7 +1051,7 @@ func (x *DatabaseStatus) String() string {
 func (*DatabaseStatus) ProtoMessage() {}
 
 func (x *DatabaseStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[15]
+	mi := &file_deployer_v1_app_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -968,7 +1064,7 @@ func (x *DatabaseStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DatabaseStatus.ProtoReflect.Descriptor instead.
 func (*DatabaseStatus) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{15}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *DatabaseStatus) GetState() string {
@@ -1025,7 +1121,7 @@ type GetDeploymentLogsRequest struct {
 
 func (x *GetDeploymentLogsRequest) Reset() {
 	*x = GetDeploymentLogsRequest{}
-	mi := &file_deployer_v1_app_proto_msgTypes[16]
+	mi := &file_deployer_v1_app_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1037,7 +1133,7 @@ func (x *GetDeploymentLogsRequest) String() string {
 func (*GetDeploymentLogsRequest) ProtoMessage() {}
 
 func (x *GetDeploymentLogsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[16]
+	mi := &file_deployer_v1_app_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1050,7 +1146,7 @@ func (x *GetDeploymentLogsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeploymentLogsRequest.ProtoReflect.Descriptor instead.
 func (*GetDeploymentLogsRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{16}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *GetDeploymentLogsRequest) GetAppName() string {
@@ -1090,7 +1186,7 @@ type GetDeploymentLogsResponse struct {
 
 func (x *GetDeploymentLogsResponse) Reset() {
 	*x = GetDeploymentLogsResponse{}
-	mi := &file_deployer_v1_app_proto_msgTypes[17]
+	mi := &file_deployer_v1_app_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1102,7 +1198,7 @@ func (x *GetDeploymentLogsResponse) String() string {
 func (*GetDeploymentLogsResponse) ProtoMessage() {}
 
 func (x *GetDeploymentLogsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[17]
+	mi := &file_deployer_v1_app_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1115,7 +1211,7 @@ func (x *GetDeploymentLogsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetDeploymentLogsResponse.ProtoReflect.Descriptor instead.
 func (*GetDeploymentLogsResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{17}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *GetDeploymentLogsResponse) GetLines() []string {
@@ -1133,7 +1229,7 @@ type ListRoutesRequest struct {
 
 func (x *ListRoutesRequest) Reset() {
 	*x = ListRoutesRequest{}
-	mi := &file_deployer_v1_app_proto_msgTypes[18]
+	mi := &file_deployer_v1_app_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1145,7 +1241,7 @@ func (x *ListRoutesRequest) String() string {
 func (*ListRoutesRequest) ProtoMessage() {}
 
 func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[18]
+	mi := &file_deployer_v1_app_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1158,7 +1254,7 @@ func (x *ListRoutesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRoutesRequest.ProtoReflect.Descriptor instead.
 func (*ListRoutesRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{18}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{20}
 }
 
 type ListRoutesResponse struct {
@@ -1170,7 +1266,7 @@ type ListRoutesResponse struct {
 
 func (x *ListRoutesResponse) Reset() {
 	*x = ListRoutesResponse{}
-	mi := &file_deployer_v1_app_proto_msgTypes[19]
+	mi := &file_deployer_v1_app_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1182,7 +1278,7 @@ func (x *ListRoutesResponse) String() string {
 func (*ListRoutesResponse) ProtoMessage() {}
 
 func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[19]
+	mi := &file_deployer_v1_app_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1195,7 +1291,7 @@ func (x *ListRoutesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRoutesResponse.ProtoReflect.Descriptor instead.
 func (*ListRoutesResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{19}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ListRoutesResponse) GetRoutes() []*Route {
@@ -1214,7 +1310,7 @@ type InspectRouteRequest struct {
 
 func (x *InspectRouteRequest) Reset() {
 	*x = InspectRouteRequest{}
-	mi := &file_deployer_v1_app_proto_msgTypes[20]
+	mi := &file_deployer_v1_app_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1226,7 +1322,7 @@ func (x *InspectRouteRequest) String() string {
 func (*InspectRouteRequest) ProtoMessage() {}
 
 func (x *InspectRouteRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[20]
+	mi := &file_deployer_v1_app_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1239,7 +1335,7 @@ func (x *InspectRouteRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectRouteRequest.ProtoReflect.Descriptor instead.
 func (*InspectRouteRequest) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{20}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *InspectRouteRequest) GetDomain() string {
@@ -1258,7 +1354,7 @@ type InspectRouteResponse struct {
 
 func (x *InspectRouteResponse) Reset() {
 	*x = InspectRouteResponse{}
-	mi := &file_deployer_v1_app_proto_msgTypes[21]
+	mi := &file_deployer_v1_app_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1270,7 +1366,7 @@ func (x *InspectRouteResponse) String() string {
 func (*InspectRouteResponse) ProtoMessage() {}
 
 func (x *InspectRouteResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_deployer_v1_app_proto_msgTypes[21]
+	mi := &file_deployer_v1_app_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1283,7 +1379,7 @@ func (x *InspectRouteResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InspectRouteResponse.ProtoReflect.Descriptor instead.
 func (*InspectRouteResponse) Descriptor() ([]byte, []int) {
-	return file_deployer_v1_app_proto_rawDescGZIP(), []int{21}
+	return file_deployer_v1_app_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *InspectRouteResponse) GetRoute() *Route {
@@ -1333,7 +1429,12 @@ const file_deployer_v1_app_proto_rawDesc = "" +
 	"\x03app\x18\x01 \x01(\v2\x10.deployer.v1.AppR\x03app\x127\n" +
 	"\n" +
 	"deployment\x18\x02 \x01(\v2\x17.deployer.v1.DeploymentR\n" +
-	"deployment\"M\n" +
+	"deployment\":\n" +
+	"\x13PreflightAppRequest\x12#\n" +
+	"\rdeployer_yaml\x18\x01 \x01(\tR\fdeployerYaml\"W\n" +
+	"\x14PreflightAppResponse\x12#\n" +
+	"\rdesired_state\x18\x01 \x01(\tR\fdesiredState\x12\x1a\n" +
+	"\bwarnings\x18\x02 \x03(\tR\bwarnings\"M\n" +
 	"\x0fListAppsRequest\x12\x1b\n" +
 	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
 	"\n" +
@@ -1390,10 +1491,11 @@ const file_deployer_v1_app_proto_rawDesc = "" +
 	"\x13InspectRouteRequest\x12\x16\n" +
 	"\x06domain\x18\x01 \x01(\tR\x06domain\"@\n" +
 	"\x14InspectRouteResponse\x12(\n" +
-	"\x05route\x18\x01 \x01(\v2\x12.deployer.v1.RouteR\x05route2\xde\x05\n" +
+	"\x05route\x18\x01 \x01(\v2\x12.deployer.v1.RouteR\x05route2\xb3\x06\n" +
 	"\n" +
 	"AppService\x12J\n" +
-	"\tDeployApp\x12\x1d.deployer.v1.DeployAppRequest\x1a\x1e.deployer.v1.DeployAppResponse\x12G\n" +
+	"\tDeployApp\x12\x1d.deployer.v1.DeployAppRequest\x1a\x1e.deployer.v1.DeployAppResponse\x12S\n" +
+	"\fPreflightApp\x12 .deployer.v1.PreflightAppRequest\x1a!.deployer.v1.PreflightAppResponse\x12G\n" +
 	"\bListApps\x12\x1c.deployer.v1.ListAppsRequest\x1a\x1d.deployer.v1.ListAppsResponse\x12M\n" +
 	"\n" +
 	"InspectApp\x12\x1e.deployer.v1.InspectAppRequest\x1a\x1f.deployer.v1.InspectAppResponse\x12J\n" +
@@ -1417,30 +1519,32 @@ func file_deployer_v1_app_proto_rawDescGZIP() []byte {
 	return file_deployer_v1_app_proto_rawDescData
 }
 
-var file_deployer_v1_app_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
+var file_deployer_v1_app_proto_msgTypes = make([]protoimpl.MessageInfo, 24)
 var file_deployer_v1_app_proto_goTypes = []any{
 	(*App)(nil),                       // 0: deployer.v1.App
 	(*Deployment)(nil),                // 1: deployer.v1.Deployment
 	(*Route)(nil),                     // 2: deployer.v1.Route
 	(*DeployAppRequest)(nil),          // 3: deployer.v1.DeployAppRequest
 	(*DeployAppResponse)(nil),         // 4: deployer.v1.DeployAppResponse
-	(*ListAppsRequest)(nil),           // 5: deployer.v1.ListAppsRequest
-	(*ListAppsResponse)(nil),          // 6: deployer.v1.ListAppsResponse
-	(*InspectAppRequest)(nil),         // 7: deployer.v1.InspectAppRequest
-	(*InspectAppResponse)(nil),        // 8: deployer.v1.InspectAppResponse
-	(*DeleteAppRequest)(nil),          // 9: deployer.v1.DeleteAppRequest
-	(*DeleteAppResponse)(nil),         // 10: deployer.v1.DeleteAppResponse
-	(*GetAppRequest)(nil),             // 11: deployer.v1.GetAppRequest
-	(*GetAppResponse)(nil),            // 12: deployer.v1.GetAppResponse
-	(*GetAppStatusRequest)(nil),       // 13: deployer.v1.GetAppStatusRequest
-	(*GetAppStatusResponse)(nil),      // 14: deployer.v1.GetAppStatusResponse
-	(*DatabaseStatus)(nil),            // 15: deployer.v1.DatabaseStatus
-	(*GetDeploymentLogsRequest)(nil),  // 16: deployer.v1.GetDeploymentLogsRequest
-	(*GetDeploymentLogsResponse)(nil), // 17: deployer.v1.GetDeploymentLogsResponse
-	(*ListRoutesRequest)(nil),         // 18: deployer.v1.ListRoutesRequest
-	(*ListRoutesResponse)(nil),        // 19: deployer.v1.ListRoutesResponse
-	(*InspectRouteRequest)(nil),       // 20: deployer.v1.InspectRouteRequest
-	(*InspectRouteResponse)(nil),      // 21: deployer.v1.InspectRouteResponse
+	(*PreflightAppRequest)(nil),       // 5: deployer.v1.PreflightAppRequest
+	(*PreflightAppResponse)(nil),      // 6: deployer.v1.PreflightAppResponse
+	(*ListAppsRequest)(nil),           // 7: deployer.v1.ListAppsRequest
+	(*ListAppsResponse)(nil),          // 8: deployer.v1.ListAppsResponse
+	(*InspectAppRequest)(nil),         // 9: deployer.v1.InspectAppRequest
+	(*InspectAppResponse)(nil),        // 10: deployer.v1.InspectAppResponse
+	(*DeleteAppRequest)(nil),          // 11: deployer.v1.DeleteAppRequest
+	(*DeleteAppResponse)(nil),         // 12: deployer.v1.DeleteAppResponse
+	(*GetAppRequest)(nil),             // 13: deployer.v1.GetAppRequest
+	(*GetAppResponse)(nil),            // 14: deployer.v1.GetAppResponse
+	(*GetAppStatusRequest)(nil),       // 15: deployer.v1.GetAppStatusRequest
+	(*GetAppStatusResponse)(nil),      // 16: deployer.v1.GetAppStatusResponse
+	(*DatabaseStatus)(nil),            // 17: deployer.v1.DatabaseStatus
+	(*GetDeploymentLogsRequest)(nil),  // 18: deployer.v1.GetDeploymentLogsRequest
+	(*GetDeploymentLogsResponse)(nil), // 19: deployer.v1.GetDeploymentLogsResponse
+	(*ListRoutesRequest)(nil),         // 20: deployer.v1.ListRoutesRequest
+	(*ListRoutesResponse)(nil),        // 21: deployer.v1.ListRoutesResponse
+	(*InspectRouteRequest)(nil),       // 22: deployer.v1.InspectRouteRequest
+	(*InspectRouteResponse)(nil),      // 23: deployer.v1.InspectRouteResponse
 }
 var file_deployer_v1_app_proto_depIdxs = []int32{
 	0,  // 0: deployer.v1.DeployAppResponse.app:type_name -> deployer.v1.App
@@ -1456,29 +1560,31 @@ var file_deployer_v1_app_proto_depIdxs = []int32{
 	0,  // 10: deployer.v1.GetAppStatusResponse.app:type_name -> deployer.v1.App
 	1,  // 11: deployer.v1.GetAppStatusResponse.latest_deployment:type_name -> deployer.v1.Deployment
 	2,  // 12: deployer.v1.GetAppStatusResponse.routes:type_name -> deployer.v1.Route
-	15, // 13: deployer.v1.GetAppStatusResponse.database:type_name -> deployer.v1.DatabaseStatus
+	17, // 13: deployer.v1.GetAppStatusResponse.database:type_name -> deployer.v1.DatabaseStatus
 	2,  // 14: deployer.v1.ListRoutesResponse.routes:type_name -> deployer.v1.Route
 	2,  // 15: deployer.v1.InspectRouteResponse.route:type_name -> deployer.v1.Route
 	3,  // 16: deployer.v1.AppService.DeployApp:input_type -> deployer.v1.DeployAppRequest
-	5,  // 17: deployer.v1.AppService.ListApps:input_type -> deployer.v1.ListAppsRequest
-	7,  // 18: deployer.v1.AppService.InspectApp:input_type -> deployer.v1.InspectAppRequest
-	9,  // 19: deployer.v1.AppService.DeleteApp:input_type -> deployer.v1.DeleteAppRequest
-	11, // 20: deployer.v1.AppService.GetApp:input_type -> deployer.v1.GetAppRequest
-	13, // 21: deployer.v1.AppService.GetAppStatus:input_type -> deployer.v1.GetAppStatusRequest
-	16, // 22: deployer.v1.AppService.GetDeploymentLogs:input_type -> deployer.v1.GetDeploymentLogsRequest
-	18, // 23: deployer.v1.AppService.ListRoutes:input_type -> deployer.v1.ListRoutesRequest
-	20, // 24: deployer.v1.AppService.InspectRoute:input_type -> deployer.v1.InspectRouteRequest
-	4,  // 25: deployer.v1.AppService.DeployApp:output_type -> deployer.v1.DeployAppResponse
-	6,  // 26: deployer.v1.AppService.ListApps:output_type -> deployer.v1.ListAppsResponse
-	8,  // 27: deployer.v1.AppService.InspectApp:output_type -> deployer.v1.InspectAppResponse
-	10, // 28: deployer.v1.AppService.DeleteApp:output_type -> deployer.v1.DeleteAppResponse
-	12, // 29: deployer.v1.AppService.GetApp:output_type -> deployer.v1.GetAppResponse
-	14, // 30: deployer.v1.AppService.GetAppStatus:output_type -> deployer.v1.GetAppStatusResponse
-	17, // 31: deployer.v1.AppService.GetDeploymentLogs:output_type -> deployer.v1.GetDeploymentLogsResponse
-	19, // 32: deployer.v1.AppService.ListRoutes:output_type -> deployer.v1.ListRoutesResponse
-	21, // 33: deployer.v1.AppService.InspectRoute:output_type -> deployer.v1.InspectRouteResponse
-	25, // [25:34] is the sub-list for method output_type
-	16, // [16:25] is the sub-list for method input_type
+	5,  // 17: deployer.v1.AppService.PreflightApp:input_type -> deployer.v1.PreflightAppRequest
+	7,  // 18: deployer.v1.AppService.ListApps:input_type -> deployer.v1.ListAppsRequest
+	9,  // 19: deployer.v1.AppService.InspectApp:input_type -> deployer.v1.InspectAppRequest
+	11, // 20: deployer.v1.AppService.DeleteApp:input_type -> deployer.v1.DeleteAppRequest
+	13, // 21: deployer.v1.AppService.GetApp:input_type -> deployer.v1.GetAppRequest
+	15, // 22: deployer.v1.AppService.GetAppStatus:input_type -> deployer.v1.GetAppStatusRequest
+	18, // 23: deployer.v1.AppService.GetDeploymentLogs:input_type -> deployer.v1.GetDeploymentLogsRequest
+	20, // 24: deployer.v1.AppService.ListRoutes:input_type -> deployer.v1.ListRoutesRequest
+	22, // 25: deployer.v1.AppService.InspectRoute:input_type -> deployer.v1.InspectRouteRequest
+	4,  // 26: deployer.v1.AppService.DeployApp:output_type -> deployer.v1.DeployAppResponse
+	6,  // 27: deployer.v1.AppService.PreflightApp:output_type -> deployer.v1.PreflightAppResponse
+	8,  // 28: deployer.v1.AppService.ListApps:output_type -> deployer.v1.ListAppsResponse
+	10, // 29: deployer.v1.AppService.InspectApp:output_type -> deployer.v1.InspectAppResponse
+	12, // 30: deployer.v1.AppService.DeleteApp:output_type -> deployer.v1.DeleteAppResponse
+	14, // 31: deployer.v1.AppService.GetApp:output_type -> deployer.v1.GetAppResponse
+	16, // 32: deployer.v1.AppService.GetAppStatus:output_type -> deployer.v1.GetAppStatusResponse
+	19, // 33: deployer.v1.AppService.GetDeploymentLogs:output_type -> deployer.v1.GetDeploymentLogsResponse
+	21, // 34: deployer.v1.AppService.ListRoutes:output_type -> deployer.v1.ListRoutesResponse
+	23, // 35: deployer.v1.AppService.InspectRoute:output_type -> deployer.v1.InspectRouteResponse
+	26, // [26:36] is the sub-list for method output_type
+	16, // [16:26] is the sub-list for method input_type
 	16, // [16:16] is the sub-list for extension type_name
 	16, // [16:16] is the sub-list for extension extendee
 	0,  // [0:16] is the sub-list for field type_name
@@ -1495,7 +1601,7 @@ func file_deployer_v1_app_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_deployer_v1_app_proto_rawDesc), len(file_deployer_v1_app_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   22,
+			NumMessages:   24,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
