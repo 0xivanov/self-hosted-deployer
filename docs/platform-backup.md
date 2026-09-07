@@ -42,7 +42,7 @@ compatibility with an older binary, or restore over a live database. Operators
 must define the recovery boundary, stop writers, and separately verify that
 the restored schema is compatible with the binary being used.
 
-The format currently buffers a bounded snapshot in memory and accepts artifacts up to 1 GiB. Use it for small platform SQLite databases; it is not a streaming backup tool for customer databases. Store the backup encryption key separately from the artifact. Recovery of application secrets also requires the original platform secret-encryption key, which is not contained in this database-only artifact. Back up server configuration, WireGuard keys, k3s state, and application data separately.
+The format currently buffers a bounded snapshot in memory and accepts artifacts up to 1 GiB. Use it for small platform SQLite databases; it is not a streaming backup tool for customer databases. Store the backup encryption key separately from the artifact. Recovery of application secrets also requires the original platform secret-encryption key, which is not contained in this database-only artifact. Back up server configuration, WireGuard keys, k3s state, and application data separately. The server identity sidecar (`<database-path>.identity`) must be included with the database backup, or set `DEPLOYER_SERVER_IDENTITY_FILE` to an owner-only file such as `/etc/deployer/server.identity` and include that file in the server configuration backup. Restoring a database without its identity sidecar creates a new identity and intentionally causes bound CLI contexts to fail closed.
 
 ## Synthetic recovery drill
 

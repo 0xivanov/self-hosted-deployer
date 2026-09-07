@@ -13,11 +13,16 @@ type HealthRepository interface {
 
 type PlatformService struct {
 	deployerv1.UnimplementedPlatformServiceServer
-	health HealthRepository
+	health         HealthRepository
+	serverIdentity string
 }
 
-func NewPlatformService(health HealthRepository) PlatformService {
-	return PlatformService{health: health}
+func NewPlatformService(health HealthRepository, serverIdentity ...string) PlatformService {
+	identity := ""
+	if len(serverIdentity) > 0 {
+		identity = serverIdentity[0]
+	}
+	return PlatformService{health: health, serverIdentity: identity}
 }
 
 func (s PlatformService) GetVersion(context.Context, *deployerv1.GetVersionRequest) (*deployerv1.GetVersionResponse, error) {
@@ -32,9 +37,10 @@ func (s PlatformService) GetVersion(context.Context, *deployerv1.GetVersionReque
 func (s PlatformService) GetStatus(ctx context.Context, _ *deployerv1.GetStatusRequest) (*deployerv1.GetStatusResponse, error) {
 	current := version.Current()
 	return &deployerv1.GetStatusResponse{
-		Version:   current.Version,
-		Commit:    current.Commit,
-		BuildDate: current.BuildDate,
-		Ready:     s.health.Ping(ctx) == nil,
+		Version:        current.Version,
+		Commit:         current.Commit,
+		BuildDate:      current.BuildDate,
+		Ready:          s.health.Ping(ctx) == nil,
+		ServerIdentity: s.serverIdentity,
 	}, nil
 }

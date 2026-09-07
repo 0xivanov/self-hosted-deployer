@@ -24,4 +24,6 @@ message GetStatusResponse {
   string commit = 2;
   string build_date = 3;
   bool ready = 4;
+  // Stable installation identity used by bound CLI contexts.
+  string server_identity = 5;
 }

@@ -20,7 +20,6 @@ func (a cliApp) login(args []string, opts cliOptions) int {
 		fmt.Fprintln(a.stderr, err)
 		return 2
 	}
-
 	token := strings.TrimSpace(opts.token)
 	if token == "" {
 		fmt.Fprint(a.stderr, "Admin token: ")
@@ -43,8 +42,13 @@ func (a cliApp) login(args []string, opts cliOptions) int {
 	}
 	defer closeClient()
 
-	if _, err := client.Status(context.Background()); err != nil {
+	serverStatus, err := client.Status(context.Background())
+	if err != nil {
 		fmt.Fprintln(a.stderr, err)
+		return 1
+	}
+	if expected := strings.TrimSpace(opts.serverIdentity); expected != "" && serverStatus.ServerIdentity != expected {
+		fmt.Fprintf(a.stderr, "server identity mismatch: expected %q, got %q\n", expected, serverStatus.ServerIdentity)
 		return 1
 	}
 
@@ -68,9 +72,14 @@ func (a cliApp) login(args []string, opts cliOptions) int {
 			cfg.Contexts = &contexts
 		}
 		entry := (*cfg.Contexts)[contextName]
+		if existing := strings.TrimSpace(entry.ServerIdentity); existing != "" && existing != serverStatus.ServerIdentity && !opts.rebindServerIdentity {
+			fmt.Fprintf(a.stderr, "context %q is bound to a different server identity; pass --rebind-server-identity to rebind\n", contextName)
+			return 1
+		}
 		entry.ServerURL = serverURL
 		entry.AdminToken = token
 		entry.CredentialRef = "inline"
+		entry.ServerIdentity = serverStatus.ServerIdentity
 		if opts.environmentID != "" {
 			entry.EnvironmentID = opts.environmentID
 		}

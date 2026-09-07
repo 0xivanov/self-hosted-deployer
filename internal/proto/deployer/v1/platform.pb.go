@@ -154,13 +154,15 @@ func (*GetStatusRequest) Descriptor() ([]byte, []int) {
 }
 
 type GetStatusResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Version       string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
-	Commit        string                 `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`
-	BuildDate     string                 `protobuf:"bytes,3,opt,name=build_date,json=buildDate,proto3" json:"build_date,omitempty"`
-	Ready         bool                   `protobuf:"varint,4,opt,name=ready,proto3" json:"ready,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	Version   string                 `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	Commit    string                 `protobuf:"bytes,2,opt,name=commit,proto3" json:"commit,omitempty"`
+	BuildDate string                 `protobuf:"bytes,3,opt,name=build_date,json=buildDate,proto3" json:"build_date,omitempty"`
+	Ready     bool                   `protobuf:"varint,4,opt,name=ready,proto3" json:"ready,omitempty"`
+	// Stable installation identity used by bound CLI contexts.
+	ServerIdentity string `protobuf:"bytes,5,opt,name=server_identity,json=serverIdentity,proto3" json:"server_identity,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GetStatusResponse) Reset() {
@@ -221,6 +223,13 @@ func (x *GetStatusResponse) GetReady() bool {
 	return false
 }
 
+func (x *GetStatusResponse) GetServerIdentity() string {
+	if x != nil {
+		return x.ServerIdentity
+	}
+	return ""
+}
+
 var File_deployer_v1_platform_proto protoreflect.FileDescriptor
 
 const file_deployer_v1_platform_proto_rawDesc = "" +
@@ -232,13 +241,14 @@ const file_deployer_v1_platform_proto_rawDesc = "" +
 	"\x06commit\x18\x02 \x01(\tR\x06commit\x12\x1d\n" +
 	"\n" +
 	"build_date\x18\x03 \x01(\tR\tbuildDate\"\x12\n" +
-	"\x10GetStatusRequest\"z\n" +
+	"\x10GetStatusRequest\"\xa3\x01\n" +
 	"\x11GetStatusResponse\x12\x18\n" +
 	"\aversion\x18\x01 \x01(\tR\aversion\x12\x16\n" +
 	"\x06commit\x18\x02 \x01(\tR\x06commit\x12\x1d\n" +
 	"\n" +
 	"build_date\x18\x03 \x01(\tR\tbuildDate\x12\x14\n" +
-	"\x05ready\x18\x04 \x01(\bR\x05ready2\xac\x01\n" +
+	"\x05ready\x18\x04 \x01(\bR\x05ready\x12'\n" +
+	"\x0fserver_identity\x18\x05 \x01(\tR\x0eserverIdentity2\xac\x01\n" +
 	"\x0fPlatformService\x12M\n" +
 	"\n" +
 	"GetVersion\x12\x1e.deployer.v1.GetVersionRequest\x1a\x1f.deployer.v1.GetVersionResponse\x12J\n" +

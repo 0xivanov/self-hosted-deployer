@@ -10,17 +10,19 @@ import (
 )
 
 type cliOptions struct {
-	serverURL     string
-	serverSet     bool
-	token         string
-	tokenSet      bool
-	configPath    string
-	context       string
-	environmentID string
-	customerLabel string
-	output        string
-	outputSet     bool
-	showVersion   bool
+	serverURL            string
+	serverSet            bool
+	token                string
+	tokenSet             bool
+	configPath           string
+	context              string
+	environmentID        string
+	customerLabel        string
+	serverIdentity       string
+	rebindServerIdentity bool
+	output               string
+	outputSet            bool
+	showVersion          bool
 }
 
 func (o cliOptions) validate() error {
@@ -28,12 +30,13 @@ func (o cliOptions) validate() error {
 }
 
 type runtimeOptions struct {
-	serverURL     string
-	token         string
-	output        string
-	context       string
-	environmentID string
-	customerLabel string
+	serverURL        string
+	token            string
+	output           string
+	context          string
+	environmentID    string
+	customerLabel    string
+	expectedIdentity string
 }
 
 func resolveRuntimeOptions(opts cliOptions) (runtimeOptions, error) {
@@ -60,7 +63,7 @@ func resolveRuntimeOptions(opts cliOptions) (runtimeOptions, error) {
 			return runtimeOptions{}, contextErr
 		}
 		if ctx.ServerIdentity != "" {
-			return runtimeOptions{}, errors.New("server identity binding is not supported by this client; do not use this context until identity verification is implemented")
+			resolved.expectedIdentity = ctx.ServerIdentity
 		}
 		resolved.context = selectedContext
 		resolved.serverURL = ctx.ServerURL

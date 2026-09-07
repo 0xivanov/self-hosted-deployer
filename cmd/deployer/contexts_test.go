@@ -155,3 +155,55 @@ func TestLegacyLoginRestoresLegacySelection(t *testing.T) {
 		t.Fatalf("login selected wrong target: %+v, %v", resolved, err)
 	}
 }
+
+func TestNamedLoginRefusesChangingBoundIdentityWithoutRebind(t *testing.T) {
+	path := testContextsConfig(t)
+	cfg, err := clicore.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := (*cfg.Contexts)["customer-a"]
+	entry.ServerIdentity = "original"
+	(*cfg.Contexts)["customer-a"] = entry
+	if err := clicore.SaveConfig(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	app := newCLIApp(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	app.newPlatformClient = (&recordingClientFactory{status: clicore.ServerStatus{Ready: true, ServerIdentity: "replacement"}}).newClient
+	if code := app.run([]string{"--config", path, "--context", "customer-a", "--token", "token-new", "login", "https://a:7443"}); code == 0 {
+		t.Fatal("expected bound identity change to be rejected")
+	}
+	updated, err := clicore.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if (*updated.Contexts)["customer-a"].ServerIdentity != "original" {
+		t.Fatal("bound identity was changed after rejected login")
+	}
+}
+
+func TestNamedLoginRebindsIdentityOnlyWithExplicitFlag(t *testing.T) {
+	path := testContextsConfig(t)
+	cfg, err := clicore.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := (*cfg.Contexts)["customer-a"]
+	entry.ServerIdentity = "original"
+	(*cfg.Contexts)["customer-a"] = entry
+	if err := clicore.SaveConfig(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	app := newCLIApp(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	app.newPlatformClient = (&recordingClientFactory{status: clicore.ServerStatus{Ready: true, ServerIdentity: "replacement"}}).newClient
+	if code := app.run([]string{"--config", path, "--context", "customer-a", "--rebind-server-identity", "--token", "token-new", "login", "https://a:7443"}); code != 0 {
+		t.Fatalf("expected explicit rebind to succeed, got %d", code)
+	}
+	updated, err := clicore.LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if (*updated.Contexts)["customer-a"].ServerIdentity != "replacement" {
+		t.Fatalf("identity = %q, want replacement", (*updated.Contexts)["customer-a"].ServerIdentity)
+	}
+}

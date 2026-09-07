@@ -22,7 +22,7 @@ func (a cliApp) nodes(args []string, opts cliOptions) int {
 		return 1
 	}
 
-	client, closeClient, err := a.newPlatformClient(resolved.serverURL, resolved.token)
+	client, closeClient, err := a.newVerifiedPlatformClient(resolved)
 	if err != nil {
 		fmt.Fprintln(a.stderr, err)
 		return 1

@@ -18,6 +18,8 @@ type ServerConfig struct {
 	SecretKey              string
 	SecretKeyFile          string
 	TokenHashKey           string
+	ServerIdentity         string
+	ServerIdentityFile     string
 	TLSCertFile            string
 	TLSKeyFile             string
 	KubeconfigPath         string
@@ -48,6 +50,8 @@ func LoadServer() ServerConfig {
 		SecretKey:              os.Getenv("DEPLOYER_SECRET_KEY"),
 		SecretKeyFile:          os.Getenv("DEPLOYER_SECRET_KEY_FILE"),
 		TokenHashKey:           os.Getenv("DEPLOYER_TOKEN_HASH_KEY"),
+		ServerIdentity:         os.Getenv("DEPLOYER_SERVER_IDENTITY"),
+		ServerIdentityFile:     os.Getenv("DEPLOYER_SERVER_IDENTITY_FILE"),
 		TLSCertFile:            os.Getenv("DEPLOYER_SERVER_TLS_CERT_FILE"),
 		TLSKeyFile:             os.Getenv("DEPLOYER_SERVER_TLS_KEY_FILE"),
 		KubeconfigPath:         envOrDefault("DEPLOYER_KUBECONFIG", "/etc/rancher/k3s/k3s.yaml"),

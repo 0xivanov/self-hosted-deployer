@@ -33,10 +33,11 @@ type PlatformClient struct {
 }
 
 type ServerStatus struct {
-	Version   string `json:"version"`
-	Commit    string `json:"commit"`
-	BuildDate string `json:"build_date"`
-	Ready     bool   `json:"ready"`
+	Version        string `json:"version"`
+	Commit         string `json:"commit"`
+	BuildDate      string `json:"build_date"`
+	Ready          bool   `json:"ready"`
+	ServerIdentity string `json:"server_identity,omitempty"`
 }
 
 type NodeInfo struct {
@@ -232,11 +233,31 @@ func (c *PlatformClient) Status(ctx context.Context) (ServerStatus, error) {
 	}
 
 	return ServerStatus{
-		Version:   response.GetVersion(),
-		Commit:    response.GetCommit(),
-		BuildDate: response.GetBuildDate(),
-		Ready:     response.GetReady(),
+		Version:        response.GetVersion(),
+		Commit:         response.GetCommit(),
+		BuildDate:      response.GetBuildDate(),
+		Ready:          response.GetReady(),
+		ServerIdentity: response.GetServerIdentity(),
 	}, nil
+}
+
+// VerifyServerIdentity checks a bound context on the same authenticated
+// connection that will carry subsequent operations.
+func (c *PlatformClient) VerifyServerIdentity(ctx context.Context, expected string) error {
+	status, err := c.Status(ctx)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(expected) == "" {
+		return nil
+	}
+	if status.ServerIdentity == "" {
+		return fmt.Errorf("server does not support identity binding; refusing bound context")
+	}
+	if status.ServerIdentity != expected {
+		return fmt.Errorf("server identity mismatch: expected %q, got %q", expected, status.ServerIdentity)
+	}
+	return nil
 }
 
 func (c *PlatformClient) CreateJoinToken(ctx context.Context, nodeName string, labels map[string]string) (JoinTokenResult, error) {

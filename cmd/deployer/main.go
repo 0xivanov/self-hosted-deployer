@@ -57,6 +57,10 @@ type platformClient interface {
 
 type platformClientFactory func(serverURL string, token string) (platformClient, func() error, error)
 
+type platformIdentityVerifier interface {
+	VerifyServerIdentity(context.Context, string) error
+}
+
 func newCLIApp(stdin io.Reader, stdout io.Writer, stderr io.Writer) cliApp {
 	return cliApp{
 		stdin:             stdin,
@@ -89,4 +93,23 @@ func newPlatformClient(serverURL string, token string) (platformClient, func() e
 		return nil, nil, err
 	}
 	return client, conn.Close, nil
+}
+
+func (a cliApp) newVerifiedPlatformClient(opts runtimeOptions) (platformClient, func() error, error) {
+	client, closeClient, err := a.newPlatformClient(opts.serverURL, opts.token)
+	if err != nil {
+		return nil, nil, err
+	}
+	if opts.expectedIdentity != "" {
+		verifier, ok := client.(platformIdentityVerifier)
+		if !ok {
+			_ = closeClient()
+			return nil, nil, fmt.Errorf("client cannot verify bound server identity")
+		}
+		if err := verifier.VerifyServerIdentity(context.Background(), opts.expectedIdentity); err != nil {
+			_ = closeClient()
+			return nil, nil, err
+		}
+	}
+	return client, closeClient, nil
 }

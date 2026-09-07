@@ -46,6 +46,10 @@ type ReadinessRuntime interface {
 }
 
 func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, repos Repositories, runtime Runtime) error {
+	serverIdentity, err := LoadServerIdentity(cfg)
+	if err != nil {
+		return fmt.Errorf("load server identity: %w", err)
+	}
 	retention, err := cfg.EventRetention()
 	if err != nil {
 		return fmt.Errorf("configure event retention: %w", err)
@@ -96,7 +100,7 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	healthServer := health.NewServer()
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
-	deployerv1.RegisterPlatformServiceServer(grpcServer, NewPlatformService(repos.Health))
+	deployerv1.RegisterPlatformServiceServer(grpcServer, NewPlatformService(repos.Health, serverIdentity))
 	eventRecorder := NewEventRecorder(repos.Events, logger)
 	deployerv1.RegisterNodeServiceServer(grpcServer, NewNodeService(NodeServiceConfig{
 		Nodes:        repos.Nodes,

@@ -103,6 +103,8 @@ func rootFlags(output io.Writer, opts *cliOptions) *flag.FlagSet {
 	flags.StringVar(&opts.context, "context", "", "named customer context")
 	flags.StringVar(&opts.environmentID, "environment-id", "", "customer environment identifier for a named context")
 	flags.StringVar(&opts.customerLabel, "customer-label", "", "customer label for a named context")
+	flags.StringVar(&opts.serverIdentity, "server-identity", "", "expected stable server identity when logging in")
+	flags.BoolVar(&opts.rebindServerIdentity, "rebind-server-identity", false, "replace an existing named context server identity")
 	flags.StringVar(&opts.output, "output", "", "output format: human or json")
 	flags.BoolVar(&opts.showVersion, "version", false, "print version information")
 	return flags

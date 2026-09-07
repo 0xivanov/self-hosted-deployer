@@ -26,10 +26,10 @@ Selection precedence for operational commands is: `--context`, `DEPLOYER_CONTEXT
 
 Human-readable mutating command output identifies the selected context. JSON output retains the existing response shape so scripts remain compatible.
 
-The current protobuf API has no capability-negotiated environment identity field. Identity verification needs an additive protocol change before it can become an enforced server identity check.
+The status API includes an additive installation identity. Named login saves it automatically when the server provides it. Every operational command verifies a bound identity before its operation; a mismatch, missing identity, or failed status check stops the command. Unbound contexts remain compatible with older servers.
 
 Each customer environment still requires separate server credentials, certificates, network ranges, backup locations, resource budgets, and pinned versions. Billing and customer provisioning remain operator processes outside the deployer CLI.
 
 Use `deployer contexts use --legacy` to return to the original single-endpoint configuration. A legacy `login` also selects that configuration; named login preserves it and other customer contexts. Named credential rotation preserves existing customer labels and environment IDs unless explicitly replaced.
 
-Server identity binding is not implemented. A context with a nonempty `server_identity` fails closed until verification is available. HTTPS authenticates the configured hostname; the customer and environment labels are operator metadata, not a verified server identity.
+Login refuses to replace or clear an existing identity binding silently. Use `--rebind-server-identity` only after verifying an intentional environment replacement. To pin an expected identity during first login, use `--server-identity VALUE`. Preserve the identity file with configuration backups when restoring the same environment. Customer and environment labels remain operator metadata. HTTPS authenticates the endpoint; installation identity adds an accidental cross-environment targeting check and does not replace TLS or separate credentials.
