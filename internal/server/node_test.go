@@ -11,6 +11,7 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/domain"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"github.com/0xivanov/self-hosted-deployer/internal/security"
+	"github.com/0xivanov/self-hosted-deployer/internal/wireguard"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -722,4 +723,47 @@ func (r failingAgentTokenRepository) RevokeByNodeID(context.Context, string, tim
 
 func (r failingAgentTokenRepository) DeleteByNodeID(context.Context, string) error {
 	return r.err
+}
+
+func TestCustomerNetworkAllocatesIndependentPeerRanges(t *testing.T) {
+	for _, tt := range []struct{ name, subnet, hub, want string }{
+		{"legacy", "", "", "10.8.0.2"},
+		{"customer-a", "10.81.0.0/24", "10.81.0.1", "10.81.0.2"},
+		{"customer-b", "10.82.0.0/24", "10.82.0.1", "10.82.0.2"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			database := openTestDB(t)
+			nodes := db.NewNodeRepository(database)
+			service := NewNodeService(NodeServiceConfig{Nodes: nodes, JoinTokens: db.NewJoinTokenRepository(database), AgentTokens: db.NewAgentTokenRepository(database), TokenHashKey: "hash-key", Network: WorkerNetworkConfig{Subnet: tt.subnet, HubIP: tt.hub}})
+			_, err := service.CreateJoinToken(WithCaller(context.Background(), Caller{Kind: CallerAdmin}), &deployerv1.CreateJoinTokenRequest{NodeName: "worker"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			node, err := nodes.FindByName(context.Background(), "worker")
+			if err != nil || node.WireGuardIP != tt.want {
+				t.Fatalf("allocated %q, want %q: %v", node.WireGuardIP, tt.want, err)
+			}
+		})
+	}
+}
+
+func TestCustomerWorkerBootstrapCarriesConfiguredSubnet(t *testing.T) {
+	ctx := context.Background()
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	if err := nodes.Create(ctx, domain.Node{ID: "node-custom", Name: "worker", Status: nodeStatusOnline, LabelsJSON: "{}", WireGuardIP: "10.82.0.2", WireGuardPublicKey: validWireGuardPublicKey, CreatedAt: time.Now(), UpdatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	service := NewNodeService(NodeServiceConfig{Nodes: nodes, Peers: &recordingPeerSynchronizer{}, WorkerJoin: fixedWorkerJoinMaterial{}, Network: WorkerNetworkConfig{Subnet: "10.82.0.0/24", HubIP: "10.82.0.1", HubPublicKey: validWireGuardPublicKey, Endpoint: "b.example:51820"}})
+	response, err := service.GetWorkerBootstrap(WithCaller(ctx, Caller{Kind: CallerAgent, NodeID: "node-custom"}), &deployerv1.GetWorkerBootstrapRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rendered, err := wireguard.RenderNodeConfig(wireguard.NodeConfig{Address: response.WireguardIp, PrivateKey: validWireGuardPublicKey, HubPublicKey: response.WireguardHubPublicKey, Endpoint: response.WireguardEndpoint, AllowedIPs: response.WireguardSubnet})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.WireguardHubIp != "10.82.0.1" || !strings.Contains(rendered, "AllowedIPs = 10.82.0.0/24") || strings.Contains(rendered, "10.8.0.") {
+		t.Fatal("custom worker received the legacy network")
+	}
 }

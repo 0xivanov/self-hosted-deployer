@@ -1,0 +1,11 @@
+[Unit]
+Description=Schedule deployer mutation audit export
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=10min
+Persistent=true
+Unit=deployer-audit-export.service
+
+[Install]
+WantedBy=timers.target

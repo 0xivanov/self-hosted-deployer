@@ -1,0 +1,11 @@
+[Unit]
+Description=Verify and export deployer mutation audit records offsite
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStartPre=/usr/bin/install -d -m 0700 /var/lib/deployer/audit /var/lib/deployer/audit/work
+ExecStartPre=/usr/bin/python3 /usr/local/libexec/collect-audit-journal.py --output /var/lib/deployer/audit/audit.jsonl --cursor /var/lib/deployer/audit/journal.cursor --unit deployer-server.service
+EnvironmentFile=/etc/deployer/backup/offsite.env
+ExecStart=/usr/bin/python3 /usr/local/libexec/offsite-audit-export.py --audit-log /var/lib/deployer/audit/audit.jsonl --checkpoint /var/lib/deployer/audit/checkpoint.json --work-root /var/lib/deployer/audit/work --restic-binary /usr/local/bin/restic --environment legacy-vps

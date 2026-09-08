@@ -1,0 +1,62 @@
+{
+  "environment": {
+    "id": "customer-a-prod",
+    "purpose": "dedicated-customer"
+  },
+  "customer": {
+    "id": "customer-a",
+    "label": "Customer A"
+  },
+  "ssh": {
+    "host": "198.51.100.20",
+    "user": "root",
+    "port": 22,
+    "identity_file": "/secure/keys/customer-a"
+  },
+  "release": {
+    "repo": "0xivanov/self-hosted-deployer",
+    "version": "v0.1.0",
+    "asset": "deployer-linux-amd64.tar.gz",
+    "artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "network": {
+    "wireguard_cidr": "10.81.0.0/24",
+    "wireguard_hub_ip": "10.81.0.1",
+    "pod_cidr": "10.180.0.0/16",
+    "service_cidr": "10.181.1.0/24",
+    "wireguard_interface": "wg0",
+    "wireguard_endpoint": "198.51.100.20:51820"
+  },
+  "k3s": {
+    "version": "v1.34.1+k3s1",
+    "installer_url": "https://get.k3s.io",
+    "installer_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "binary_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "domain": {
+    "base": "customer-a.example.com",
+    "acme_email": "ops@example.com"
+  },
+  "admin_endpoint": "https://admin.customer-a.example.com:7443",
+  "resource_budget": {
+    "cpu": "4",
+    "memory": "8Gi",
+    "ephemeral_storage": "40Gi",
+    "pods": 100
+  },
+  "backup": {
+    "scope": "platform-database",
+    "destination": "local-platform-backup"
+  },
+  "recovery": {
+    "targets": [
+      "RPO 24h",
+      "RTO 8h"
+    ],
+    "restore_drill": "quarterly"
+  },
+  "tls": {
+    "cert_path": "/etc/ssl/deployer/fullchain.pem",
+    "key_path": "/etc/ssl/deployer/privkey.pem"
+  }
+}

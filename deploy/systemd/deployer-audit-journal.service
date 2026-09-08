@@ -1,0 +1,13 @@
+[Unit]
+Description=Collect deployer JSON audit journal for opt-in offsite export
+After=deployer-server.service
+
+[Service]
+Type=oneshot
+User=root
+UMask=0077
+ExecStart=/usr/bin/install -d -m 0700 /var/lib/deployer/audit
+ExecStart=/usr/bin/python3 /usr/local/libexec/collect-audit-journal.py --output /var/lib/deployer/audit/audit.jsonl --cursor /var/lib/deployer/audit/journal.cursor --unit deployer-server.service
+
+[Install]
+WantedBy=multi-user.target

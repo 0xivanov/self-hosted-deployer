@@ -117,7 +117,7 @@ if ! "$SERVER_BINARY" backup create \
 fi
 [ -f "$ARTIFACT" ] || fail "server did not create encrypted SQLite artifact"
 
-if ! "$RESTIC_BINARY" --no-cache backup --json --tag "$ENVIRONMENT_TAG" --stdin --stdin-filename platform.backup <"$ARTIFACT" \
+if ! "$RESTIC_BINARY" --no-cache backup --json --tag "$ENVIRONMENT_TAG" --tag platform --stdin --stdin-filename platform.backup <"$ARTIFACT" \
   >"$BACKUP_JSON" 2>"$RUN_DIR/restic-backup.stderr"; then
   fail "upload encrypted SQLite artifact"
 fi
@@ -170,7 +170,7 @@ matches = [item for item in snapshots if isinstance(item, dict) and item.get("id
 if len(matches) != 1 or not re.fullmatch(r"[0-9a-f]{64}", expected_id):
     sys.exit(1)
 tags = matches[0].get("tags")
-if not isinstance(tags, list) or expected_tag not in tags:
+if not isinstance(tags, list) or expected_tag not in tags or "platform" not in tags:
     sys.exit(1)
 PY
 then

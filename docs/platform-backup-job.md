@@ -20,7 +20,7 @@ scripts/backup-platform-offsite.sh \
   --environment pilot-a
 ```
 
-Each run creates a private temporary directory, snapshots and encrypts platform SQLite, and streams only that encrypted artifact to restic under the fixed filename `platform.backup`. It parses the full snapshot ID returned by this upload, verifies that snapshot and its environment tag, downloads that exact artifact with the restic cache disabled, and compares its bytes. A missing or ambiguous result, failed upload/read, or mismatch returns nonzero. Success prints the environment and verified snapshot ID; it never selects `latest`.
+Each run creates a private temporary directory, snapshots and encrypts platform SQLite, and streams only that encrypted artifact to restic under the fixed filename `platform.backup`, with both the environment tag and the `platform` kind tag. It parses the full snapshot ID returned by this upload, verifies that exact snapshot and both tags, downloads that exact artifact with the restic cache disabled, and compares its bytes. A missing or ambiguous result, failed upload/read, or mismatch returns nonzero. Success prints the environment and verified snapshot ID; it never selects `latest`. Legacy snapshots without the `platform` tag remain untouched.
 
 Temporary artifacts and stage logs are removed on exit. A failed run may already have written a repository snapshot; the job deliberately does not delete it. The environment tag is metadata, not an access-control boundary. Use separate customer repository credentials and storage prefixes with independently verified access separation.
 

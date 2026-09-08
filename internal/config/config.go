@@ -3,14 +3,17 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/security"
 )
 
 type ServerConfig struct {
+	WireGuardSubnet        string
 	GRPCListenAddress      string
 	HTTPListenAddress      string
 	DatabaseURL            string
@@ -43,6 +46,7 @@ type ServerConfig struct {
 
 func LoadServer() ServerConfig {
 	return ServerConfig{
+		WireGuardSubnet:        os.Getenv("DEPLOYER_WIREGUARD_SUBNET"),
 		GRPCListenAddress:      envOrDefault("DEPLOYER_SERVER_GRPC_ADDR", ":7443"),
 		HTTPListenAddress:      envOrDefault("DEPLOYER_SERVER_HTTP_ADDR", ":7080"),
 		DatabaseURL:            envOrDefault("DEPLOYER_DATABASE_URL", "file:deployer.db"),
@@ -76,6 +80,13 @@ func LoadServer() ServerConfig {
 
 func (c ServerConfig) Validate() error {
 	errs := []error{}
+	if subnet := strings.TrimSpace(c.WireGuardSubnet); subnet != "" {
+		prefix, err := netip.ParsePrefix(subnet)
+		hub, hubErr := netip.ParseAddr(c.K3sWireGuardIP)
+		if err != nil || !prefix.Addr().Is4() || prefix != prefix.Masked() || prefix.Bits() > 30 || !prefix.Addr().IsPrivate() || hubErr != nil || !prefix.Contains(hub) || hub == prefix.Addr() {
+			errs = append(errs, errors.New("DEPLOYER_WIREGUARD_SUBNET requires a canonical private IPv4 network containing the hub address"))
+		}
+	}
 	if c.GRPCListenAddress == "" {
 		errs = append(errs, errors.New("DEPLOYER_SERVER_GRPC_ADDR is required"))
 	}

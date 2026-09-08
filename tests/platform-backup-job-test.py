@@ -69,7 +69,7 @@ if cmd=='backup':
  elif mode!='missing-summary': print(json.dumps({'message_type':'summary','snapshot_id':sid}))
 elif cmd=='snapshots':
  assert args==['--json',sid]
- print(json.dumps([{'id':sid, 'tags':['wrong' if mode=='wrong-tag' else 'pilot-a']}]))
+ print(json.dumps([{'id':sid, 'tags':['wrong' if mode=='wrong-tag' else 'pilot-a'] if mode=='wrong-tag' else ['pilot-a', 'platform']}]))
 elif cmd=='dump':
  assert args==[sid,'/platform.backup']
  sys.stdout.buffer.write(b'wrong bytes' if mode=='mismatch' else (root/'uploaded').read_bytes())

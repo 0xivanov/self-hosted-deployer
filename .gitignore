@@ -7,3 +7,5 @@ deployer.yml
 /backblaze-key.txt
 __pycache__/
 *.py[cod]
+
+/provisioning-records/

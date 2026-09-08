@@ -295,7 +295,14 @@ func (s NodeService) allocateWireGuardIP(ctx context.Context) (string, error) {
 	for _, node := range nodes {
 		existingIPs = append(existingIPs, node.WireGuardIP)
 	}
-	wireGuardIP, err := wireguard.NextPeerIP(wireguard.DefaultSubnet, wireguard.DefaultHubIP, existingIPs)
+	subnet, hub := strings.TrimSpace(s.network.Subnet), strings.TrimSpace(s.network.HubIP)
+	if subnet == "" {
+		subnet = wireguard.DefaultSubnet
+	}
+	if hub == "" {
+		hub = wireguard.DefaultHubIP
+	}
+	wireGuardIP, err := wireguard.NextPeerIP(subnet, hub, existingIPs)
 	if err != nil {
 		return "", status.Error(codes.ResourceExhausted, err.Error())
 	}

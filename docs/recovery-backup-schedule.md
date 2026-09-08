@@ -46,7 +46,7 @@ The test image was `postgres@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da
 
 ## Remaining qualification
 
-The first timer-triggered execution is still pending after initial setup. Check both daily timers on the next run. Independent key custody, deliberate retention limits, an external outage detector and a complete host rebuild remain open. Worker-node configuration has the earlier verified offsite bundles but is not refreshed by this VPS schedule. Redis persistence and other application volumes are not included in this PostgreSQL recovery proof. Application business behavior after a full environment rebuild and a pilot soak also remain unqualified.
+The first timer-triggered executions succeeded on 2026-09-08: platform backup at 03:30 Sofia and recovery bundle at 06:00 Sofia, both with systemd Result=success and ExecMainStatus=0. Independent key custody, deliberate retention limits, an external outage detector and a complete host rebuild remain open. Worker-node configuration has the earlier verified offsite bundles but is not refreshed by this VPS schedule. Redis persistence and other application volumes are not included in this PostgreSQL recovery proof. Application business behavior after a full environment rebuild and a pilot soak also remain unqualified.
 
 Live configuration is root-only at `/etc/deployer/backup/recovery.json`. Private installation and recovery evidence is retained under maintenance identifier `20260907-application-recovery` on the Mac; original monitoring configuration is under `20260907-recovery-monitoring` on the VPS.
 

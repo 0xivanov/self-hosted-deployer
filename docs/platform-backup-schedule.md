@@ -66,3 +66,5 @@ ssh deployer-vps 'sudo systemctl disable --now deployer-platform-backup.timer'
 Pausing the timer does not cancel an active job. Stop its service explicitly if needed. A paused schedule will intentionally become stale in monitoring. To remove monitoring, remove only this scrape job and rule file from the current configuration, validate it and reload Prometheus. Do not overwrite unrelated current configuration using an old whole-ConfigMap snapshot.
 
 Installation and verification logs, original monitoring configuration and restic checksum metadata are kept outside Git under the maintenance identifier `20260907-backup-schedule` on the Mac and VPS. No application service was restarted for this setup.
+
+Read-only verification on 2026-09-08 confirmed the first timer-triggered platform run completed successfully at 03:30 Sofia (00:30 UTC), with Result=success and ExecMainStatus=0. The recovery timer also succeeded at 06:00 Sofia.

@@ -84,6 +84,9 @@ func NextPeerIP(subnet string, reservedIP string, existingIPs []string) (string,
 	if !reserved.Is4() || !prefix.Contains(reserved) {
 		return "", fmt.Errorf("reserved WireGuard IP %q is outside subnet %s", reservedIP, subnet)
 	}
+	if reserved == prefix.Masked().Addr() || ipv4ToUint32(reserved) == end+1 {
+		return "", errors.New("reserved WireGuard IP must be a usable host address")
+	}
 	used := map[netip.Addr]bool{reserved: true}
 	maxUsed := ipv4ToUint32(reserved)
 	for _, value := range existingIPs {

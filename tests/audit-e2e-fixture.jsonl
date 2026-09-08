@@ -1,0 +1,2 @@
+{"time":"2026-09-07T00:00:00Z","level":"INFO","msg":"grpc request","component":"server","method":"DeleteApp"}
+{"level":"INFO","msg":"mutation audit","component":"server","timestamp":"2026-09-07T00:00:00Z","correlation_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","token_id":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","caller_kind":"admin","node_id":"","method":"/deployer.v1.AppService/DeleteApp","target":{"app":"reports"},"outcome":"OK"}

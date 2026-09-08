@@ -112,6 +112,7 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		Peers:        runtime.WireGuardPeers,
 		WorkerJoin:   runtime.WorkerJoin,
 		Network: WorkerNetworkConfig{
+			Subnet:       cfg.WireGuardSubnet,
 			HubIP:        cfg.K3sWireGuardIP,
 			HubPublicKey: cfg.WireGuardHubPublicKey,
 			Endpoint:     cfg.WireGuardEndpoint,
