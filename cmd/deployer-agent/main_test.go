@@ -14,8 +14,10 @@ import (
 	"time"
 
 	clicore "github.com/0xivanov/self-hosted-deployer/internal/cli"
+	"github.com/0xivanov/self-hosted-deployer/internal/config"
 	"github.com/0xivanov/self-hosted-deployer/internal/k3s"
 	"github.com/0xivanov/self-hosted-deployer/internal/wireguard"
+	"github.com/joho/godotenv"
 )
 
 func TestJoinPersistsCredentialWithoutPrintingToken(t *testing.T) {
@@ -153,16 +155,20 @@ func TestJoinK3sConnectsWireGuardAndRunsWorkerBootstrap(t *testing.T) {
 	credentialPath := filepath.Join(t.TempDir(), "agent", "token")
 	privateKeyPath := filepath.Join(t.TempDir(), "wireguard", "privatekey")
 	configPath := filepath.Join(t.TempDir(), "wireguard", "wg0.conf")
+	envPath := filepath.Join(t.TempDir(), "agent.env")
 	if err := writeCredential(credentialPath, "dep_agent_saved"); err != nil {
 		t.Fatalf("write credential: %v", err)
 	}
 	if err := writeWireGuardPrivateKey(privateKeyPath, "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="); err != nil {
 		t.Fatalf("write WireGuard key: %v", err)
 	}
+	if err := os.WriteFile(envPath, []byte("DEPLOYER_SERVER_URL=localhost:7443\nDEPLOYER_WIREGUARD_HUB_IP=10.8.0.1\n"), 0o600); err != nil {
+		t.Fatalf("write agent environment: %v", err)
+	}
 	fake := &fakeAgentClient{bootstrap: clicore.WorkerBootstrap{
-		NodeName: "pi-kitchen", WireGuardIP: "10.8.0.2", WireGuardSubnet: "10.8.0.0/24",
-		WireGuardHubIP: "10.8.0.1", WireGuardHubPublicKey: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
-		WireGuardEndpoint: "deploy.example.com:51820", K3sURL: "https://10.8.0.1:6443", K3sToken: "worker-token",
+		NodeName: "pi-kitchen", WireGuardIP: "10.82.0.2", WireGuardSubnet: "10.82.0.0/24",
+		WireGuardHubIP: "10.82.0.1", WireGuardHubPublicKey: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
+		WireGuardEndpoint: "deploy.example.com:51820", K3sURL: "https://10.82.0.1:6443", K3sToken: "worker-token",
 	}}
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
@@ -183,6 +189,7 @@ func TestJoinK3sConnectsWireGuardAndRunsWorkerBootstrap(t *testing.T) {
 	}
 	code := joinK3s([]string{
 		"--server", "localhost:7443", "--credential-path", credentialPath,
+		"--agent-env-path", envPath,
 		"--wireguard-private-key-path", privateKeyPath, "--wireguard-config-path", configPath,
 		"--k3s-config-path", "/tmp/k3s/config.yaml",
 	})
@@ -198,8 +205,87 @@ func TestJoinK3sConnectsWireGuardAndRunsWorkerBootstrap(t *testing.T) {
 		!strings.Contains(string(files.data), "flannel-iface: wg0") {
 		t.Fatalf("unexpected setup commands=%#v runner=%#v", commands, runner.calls)
 	}
+	envData, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatalf("read updated agent environment: %v", err)
+	}
+	if !strings.Contains(string(envData), "DEPLOYER_WIREGUARD_HUB_IP=10.82.0.1\n") {
+		t.Fatalf("expected persisted WireGuard hub IP, got %q", envData)
+	}
 	if strings.Contains(stdout.String(), "worker-token") || strings.Contains(stderr.String(), "worker-token") {
 		t.Fatalf("worker token must not be printed: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestPersistWireGuardHubIPReplacesExistingValue(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent.env")
+	if err := os.WriteFile(path, []byte("DEPLOYER_SERVER_URL=localhost:7443\n export DEPLOYER_WIREGUARD_HUB_IP=10.8.0.1\nDEPLOYER_WIREGUARD_HUB_IP=10.7.0.1\n"), 0o600); err != nil {
+		t.Fatalf("write agent environment: %v", err)
+	}
+	if err := persistWireGuardHubIP(path, "10.82.0.1"); err != nil {
+		t.Fatalf("persist hub IP: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read agent environment: %v", err)
+	}
+	if got := string(data); got != "DEPLOYER_SERVER_URL=localhost:7443\nDEPLOYER_WIREGUARD_HUB_IP=10.82.0.1\nDEPLOYER_WIREGUARD_HUB_IP=10.82.0.1\n" {
+		t.Fatalf("unexpected agent environment: %q", got)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat agent environment: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("expected agent environment mode 0600, got %o", got)
+	}
+	values, err := godotenv.Read(path)
+	if err != nil {
+		t.Fatalf("parse persisted environment: %v", err)
+	}
+	t.Setenv("DEPLOYER_WIREGUARD_HUB_IP", values["DEPLOYER_WIREGUARD_HUB_IP"])
+	if got := config.LoadAgent().WireGuardHubIP; got != "10.82.0.1" {
+		t.Fatalf("config.LoadAgent returned hub IP %q", got)
+	}
+}
+
+func TestPersistWireGuardHubIPAllowsMissingEnvironment(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing-agent.env")
+	if err := persistWireGuardHubIP(path, "10.82.0.1"); err != nil {
+		t.Fatalf("missing environment should be optional: %v", err)
+	}
+}
+
+func TestPersistWireGuardHubIPRejectsMalformedHubWithoutChangingFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "agent.env")
+	original := "DEPLOYER_SERVER_URL=localhost:7443\nDEPLOYER_WIREGUARD_HUB_IP=10.8.0.1\n"
+	if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+		t.Fatalf("write agent environment: %v", err)
+	}
+	if err := persistWireGuardHubIP(path, "not-an-ip"); err == nil {
+		t.Fatal("expected malformed hub IP to be rejected")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read agent environment: %v", err)
+	}
+	if string(data) != original {
+		t.Fatalf("environment changed after malformed hub IP: %q", data)
+	}
+}
+
+func TestPersistWireGuardHubIPRejectsSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.env")
+	path := filepath.Join(dir, "agent.env")
+	if err := os.WriteFile(target, []byte("DEPLOYER_WIREGUARD_HUB_IP=10.8.0.1\n"), 0o600); err != nil {
+		t.Fatalf("write target environment: %v", err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Fatalf("create environment symlink: %v", err)
+	}
+	if err := persistWireGuardHubIP(path, "10.82.0.1"); err == nil {
+		t.Fatal("expected symlink environment to be rejected")
 	}
 }
 

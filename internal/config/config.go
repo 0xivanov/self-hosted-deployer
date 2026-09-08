@@ -202,6 +202,7 @@ func (c ServerConfig) EventRetention() (EventRetentionConfig, error) {
 
 type AgentConfig struct {
 	ServerURL               string
+	AgentEnvPath            string
 	NodeCredentialPath      string
 	WireGuardInterface      string
 	WireGuardPrivateKeyPath string
@@ -214,6 +215,7 @@ type AgentConfig struct {
 func LoadAgent() AgentConfig {
 	return AgentConfig{
 		ServerURL:               os.Getenv("DEPLOYER_SERVER_URL"),
+		AgentEnvPath:            envOrDefault("DEPLOYER_AGENT_ENV_PATH", "/etc/deployer/agent.env"),
 		NodeCredentialPath:      envOrDefault("DEPLOYER_AGENT_CREDENTIAL_PATH", "/etc/deployer/agent/token"),
 		WireGuardInterface:      envOrDefault("DEPLOYER_WIREGUARD_INTERFACE", "wg0"),
 		WireGuardPrivateKeyPath: envOrDefault("DEPLOYER_WIREGUARD_PRIVATE_KEY_PATH", "/etc/deployer/wireguard/privatekey"),

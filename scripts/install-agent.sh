@@ -170,6 +170,7 @@ install -m 0755 "$AGENT_BINARY" "$BIN_DIR/deployer-agent"
 install -d -m 0700 /etc/deployer/agent /etc/deployer/wireguard /etc/wireguard
 cat > "$ENV_FILE" <<EOF
 DEPLOYER_SERVER_URL=$SERVER_URL
+DEPLOYER_AGENT_ENV_PATH=$ENV_FILE
 DEPLOYER_AGENT_CREDENTIAL_PATH=/etc/deployer/agent/token
 DEPLOYER_WIREGUARD_INTERFACE=wg0
 DEPLOYER_WIREGUARD_PRIVATE_KEY_PATH=/etc/deployer/wireguard/privatekey

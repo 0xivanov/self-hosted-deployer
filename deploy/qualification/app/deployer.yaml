@@ -1,0 +1,24 @@
+name: hosting-lab-app
+image: docker.io/library/hosting-lab-app:qualification
+service:
+  port: 8080
+  health:
+    path: /
+routing:
+  domain: app.deployer-poc.test
+deploy:
+  replicas: 1
+placement:
+  arch: linux/arm64
+hosting:
+  version: v1
+  maxReplicas: 1
+  resources:
+    requests:
+      cpu: 25m
+      memory: 16Mi
+      ephemeralStorage: 16Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+      ephemeralStorage: 64Mi
