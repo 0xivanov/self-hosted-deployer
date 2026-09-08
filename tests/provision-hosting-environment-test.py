@@ -86,6 +86,18 @@ class ProvisionTests(unittest.TestCase):
             self.assertNotIn("--", argv)
             self.assertIn("sudo -n bash -lc", argv[-1])
 
+    def test_private_release_origin_requires_https_and_keeps_hash_verification(self):
+        config = manifest()
+        config['release']['base_url'] = 'https://artifacts.example.test/pilot/'
+        provision.validate_manifest(config, [])
+        install = provision.build_plan(config)[2]
+        self.assertIn('https://artifacts.example.test/pilot/deployer-linux-amd64.tar.gz', install)
+        self.assertIn(config['release']['artifact_sha256'], install)
+        for value in ['', None, 123, 'http://example.test', 'https://user:password@example.test', 'https://example.test?token=secret']:
+            config['release']['base_url'] = value
+            with self.assertRaises(provision.ProvisioningError):
+                provision.validate_manifest(config, [])
+
     def test_generated_mutations_are_bash_parseable(self):
         for command in provision.build_plan(manifest())[1:]:
             checked = subprocess.run(["bash", "-n"], input=command, text=True, capture_output=True)

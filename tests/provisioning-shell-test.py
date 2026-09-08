@@ -71,6 +71,9 @@ else: sys.exit(42)
 import os,pathlib,sys
 root=pathlib.Path(os.environ['TEST_ROOT'])
 if sys.argv[-3:]==['apply','-f','-']: (root/'quota.json').write_text(sys.stdin.read())
+if sys.argv[1:4]==['kubectl','get','nodes']:
+ path=root/'node-polls'; count=int(path.read_text())+1 if path.exists() else 1; path.write_text(str(count))
+ if count>1: print('node/test-node')
 ''')
             manifest = tests.manifest()
             manifest['release']['artifact_sha256'] = hashlib.sha256(archive.read_bytes()).hexdigest()
@@ -97,6 +100,7 @@ for line in sys.stdin:
  if hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()!=digest: sys.exit(1)
 ''')
             executable(bindir / 'openssl', '#!/usr/bin/env python3\nimport subprocess,sys\nif sys.argv[1] == "s_client": sys.exit(0)\nsys.exit(subprocess.call([' + repr(shutil.which('openssl')) + '] + sys.argv[1:]))\n')
+            executable(bindir / 'sleep', '#!/bin/sh\nexit 0\n')
             executable(bindir / 'apt-get', '#!/bin/sh\nexit 0\n')
             executable(bindir / 'systemctl', '#!/bin/sh\nprintf "%s\\n" "$*" >> "$TEST_ROOT/systemctl-calls"\n')
             executable(bindir / 'wg', '#!/bin/sh\ncase "$1" in genkey) echo synthetic-private;; pubkey) cat >/dev/null; echo synthetic-public;; *) exit 7;; esac\n')
@@ -111,6 +115,7 @@ for line in sys.stdin:
                     self.assertFalse((root/'usr/local/bin/deployer-server').exists())
                     return
                 self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((root/'node-polls').read_text(), '2')
             self.assertTrue((root/'var/lib/deployer/backups/platform-initial.enc').exists())
             config = (root/'etc/rancher/k3s/config.yaml').read_text()
             self.assertIn('cluster-cidr: 10.180.0.0/16', config)

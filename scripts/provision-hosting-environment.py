@@ -66,6 +66,12 @@ def validate_manifest(manifest: dict[str, Any], registry: list[dict[str, Any]] |
             raise ProvisioningError(f"release.{checksum_name} must be a 64 character SHA-256 checksum")
     if not re.fullmatch(r"deployer-linux-(amd64|arm64)\.tar\.gz", str(release.get("asset", ""))):
         raise ProvisioningError("release.asset must be deployer-linux-amd64.tar.gz or deployer-linux-arm64.tar.gz")
+    if "base_url" in release:
+        if not isinstance(release["base_url"], str) or not release["base_url"]:
+            raise ProvisioningError("release.base_url must be a nonempty HTTPS URL")
+        artifact_origin = urlsplit(release["base_url"])
+        if artifact_origin.scheme != "https" or not artifact_origin.hostname or artifact_origin.username or artifact_origin.password or artifact_origin.query or artifact_origin.fragment:
+            raise ProvisioningError("release.base_url must be HTTPS without credentials, query or fragment")
     if not isinstance(network, dict):
         raise ProvisioningError("network must be an object")
     networks = _cidrs([str(_required(network, k)) for k in ("wireguard_cidr", "pod_cidr", "service_cidr")], "network")
@@ -177,7 +183,7 @@ def build_plan(manifest: dict[str, Any]) -> list[str]:
     e, r, n = manifest["environment"], manifest["release"], manifest["network"]
     repo = r.get("repo", "0xivanov/self-hosted-deployer")
     version = r["version"]
-    base = f"https://github.com/{repo}/releases/download/{version}"
+    base = r.get("base_url", f"https://github.com/{repo}/releases/download/{version}").rstrip("/")
     asset = r["asset"]
     k3s = manifest["k3s"]
     hub_ip = str(n.get("wireguard_hub_ip", str(ipaddress.ip_network(n["wireguard_cidr"])[1])))
@@ -211,7 +217,7 @@ tls-san:
         f"--wireguard-interface {_q(iface)} --wireguard-hub-public-key \"$(cat /etc/deployer/wireguard/publickey)\" --wireguard-endpoint {_q(n['wireguard_endpoint'])} "
         f"--ingress-acme-email {_q(manifest['domain'].get('acme_email', ''))}",
         f"set -euo pipefail; umask 077; openssl rand -hex 32 > /etc/deployer/server.identity; printf '%s\\n' {_q('DEPLOYER_WIREGUARD_SUBNET=' + n['wireguard_cidr'])} {_q('DEPLOYER_SERVER_IDENTITY_FILE=/etc/deployer/server.identity')} {_q('DEPLOYER_SERVER_TLS_CERT_FILE=' + manifest['tls']['cert_path'])} {_q('DEPLOYER_SERVER_TLS_KEY_FILE=' + manifest['tls']['key_path'])} >> /etc/deployer/server.env",
-        f"set -euo pipefail; umask 077; printf '%s' {_q(config_b64)} | base64 -d > /etc/rancher/k3s/config.yaml; k3swork=$(mktemp -d /tmp/deployer-k3s.XXXXXX); trap 'rm -rf \"$k3swork\"' EXIT; curl -fsSL {_q(k3s['installer_url'])} -o \"$k3swork/install.sh\"; echo {_q(k3s['installer_sha256'] + '  ')}\"$k3swork/install.sh\" | sha256sum -c -; curl -fsSL {_q('https://github.com/k3s-io/k3s/releases/download/' + k3s['version'] + ('/k3s-arm64' if 'arm64' in asset else '/k3s'))} -o \"$k3swork/k3s\"; echo {_q(k3s['binary_sha256'] + '  ')}\"$k3swork/k3s\" | sha256sum -c -; install -m 0755 \"$k3swork/k3s\" /usr/local/bin/k3s; INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_EXEC=server sh \"$k3swork/install.sh\"; /usr/local/bin/k3s kubectl wait --for=condition=Ready nodes --all --timeout=180s",
+        f"set -euo pipefail; umask 077; printf '%s' {_q(config_b64)} | base64 -d > /etc/rancher/k3s/config.yaml; k3swork=$(mktemp -d /tmp/deployer-k3s.XXXXXX); trap 'rm -rf \"$k3swork\"' EXIT; curl -fsSL {_q(k3s['installer_url'])} -o \"$k3swork/install.sh\"; echo {_q(k3s['installer_sha256'] + '  ')}\"$k3swork/install.sh\" | sha256sum -c -; curl -fsSL {_q('https://github.com/k3s-io/k3s/releases/download/' + k3s['version'] + ('/k3s-arm64' if 'arm64' in asset else '/k3s'))} -o \"$k3swork/k3s\"; echo {_q(k3s['binary_sha256'] + '  ')}\"$k3swork/k3s\" | sha256sum -c -; install -m 0755 \"$k3swork/k3s\" /usr/local/bin/k3s; INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_EXEC=server sh \"$k3swork/install.sh\"; for attempt in $(seq 1 60); do if /usr/local/bin/k3s kubectl get nodes -o name --request-timeout=5s | grep -q '^node/'; then break; fi; sleep 2; done; /usr/local/bin/k3s kubectl wait --for=condition=Ready nodes --all --timeout=180s",
         f"/usr/local/bin/k3s kubectl create namespace {_q(namespace)} && printf '%s' {_q(quota_b64)} | base64 -d | /usr/local/bin/k3s kubectl apply -f -",
         "set -euo pipefail; systemctl daemon-reload; systemctl enable --now deployer-server.service; curl --fail --retry 20 --retry-connrefused --retry-delay 2 http://127.0.0.1:7080/readyz",
         f"openssl s_client -connect {_q('127.0.0.1:' + str(urlsplit(manifest['admin_endpoint']).port))} -servername {_q(urlsplit(manifest['admin_endpoint']).hostname)} -verify_hostname {_q(urlsplit(manifest['admin_endpoint']).hostname)} -verify_return_error < /dev/null",
