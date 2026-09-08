@@ -19,6 +19,9 @@ BIN_DIR="/usr/local/bin"
 ENV_FILE="/etc/deployer/agent.env"
 SERVICE_TEMPLATE="./deploy/systemd/deployer-agent.service"
 SERVICE_FILE="/etc/systemd/system/deployer-agent.service"
+WIREGUARD_SERVICE="wg-quick@wg0.service"
+K3S_AGENT_DROPIN_DIR="/etc/systemd/system/k3s-agent.service.d"
+K3S_AGENT_DROPIN_FILE="$K3S_AGENT_DROPIN_DIR/10-deployer-wireguard.conf"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -141,6 +144,20 @@ ensure_memory_cgroup() {
   exit 1
 }
 
+configure_wireguard_boot_ordering() {
+  if ! systemctl enable "$WIREGUARD_SERVICE"; then
+    echo "failed to enable $WIREGUARD_SERVICE for boot" >&2
+    exit 1
+  fi
+  install -d -m 0755 "$K3S_AGENT_DROPIN_DIR"
+  cat > "$K3S_AGENT_DROPIN_FILE" <<EOF
+[Unit]
+Requires=$WIREGUARD_SERVICE
+After=network-online.target $WIREGUARD_SERVICE
+EOF
+  chmod 0644 "$K3S_AGENT_DROPIN_FILE"
+}
+
 if [ -z "$AGENT_BINARY" ]; then
   if [ -x "./deployer-agent" ]; then
     AGENT_BINARY="./deployer-agent"
@@ -184,6 +201,7 @@ chmod 0600 "$ENV_FILE"
 ensure_memory_cgroup
 "$BIN_DIR/deployer-agent" join --server "$SERVER_URL" --token "$JOIN_TOKEN"
 "$BIN_DIR/deployer-agent" join-k3s --server "$SERVER_URL"
+configure_wireguard_boot_ordering
 
 install -m 0644 "$SERVICE_TEMPLATE" "$SERVICE_FILE"
 systemctl daemon-reload

@@ -71,3 +71,5 @@ limactl shell deployer-poc-lab -- sudo bash /tmp/mac-app-lifecycle-smoke.sh --ap
 The login context must already exist, created with the synthetic bootstrap admin token through the CLI login prompt. Do not use production credentials. This test changes only the named lab app and requires the prepared namespace, quota and ingress controller.
 
 The lifecycle test passed. After a guest `sync` and `systemctl reboot`, the platform services, Traefik and test application returned healthy and ingress again returned the expected body. This extends the earlier reboot evidence to an actual application. HTTP inside the guest does not qualify public HTTPS, certificate issuance or renewal, multi-node operation, full recovery, or external alert delivery.
+
+The [two-VM worker rehearsal](mac-worker-qualification.md) extends this evidence to actual worker enrollment, repaired reboot persistence, cross-node app traffic and CLI drain/uncordon. Both VM definitions now use the shared Lima user-mode network.
