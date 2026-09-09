@@ -1,6 +1,6 @@
 # Hosting implementation status
 
-Updated 2026-09-08. The foundation implementation and live legacy-fleet upgrade/rollback rehearsal are complete. All three nodes run the unpublished `v0.3.1-poc.20260906` candidate, with manual update policy and automatic-update timers disabled. Existing workload generations, application Pod UIDs and restart counts remained unchanged. The managed hosting POC acceptance checklist is still open. See [live rehearsal evidence](live-upgrade-rehearsal.md).
+Updated 2026-09-09. The foundation implementation and live legacy-fleet upgrade/rollback rehearsal are complete. All three nodes now run the unpublished `v0.3.1-poc.20260909` candidate, with manual update policy and automatic-update timers disabled. Existing workload generations, application Pod UIDs and restart counts remained unchanged. The managed hosting POC acceptance checklist is still open. See [September 9 upgrade evidence](live-upgrade-20260909.md) and [the earlier rollback rehearsal](live-upgrade-rehearsal.md).
 
 ## Implemented locally
 
@@ -90,3 +90,7 @@ The same-node memory-exhaustion rehearsal also passed: a disposable container us
 ## Credential separation, September 9
 
 The integration suite now runs two loopback gRPC servers with independent SQLite token stores and token-hash keys. Each server accepts its own administrator credential and rejects the other environment's credential and missing credentials before the mutation handler executes. This passed with race detection and is included in check/release workflows. It verifies the authenticated RPC boundary, not independent VPS firewalls, TLS issuance or an entire customer provisioning workflow.
+
+## Latest live rollout
+
+The September 9 candidate from `f2ab0d9` is installed on the VPS and both Pi agents. The server was followed by each worker separately, with saved rollback binaries and unchanged application Pod identities/restarts. The first server attempt automatically rolled back after a public-probe timeout; a verified retry passed. This supersedes earlier statements that these server/agent code changes were installed only in the Mac lab. Operational helper scripts, CLI binaries and public alert/certificate qualification were not part of this rollout. See [the live upgrade record](live-upgrade-20260909.md).
