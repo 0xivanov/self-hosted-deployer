@@ -94,3 +94,7 @@ The integration suite now runs two loopback gRPC servers with independent SQLite
 ## Latest live rollout
 
 The September 9 candidate from `f2ab0d9` is installed on the VPS and both Pi agents. The server was followed by each worker separately, with saved rollback binaries and unchanged application Pod identities/restarts. The first server attempt automatically rolled back after a public-probe timeout; a verified retry passed. This supersedes earlier statements that these server/agent code changes were installed only in the Mac lab. Operational helper scripts, CLI binaries and public alert/certificate qualification were not part of this rollout. See [the live upgrade record](live-upgrade-20260909.md).
+
+## Certificate rehearsal
+
+Management DNS renewal passed against staging and the existing restart hook returned the server ready. Application HTTP-01 staging issuance passed with the production certificate unchanged; ten external HTTPS samples passed. The real app renewal is due September 10, so production renewal and certificate reload remain pending observation. Intermittent HTTPS timeouts from the VPS to its own ingress remain unresolved. Independent monitoring installation/test email delivery awaits user approval. See [certificate evidence](certificate-qualification-20260909.md).
