@@ -73,7 +73,7 @@ jobs:
         run: go test -race ./...
 
       - name: Synthetic platform recovery drill
-        run: go test -tags=integration -race ./internal/backup
+        run: go test -tags=integration -race ./internal/backup ./internal/server
 
       - name: Vet
         run: go vet ./...
