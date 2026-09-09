@@ -63,6 +63,9 @@ def main():
     assert source["spec"]["policyTypes"] == ["Ingress", "Egress"]
     labels = source["spec"]["podSelector"]["matchLabels"]
     assert labels["deployer.io/hosting-profile"] == "v1"
+    deployed = get("deployment", "hosting-lab-app", "-n", "hosting-mac-lab-a")
+    actual_labels = deployed["spec"]["template"]["metadata"]["labels"]
+    assert all(actual_labels.get(key) == value for key, value in labels.items()), "Policy does not select the actual app"
     suffix = uuid.uuid4().hex[:8]
     baseline = app_state()
     protected, other = f"isolation-hosted-{suffix}", f"isolation-other-{suffix}"
@@ -111,6 +114,14 @@ def main():
             raise AssertionError("Protected cross-node app is unreachable through Traefik")
         print("PASS: cross-node Pod IP and Service IP ingress/egress denied; DNS allowed", flush=True)
         print("PASS: real Traefik ingress reaches the protected worker app", flush=True)
+        actual_pods = get("pods", "-n", "hosting-mac-lab-a", "-l", "app.kubernetes.io/name=hosting-lab-app")["items"]
+        assert actual_pods
+        for pod in actual_pods:
+            assert all(pod["metadata"]["labels"].get(key) == value for key, value in labels.items())
+            denied(other, pod["status"]["podIP"])
+        actual_service = get("service", "hosting-lab-app", "-n", "hosting-mac-lab-a")
+        denied(other, actual_service["spec"]["clusterIP"])
+        print("PASS: actual deployed app blocks unrelated Pod and Service access", flush=True)
         kube("delete", "networkpolicy", "qualification", "-n", protected)
         time.sleep(5)
         for namespace, target in paths:

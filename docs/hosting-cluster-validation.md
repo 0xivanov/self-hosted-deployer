@@ -2,6 +2,10 @@
 
 ## Two-node Mac rehearsal, September 9
 
+Follow-up review found a renderer defect: actual hosted Pod templates lacked `deployer.io/hosting-profile=v1`, which the policy selector required. The first fixture test used the policy's labels directly, so it proved enforcement for matching Pods without proving the deployed app matched. The renderer now adds this label only to opted-in Pod templates, preserving the immutable Deployment selector and legacy rendering. A regression test checks the complete policy selector against the rendered Pod labels.
+
+After installing the fix and redeploying only the synthetic lab app, the expanded rehearsal passed again. It now checks actual Deployment and Pod labels and verifies unrelated access to the real app is denied through both Pod and Service addresses, while real ingress remains healthy. The app rolled out intentionally to acquire the missing label; identities/restarts were then held constant during the network test. Existing opted-in deployments require a reviewed redeploy to acquire the label. Old Pods are not protected merely by installing a new server binary. No live fleet configuration or workload was changed.
+
 `tests/mac-network-isolation-smoke.py` passed in the recovered Mac control plane with its existing worker, both running k3s v1.35.5+k3s1. The test copies the actual deployed hosting app's NetworkPolicy spec into a unique disposable namespace. It places a protected nonroot HTTP fixture on the worker and an unrelated fixture on the control plane. It does not remove or modify the existing app's policy.
 
 All four paths passed baseline and recovery controls: unrelated-to-protected ingress and protected-to-unrelated egress, each through both Pod and Service IP addresses. With the policy applied, each path failed with a recognized network denial. Cluster DNS still resolved, and actual Traefik ingress reached the protected worker app through its Service. The original hosted app continued serving with unchanged Pod identities and restart counts.

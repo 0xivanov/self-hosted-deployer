@@ -391,6 +391,9 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 	podLabels := appLabels(cfg.Name)
 	podLabels["deployer.io/state-mode"] = cfg.State.Mode
 	podLabels["deployer.io/resilience-mode"] = cfg.Resilience.Mode
+	if cfg.Hosting != nil {
+		podLabels[hostingProfileLabel] = cfg.Hosting.Version
+	}
 	replicas := int32(cfg.Deploy.Replicas)
 	if cfg.Resilience.Mode == appconfig.ResilienceResilient && replicas < 2 {
 		replicas = 2

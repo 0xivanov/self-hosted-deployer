@@ -2,6 +2,7 @@ package ingress
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -11,6 +12,34 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
+
+func TestHostingPolicySelectsRenderedPodsWithoutChangingDeploymentSelector(t *testing.T) {
+	cfg := hostingTestConfig(t)
+	policy, err := networkPolicyForHostedApp(cfg, DefaultNamespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hosted, err := deploymentForApp(cfg, DefaultNamespace, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range policy.Spec.PodSelector.MatchLabels {
+		if hosted.Spec.Template.Labels[key] != value {
+			t.Errorf("policy requires %s=%s but rendered pod has %q", key, value, hosted.Spec.Template.Labels[key])
+		}
+	}
+	cfg.Hosting = nil
+	legacy, err := deploymentForApp(cfg, DefaultNamespace, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := legacy.Spec.Template.Labels[hostingProfileLabel]; exists {
+		t.Fatal("legacy pod has hosting label")
+	}
+	if !reflect.DeepEqual(hosted.Spec.Selector, legacy.Spec.Selector) {
+		t.Fatal("immutable deployment selector changed")
+	}
+}
 
 func TestNetworkPolicyForHostedAppIsScopedAndExplicit(t *testing.T) {
 	cfg := hostingTestConfig(t)
