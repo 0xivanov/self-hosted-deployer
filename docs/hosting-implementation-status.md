@@ -78,3 +78,7 @@ A fresh Mac VM restored the synthetic platform/k3s SQLite state, original server
 Existing-worker recovery also passed after correcting hub peer reconstruction: configured servers now synchronize saved WireGuard peers before accepting RPCs, and the worker reconnected to the replacement with its original agent credential and Kubernetes identity. The new startup path is skipped when worker networking is not configured. The replacement VM is the current lab control plane; never run it concurrently with the retained original.
 
 The replacement then passed a full guest reboot: both nodes Ready, worker VPN connected, app ingress responding and the original operator login working. These changes have only been installed in the disposable lab, not the live fleet.
+
+## Cross-node network enforcement, September 9
+
+The replacement and worker passed a repeatable test of the deployed hosting NetworkPolicy. Unauthorized ingress and egress were blocked through both Pod and Service IPs, with successful before/after controls. Cluster DNS and real Traefik ingress to the protected worker app remained functional. The existing app's Pod identities and restart counts stayed unchanged. See [network qualification](hosting-cluster-validation.md). Independent customer control-plane access, runtime resource exhaustion and public TLS/alert delivery remain open; this test does not certify those boundaries.
