@@ -98,3 +98,7 @@ The September 9 candidate from `f2ab0d9` is installed on the VPS and both Pi age
 ## Certificate rehearsal
 
 Management DNS renewal passed against staging and the existing restart hook returned the server ready. Application HTTP-01 staging issuance passed with the production certificate unchanged; ten external HTTPS samples passed. The real app renewal is due September 10, so production renewal and certificate reload remain pending observation. Intermittent HTTPS timeouts from the VPS to its own ingress remain unresolved. Independent monitoring installation/test email delivery awaits user approval. See [certificate evidence](certificate-qualification-20260909.md).
+
+## Independent monitoring activation
+
+The operator approved installation and test emails. The home Pi now runs the external application HTTPS/certificate monitor with a one-minute timer and direct verified Gmail STARTTLS delivery. The controlled localhost outage/recovery rehearsal sent two clearly labeled test messages, both accepted by Gmail; inbox receipt awaits operator confirmation. Root-only configuration and normal healthy operation were verified. This supersedes the earlier pending-approval statement. See [activation evidence and limits](external-monitor-live-20260909.md).

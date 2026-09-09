@@ -2,7 +2,7 @@
 
 Run this host-native systemd monitor on an operator-controlled Linux machine outside the customer VPS and cluster. It checks public HTTPS with verified certificates every minute and sends email directly to an external SMTP provider. It must not depend on the customer cluster's ingress, DNS resolver, Alertmanager, or SMTP relay. A Raspberry Pi at another site can cover VPS failure; it does not cover failure of that Pi or its Internet connection.
 
-The initial implementation is locally tested, including real TLS connections, untrusted certificates, HTTP failure, certificate age, notification retries, and recovery transitions. Live installation and actual email delivery remain separate qualification steps.
+The implementation is locally tested, including real TLS connections, untrusted certificates, HTTP failure, certificate age, notification retries, and recovery transitions. On September 9, the home Pi installation and controlled outage/recovery SMTP delivery passed. See [live activation evidence](external-monitor-live-20260909.md) for the endpoint scope and mailbox-confirmation boundary.
 
 ## Configuration
 

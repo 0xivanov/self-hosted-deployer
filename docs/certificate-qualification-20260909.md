@@ -28,4 +28,6 @@ The production application certificate remains at revision 1, valid until Octobe
 
 ## Independent alerts
 
+The operator subsequently approved installation and test email delivery. The home Pi monitor is now enabled and Gmail accepted the controlled outage/recovery pair; see [activation evidence](external-monitor-live-20260909.md). The paragraph below records the state before that approval.
+
 The external monitor's read-only check passed from the Mac against the application's public HTTPS readiness endpoint with a 14-day certificate-expiry threshold. Neither Pi currently has this independent monitor installed. Existing cluster email alerts remain configured; no email was sent by this rehearsal. Enabling the monitor on the home Pi and sending a labeled outage/recovery test pair to the existing operator address awaits the user's approval. No SMTP credentials were copied for that pending action.
