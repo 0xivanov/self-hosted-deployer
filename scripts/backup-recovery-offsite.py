@@ -301,6 +301,9 @@ def create_tar(config: dict, db_specs: list[dict], paths: list[Path], excluded_p
         for index, spec in enumerate(db_specs):
             snapshot = snapshot_dir / f"{index}.db"
             sqlite_online_backup(spec["source"], snapshot)
+            # SQLite creates a new file using the process umask. Keep the
+            # archived recovery copy private regardless of that umask.
+            snapshot.chmod(0o600)
             archive.add(snapshot, arcname=spec["archive"], recursive=False)
         sqlite_sources = {spec["source"] for spec in db_specs}
         for source in paths:

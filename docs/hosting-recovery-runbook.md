@@ -237,3 +237,7 @@ Related documents: [hosting operations](hosting-operations.md), [hosting
 profile](hosting-profile.md), [hosting namespace](hosting-namespace.md),
 [cluster validation](hosting-cluster-validation.md), [update policy](update-policy.md),
 and [the POC plan](hosting-poc-plan.md).
+
+## Stateless Mac replacement-host evidence
+
+The [Mac recovery rehearsal](mac-recovery-qualification.md) restored the synthetic platform and Kubernetes state, original identity-bound operator login, stateless app ingress and an existing worker on a fresh Ubuntu VM. It found and corrected missing hub peer restoration at server startup. This is local stateless-environment evidence, not a production full-host restore, application-volume restore or customer RPO/RTO certification. Use the offline staging helper for regular-file bundles; review its restrictions and preserve OS parent-directory permissions during activation.

@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/config"
@@ -57,6 +58,11 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	nodeMonitor, err := cfg.NodeMonitor()
 	if err != nil {
 		return fmt.Errorf("configure node monitor: %w", err)
+	}
+	// Restore volatile hub state before accepting enrollment/removal RPCs,
+	// so a startup snapshot cannot race with those mutations.
+	if err := restoreHubPeers(ctx, cfg, repos.Nodes, runtime.WireGuardPeers); err != nil {
+		return fmt.Errorf("restore WireGuard hub peers: %w", err)
 	}
 	grpcListener, err := net.Listen("tcp", cfg.GRPCListenAddress)
 	if err != nil {
@@ -201,6 +207,25 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 		}
 		return err
 	}
+}
+
+func restoreHubPeers(ctx context.Context, cfg config.ServerConfig, nodes NodeRepository, peers PeerSynchronizer) error {
+	// A server without configured worker networking keeps its legacy startup
+	// behavior and must not modify an unrelated default wg0 interface.
+	if peers == nil || strings.TrimSpace(cfg.K3sWireGuardIP) == "" ||
+		strings.TrimSpace(cfg.WireGuardHubPublicKey) == "" || strings.TrimSpace(cfg.WireGuardEndpoint) == "" {
+		return nil
+	}
+	if nodes == nil {
+		return errors.New("node repository is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	known, err := nodes.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list saved nodes: %w", err)
+	}
+	return peers.SyncPeers(ctx, known)
 }
 
 func writePlainText(logger *slog.Logger, w http.ResponseWriter, status int, body string) {

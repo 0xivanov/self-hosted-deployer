@@ -97,7 +97,7 @@ jobs:
         run: python3 tests/platform-backup-job-test.py && python3 tests/platform-backup-job-test.py --real
 
       - name: Backup scheduler and metrics tests
-        run: python3 tests/platform-backup-wrapper-test.py && python3 tests/recovery-bundle-test.py && python3 tests/postgres-globals-backup-test.py && python3 tests/backup-metrics-test.py
+        run: python3 tests/platform-backup-wrapper-test.py && python3 tests/recovery-bundle-test.py && python3 tests/stage-recovery-bundle-test.py && python3 tests/postgres-globals-backup-test.py && python3 tests/backup-metrics-test.py
       - name: Hosting operations and provisioning tests
         run: python3 tests/external-monitor-test.py && python3 tests/operational-recovery-features-test.py && python3 tests/backup-retention-cli-test.py && python3 tests/audit-journal-collector-test.py && python3 tests/provision-hosting-environment-test.py && python3 tests/provisioning-shell-test.py
       - name: Audit export local repository drill

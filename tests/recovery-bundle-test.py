@@ -92,6 +92,7 @@ class RecoveryBundleTests(unittest.TestCase):
         with tarfile.open(self.repo / "recovery.tar.gz", "r:gz") as archive:
             names = archive.getnames()
             self.assertIn("var/lib/deployer/deployer.db", names)
+            self.assertEqual(archive.getmember("var/lib/deployer/deployer.db").mode, 0o600)
             source_prefix = self.source_dir.as_posix().lstrip("/")
             self.assertIn(f"{source_prefix}/server.env", names)
             self.assertNotIn(f"{source_prefix}/backup/credentials", names)
