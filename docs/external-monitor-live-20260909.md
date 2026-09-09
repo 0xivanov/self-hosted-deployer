@@ -8,7 +8,7 @@ The monitor connects directly to `smtp.gmail.com:587` using verified STARTTLS an
 
 `tests/external-monitor-email-drill.py` was executed once with explicit `--send-test-emails` authorization on the home Pi. It creates a private localhost TLS fixture, returning HTTP 503 and then HTTP 200. Trust for that synthetic certificate is restricted to the child test processes; normal system roots remain available for Gmail TLS. The production monitor configuration is not changed.
 
-The normal monitor code observed the outage, sent an ALERT, observed recovery and sent RECOVERED. Both subjects include `TEST ONLY - legacy-vps monitor qualification`. Gmail accepted both messages and the persisted test state changed from notified to recovered. The temporary TLS fixture, test state and configuration were removed. Receipt in the operator's mailbox still requires operator confirmation; SMTP acceptance alone is not proof of inbox delivery.
+The normal monitor code observed the outage, sent an ALERT, observed recovery and sent RECOVERED. Both subjects include `TEST ONLY - legacy-vps monitor qualification`. Gmail accepted both messages and the persisted test state changed from notified to recovered. The temporary TLS fixture, test state and configuration were removed. The operator confirmed receipt of both test emails on September 9. This verifies end-to-end mailbox delivery for the controlled outage/recovery pair.
 
 ## Activation and limits
 
