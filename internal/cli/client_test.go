@@ -67,6 +67,35 @@ func TestPlatformClientGetAppStatusMapsDatabaseWithoutCredentials(t *testing.T) 
 	}
 }
 
+func TestPlatformClientDeleteAppAttachesBearerAndMapsResult(t *testing.T) {
+	service := &recordingDeleteAppService{response: &deployerv1.DeleteAppResponse{App: &deployerv1.App{Name: "my-api"}}}
+	client := NewPlatformClientForServices(nil, nil, service, "dep_admin_test")
+
+	got, err := client.DeleteApp(context.Background(), "my-api")
+	if err != nil {
+		t.Fatalf("delete app: %v", err)
+	}
+	if got.Name != "my-api" || !got.Deleted || got.AlreadyAbsent {
+		t.Fatalf("unexpected delete result: %#v", got)
+	}
+	if service.appName != "my-api" || service.authorization != "Bearer dep_admin_test" {
+		t.Fatalf("unexpected request name=%q authorization=%q", service.appName, service.authorization)
+	}
+}
+
+func TestPlatformClientDeleteAppTreatsNotFoundAsAlreadyAbsent(t *testing.T) {
+	service := &recordingDeleteAppService{err: status.Error(codes.NotFound, "app not found")}
+	client := NewPlatformClientForServices(nil, nil, service, "dep_admin_test")
+
+	got, err := client.DeleteApp(context.Background(), "missing")
+	if err != nil {
+		t.Fatalf("delete missing app: %v", err)
+	}
+	if got.Name != "missing" || got.Deleted || !got.AlreadyAbsent {
+		t.Fatalf("unexpected already absent result: %#v", got)
+	}
+}
+
 func TestPlatformClientListEventsMapsFiltersAndAttachesBearerToken(t *testing.T) {
 	service := &recordingEventService{response: &deployerv1.ListEventsResponse{Events: []*deployerv1.Event{{
 		Id:           "event-1",
@@ -161,6 +190,25 @@ type recordingAppService struct {
 	err           error
 	appName       string
 	authorization string
+}
+
+type recordingDeleteAppService struct {
+	deployerv1.AppServiceClient
+	response      *deployerv1.DeleteAppResponse
+	err           error
+	appName       string
+	authorization string
+}
+
+func (s *recordingDeleteAppService) DeleteApp(ctx context.Context, request *deployerv1.DeleteAppRequest, _ ...grpc.CallOption) (*deployerv1.DeleteAppResponse, error) {
+	s.appName = request.GetName()
+	if md, ok := metadata.FromOutgoingContext(ctx); ok {
+		values := md.Get("authorization")
+		if len(values) > 0 {
+			s.authorization = values[0]
+		}
+	}
+	return s.response, s.err
 }
 
 func (s *recordingAppService) GetAppStatus(ctx context.Context, request *deployerv1.GetAppStatusRequest, _ ...grpc.CallOption) (*deployerv1.GetAppStatusResponse, error) {

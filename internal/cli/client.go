@@ -151,6 +151,12 @@ type DeployResult struct {
 	Deployment DeploymentInfo `json:"deployment"`
 }
 
+type DeleteAppResult struct {
+	Name          string `json:"name"`
+	Deleted       bool   `json:"deleted"`
+	AlreadyAbsent bool   `json:"already_absent"`
+}
+
 type PreflightResult struct {
 	DesiredState string   `json:"desired_state"`
 	Warnings     []string `json:"warnings"`
@@ -437,6 +443,25 @@ func (c *PlatformClient) DeployApp(ctx context.Context, deployerYAML string) (De
 		App:        app,
 		Deployment: deploymentInfo(response.GetDeployment()),
 	}, nil
+}
+
+func (c *PlatformClient) DeleteApp(ctx context.Context, name string) (DeleteAppResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+
+	response, err := c.appClient.DeleteApp(ctx, &deployerv1.DeleteAppRequest{Name: name})
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return DeleteAppResult{Name: name, AlreadyAbsent: true}, nil
+		}
+		return DeleteAppResult{}, DecodeRPCError(err)
+	}
+	deletedName := name
+	if app := response.GetApp(); app != nil && app.GetName() != "" {
+		deletedName = app.GetName()
+	}
+	return DeleteAppResult{Name: deletedName, Deleted: true}, nil
 }
 
 func (c *PlatformClient) PreflightApp(ctx context.Context, deployerYAML string) (PreflightResult, error) {

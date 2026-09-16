@@ -687,6 +687,10 @@ func (c recordingClient) DeployApp(context.Context, string) (clicore.DeployResul
 	return clicore.DeployResult{}, c.err
 }
 
+func (c recordingClient) DeleteApp(context.Context, string) (clicore.DeleteAppResult, error) {
+	return clicore.DeleteAppResult{}, c.err
+}
+
 func (c recordingClient) ListApps(context.Context) ([]clicore.AppInfo, error) {
 	return nil, c.err
 }
@@ -735,6 +739,8 @@ type recordingAppClient struct {
 	serverStatus         clicore.ServerStatus
 	deployerYAML         string
 	deployResult         clicore.DeployResult
+	deleteAppName        string
+	deleteResult         clicore.DeleteAppResult
 	apps                 []clicore.AppInfo
 	inspect              clicore.AppInspectResult
 	routes               []clicore.RouteInfo
@@ -804,6 +810,11 @@ func (c *recordingAppClient) RenameNode(_ context.Context, ref string, newName s
 func (c *recordingAppClient) DeployApp(_ context.Context, deployerYAML string) (clicore.DeployResult, error) {
 	c.deployerYAML = deployerYAML
 	return c.deployResult, c.err
+}
+
+func (c *recordingAppClient) DeleteApp(_ context.Context, name string) (clicore.DeleteAppResult, error) {
+	c.deleteAppName = name
+	return c.deleteResult, c.err
 }
 
 func (c *recordingAppClient) ListApps(context.Context) ([]clicore.AppInfo, error) {

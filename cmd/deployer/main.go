@@ -42,6 +42,7 @@ type platformClient interface {
 	PurgeNode(ctx context.Context, ref string) (string, error)
 	RenameNode(ctx context.Context, ref string, newName string) (clicore.NodeInfo, error)
 	DeployApp(ctx context.Context, deployerYAML string) (clicore.DeployResult, error)
+	DeleteApp(ctx context.Context, name string) (clicore.DeleteAppResult, error)
 	ListApps(ctx context.Context) ([]clicore.AppInfo, error)
 	InspectApp(ctx context.Context, name string) (clicore.AppInspectResult, error)
 	GetAppStatus(ctx context.Context, name string) (clicore.AppStatusResult, error)

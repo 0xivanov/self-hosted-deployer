@@ -66,6 +66,8 @@ func (a cliApp) dispatch(args []string, opts cliOptions) int {
 		return a.preflight(args[1:], opts)
 	case "deploy":
 		return a.deploy(args[1:], opts)
+	case "delete":
+		return a.deleteApp(args[1:], opts)
 	case "apps":
 		return a.apps(args[1:], opts)
 	case "status":
