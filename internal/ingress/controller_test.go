@@ -244,22 +244,23 @@ func TestControllerRejectsAppWithoutMatchingReadyWorker(t *testing.T) {
 
 func TestControllerStatusUsesAvailableReplicas(t *testing.T) {
 	tests := []struct {
-		name      string
-		desired   int32
-		available int32
-		want      string
+		name, want                         string
+		desired, available, updated, ready int32
+		generation, observed               int64
 	}{
-		{name: "healthy", desired: 2, available: 2, want: StatusHealthy},
-		{name: "degraded", desired: 2, available: 1, want: StatusDegraded},
-		{name: "unavailable", desired: 2, available: 0, want: StatusUnavailable},
+		{name: "healthy", desired: 2, available: 2, updated: 2, ready: 2, generation: 1, observed: 1, want: StatusHealthy},
+		{name: "mixed rollout", desired: 2, available: 2, updated: 1, ready: 2, generation: 2, observed: 2, want: StatusDegraded},
+		{name: "stale generation", desired: 2, available: 2, updated: 2, ready: 2, generation: 2, observed: 1, want: StatusDegraded},
+		{name: "degraded", desired: 2, available: 1, updated: 2, ready: 1, generation: 1, observed: 1, want: StatusDegraded},
+		{name: "unavailable", desired: 2, available: 0, updated: 2, ready: 0, generation: 1, observed: 1, want: StatusUnavailable},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			clientset := fake.NewSimpleClientset(&appsv1.Deployment{
-				ObjectMeta: metav1.ObjectMeta{Name: "my-api", Namespace: DefaultNamespace},
+				ObjectMeta: metav1.ObjectMeta{Name: "my-api", Namespace: DefaultNamespace, Generation: tt.generation},
 				Spec:       appsv1.DeploymentSpec{Replicas: &tt.desired},
-				Status:     appsv1.DeploymentStatus{AvailableReplicas: tt.available},
+				Status:     appsv1.DeploymentStatus{AvailableReplicas: tt.available, UpdatedReplicas: tt.updated, ReadyReplicas: tt.ready, ObservedGeneration: tt.observed},
 			})
 			controller := &Controller{
 				namespace:   DefaultNamespace,
@@ -456,9 +457,9 @@ func TestControllerManagesNodeReadinessAndReportsRunningNodes(t *testing.T) {
 			}}},
 		},
 		&appsv1.Deployment{
-			ObjectMeta: metav1.ObjectMeta{Name: "my-api", Namespace: DefaultNamespace},
+			ObjectMeta: metav1.ObjectMeta{Name: "my-api", Namespace: DefaultNamespace, Generation: 1},
 			Spec:       appsv1.DeploymentSpec{Replicas: &replicas},
-			Status:     appsv1.DeploymentStatus{AvailableReplicas: 2},
+			Status:     appsv1.DeploymentStatus{AvailableReplicas: 2, UpdatedReplicas: 2, ReadyReplicas: 2, ObservedGeneration: 1},
 		},
 		&corev1.Pod{
 			ObjectMeta: metav1.ObjectMeta{Name: "my-api-1", Namespace: DefaultNamespace, Labels: map[string]string{

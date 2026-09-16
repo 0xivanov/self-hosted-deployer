@@ -321,10 +321,13 @@ func statusForDeployment(deployment *appsv1.Deployment) string {
 		desired = *deployment.Spec.Replicas
 	}
 	available := deployment.Status.AvailableReplicas
+	updated := deployment.Status.UpdatedReplicas
+	ready := deployment.Status.ReadyReplicas
+	observed := deployment.Status.ObservedGeneration
 	switch {
 	case desired < 1 || available < 1:
 		return StatusUnavailable
-	case available < desired:
+	case available < desired || updated < desired || ready < desired || observed < deployment.Generation:
 		return StatusDegraded
 	default:
 		return StatusHealthy
