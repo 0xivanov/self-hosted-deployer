@@ -3,6 +3,7 @@ package ingress
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 func (c *Controller) ensureSchedulableWorker(ctx context.Context, cfg appconfig.Config) error {
@@ -229,13 +231,34 @@ func (c *Controller) RemoveNode(ctx context.Context, nodeName string) error {
 }
 
 func (c *Controller) RuntimeStatus(ctx context.Context, appName string) (string, int32, int32, []string, error) {
+	if candidate, candidateErr := c.CandidateStatus(ctx, appName); candidateErr == nil {
+		if c.pods == nil {
+			return candidate.State, candidate.DesiredReplicas, candidate.AvailableReplicas, nil, nil
+		}
+		selector := labels.Set(candidate.Selector).AsSelector().String()
+		runningNodes, err := c.runningNodesForSelector(ctx, selector)
+		if err != nil {
+			return "", 0, 0, nil, err
+		}
+		return candidate.State, candidate.DesiredReplicas, candidate.AvailableReplicas, runningNodes, nil
+	} else if !errors.Is(candidateErr, ErrCandidateStatusNotSelected) {
+		return StatusUnavailable, 0, 0, nil, candidateErr
+	}
 	state, desired, available, err := c.StatusDetails(ctx, appName)
 	if err != nil || c.pods == nil {
 		return state, desired, available, nil, err
 	}
-	pods, err := c.pods.List(ctx, metav1.ListOptions{LabelSelector: "deployer.io/app=" + appName})
+	runningNodes, err := c.runningNodesForSelector(ctx, "deployer.io/app="+appName)
 	if err != nil {
-		return "", 0, 0, nil, fmt.Errorf("list Pods for app %q status: %w", appName, err)
+		return "", 0, 0, nil, err
+	}
+	return state, desired, available, runningNodes, nil
+}
+
+func (c *Controller) runningNodesForSelector(ctx context.Context, selector string) ([]string, error) {
+	pods, err := c.pods.List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if err != nil {
+		return nil, fmt.Errorf("list Pods for runtime status: %w", err)
 	}
 	nodeSet := map[string]struct{}{}
 	for _, pod := range pods.Items {
@@ -249,5 +272,5 @@ func (c *Controller) RuntimeStatus(ctx context.Context, appName string) (string,
 		runningNodes = append(runningNodes, nodeName)
 	}
 	sort.Strings(runningNodes)
-	return state, desired, available, runningNodes, nil
+	return runningNodes, nil
 }

@@ -10,13 +10,14 @@ import (
 
 	"github.com/0xivanov/self-hosted-deployer/internal/registryauth"
 	appsv1 "k8s.io/api/apps/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 )
 
 // ErrCandidateStatusNotSelected tells a caller to use the legacy status path.
-// It is returned when the stable Service has no valid candidate activation
-// identity or the candidate is not uniquely selectable.
+// It is returned only for legacy status paths, such as an unmarked or missing
+// Service. Candidate integrity failures remain errors and cannot fall back.
 var ErrCandidateStatusNotSelected = errors.New("candidate status is not selected")
 
 var candidateGenerationPattern = regexp.MustCompile(`^[0-9a-f]{32}$`)
@@ -28,6 +29,7 @@ type CandidateStatus struct {
 	DesiredReplicas   int32
 	AvailableReplicas int32
 	DeploymentName    string
+	Selector          map[string]string
 }
 
 // CandidateStatus reads only the candidate selected by the owned stable
@@ -35,20 +37,29 @@ type CandidateStatus struct {
 // legacy Deployment implicitly.
 func (c *Controller) CandidateStatus(ctx context.Context, appName string) (CandidateStatus, error) {
 	var result CandidateStatus
-	if strings.TrimSpace(appName) == "" || c.services == nil || c.deployments == nil {
+	if strings.TrimSpace(appName) == "" || c.services == nil {
+		return result, ErrCandidateStatusNotSelected
+	}
+	if c.deployments == nil {
 		return result, errors.New("candidate status runtime is unavailable")
 	}
 	service, err := c.services.Get(ctx, appName, metav1.GetOptions{})
 	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return result, ErrCandidateStatusNotSelected
+		}
 		return result, fmt.Errorf("get Service %q for candidate status: %w", appName, err)
 	}
 	if err := requireAppResourceOwnership("Service", service.Name, appName, service.Labels); err != nil {
 		return result, err
 	}
 	operationID := strings.TrimSpace(service.Annotations[activationOperationAnnotation])
-	generation, hasGeneration := service.Spec.Selector[candidateGenerationLabel]
-	if operationID == "" && !hasGeneration {
+	generation := service.Spec.Selector[candidateGenerationLabel]
+	if !candidateManagedService(service) {
 		return result, ErrCandidateStatusNotSelected
+	}
+	if _, activation := service.Annotations[activationOperationAnnotation]; activation && operationID == "" {
+		return result, fmt.Errorf("candidate activation operation is invalid")
 	}
 	if !registryauth.ValidRevision(operationID) {
 		return result, fmt.Errorf("candidate activation operation is invalid")
@@ -78,6 +89,7 @@ func (c *Controller) CandidateStatus(ctx context.Context, appName string) (Candi
 		return result, fmt.Errorf("candidate Deployment selector drifted")
 	}
 	result.DeploymentName = deployment.Name
+	result.Selector = maps.Clone(expectedSelector)
 	result.DesiredReplicas = deploymentReplicas(deployment)
 	result.AvailableReplicas = deployment.Status.AvailableReplicas
 	result.State = candidateStatusForDeployment(deployment)

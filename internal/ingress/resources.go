@@ -398,6 +398,9 @@ func (c *Controller) reconcileService(ctx context.Context, cfg appconfig.Config)
 	if err != nil {
 		return fmt.Errorf("get Service %q: %w", desired.Name, err)
 	}
+	if candidateManagedService(existing) {
+		return ErrCandidateManagedApp
+	}
 	if err := requireAppResourceOwnership("Service", existing.Name, cfg.Name, existing.Labels); err != nil {
 		return err
 	}
@@ -465,10 +468,13 @@ func (c *Controller) deleteService(ctx context.Context, appName string) error {
 	if err != nil {
 		return fmt.Errorf("get Service %q for deletion: %w", appName, err)
 	}
+	if candidateManagedService(existing) {
+		return ErrCandidateManagedApp
+	}
 	if err := requireAppResourceOwnership("Service", existing.Name, appName, existing.Labels); err != nil {
 		return err
 	}
-	err = c.services.Delete(ctx, appName, ownedDeleteOptions(existing))
+	err = c.services.Delete(ctx, appName, ownedDeleteOptionsWithResourceVersion(existing))
 	if apierrors.IsNotFound(err) {
 		return nil
 	}

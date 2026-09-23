@@ -73,6 +73,38 @@ func TestCandidateStatusReturnsLegacyFallbackOnlyForUnannotatedLegacyService(t *
 	}
 }
 
+func TestStatusPathsNeverUseHealthyLegacyDeploymentForPendingCandidate(t *testing.T) {
+	candidate, service, appName := readyCandidateStatusObjects(t)
+	legacy := candidate.DeepCopy()
+	legacy.Name = appName
+	legacy.Labels = managedAppLabels(appName)
+	legacy.Spec.Selector = &metav1.LabelSelector{MatchLabels: appLabels(appName)}
+	legacy.Spec.Template.Labels = appLabels(appName)
+	legacy.Status = appsv1.DeploymentStatus{ObservedGeneration: 1, Replicas: 2, UpdatedReplicas: 2, ReadyReplicas: 2, AvailableReplicas: 2}
+	service.Annotations[initialCandidateRequestAnnotation] = strings.Repeat("c", 64)
+	delete(service.Annotations, activationOperationAnnotation)
+	service.Spec.Selector = map[string]string{appOwnershipLabel: appName, candidateGenerationLabel: "inactive-generation"}
+	client := fake.NewSimpleClientset(service, legacy)
+	controller := &Controller{namespace: DefaultNamespace, services: client.CoreV1().Services(DefaultNamespace), deployments: client.AppsV1().Deployments(DefaultNamespace)}
+	state, desired, available, err := controller.StatusDetails(context.Background(), appName)
+	if err != nil || state != StatusUnavailable || desired != 0 || available != 0 {
+		t.Fatalf("pending candidate fell back to legacy deployment: state=%q desired=%d available=%d err=%v", state, desired, available, err)
+	}
+}
+
+func TestRuntimeStatusListsPodsForSelectedCandidateOnly(t *testing.T) {
+	candidate, service, appName := readyCandidateStatusObjects(t)
+	candidate.Status.AvailableReplicas = 2
+	legacyPod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "legacy", Namespace: DefaultNamespace, Labels: appLabels(appName)}, Status: corev1.PodStatus{Phase: corev1.PodRunning}, Spec: corev1.PodSpec{NodeName: "legacy-node"}}
+	candidatePod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "candidate", Namespace: DefaultNamespace, Labels: candidate.Spec.Template.Labels}, Status: corev1.PodStatus{Phase: corev1.PodRunning}, Spec: corev1.PodSpec{NodeName: "candidate-node"}}
+	client := fake.NewSimpleClientset(service, candidate, legacyPod, candidatePod)
+	controller := &Controller{namespace: DefaultNamespace, services: client.CoreV1().Services(DefaultNamespace), deployments: client.AppsV1().Deployments(DefaultNamespace), pods: client.CoreV1().Pods(DefaultNamespace)}
+	state, _, _, nodes, err := controller.RuntimeStatus(context.Background(), appName)
+	if err != nil || state != StatusHealthy || len(nodes) != 1 || nodes[0] != "candidate-node" {
+		t.Fatalf("runtime status selected wrong pods: state=%q nodes=%v err=%v", state, nodes, err)
+	}
+}
+
 func TestCandidateStatusRejectsStaleOrUnsafeSelection(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -114,5 +146,16 @@ func TestCandidateStatusRejectsForeignOrAmbiguousDeployments(t *testing.T) {
 	controller := &Controller{namespace: DefaultNamespace, services: client.CoreV1().Services(DefaultNamespace), deployments: client.AppsV1().Deployments(DefaultNamespace)}
 	if _, err := controller.CandidateStatus(context.Background(), appName); err == nil || errors.Is(err, ErrCandidateStatusNotSelected) {
 		t.Fatalf("foreign or ambiguous candidate accepted: %v", err)
+	}
+}
+
+func TestActivatedBootstrapReportsSelectedCandidate(t *testing.T) {
+	candidate, service, app := readyCandidateStatusObjects(t)
+	service.Annotations[initialCandidateRequestAnnotation] = service.Annotations[activationOperationAnnotation]
+	client := fake.NewSimpleClientset(candidate, service)
+	c := &Controller{namespace: DefaultNamespace, services: client.CoreV1().Services(DefaultNamespace), deployments: client.AppsV1().Deployments(DefaultNamespace)}
+	state, err := c.Status(context.Background(), app)
+	if err != nil || state != StatusHealthy {
+		t.Fatalf("activated bootstrap not healthy: %s %v", state, err)
 	}
 }

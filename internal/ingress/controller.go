@@ -175,6 +175,9 @@ func (c *Controller) ReconcileWithRegistry(ctx context.Context, cfg appconfig.Co
 	if err := c.ensureSchedulableWorker(ctx, cfg); err != nil {
 		return err
 	}
+	if err := c.rejectLegacyCandidateMutation(ctx, cfg.Name); err != nil {
+		return err
+	}
 	if strings.TrimSpace(cfg.Routing.Domain) == "" {
 		if err := c.deleteIngress(ctx, cfg.Name); err != nil {
 			return err
@@ -249,6 +252,9 @@ func (c *Controller) Delete(ctx context.Context, appName string) error {
 	if appName == "" {
 		return nil
 	}
+	if err := c.rejectLegacyCandidateMutation(ctx, appName); err != nil {
+		return err
+	}
 	err := errors.Join(
 		c.deleteIngress(ctx, appName),
 		c.deleteHostingNetworkPolicy(ctx, appName),
@@ -287,6 +293,11 @@ func (c *Controller) deleteIngress(ctx context.Context, appName string) error {
 }
 
 func (c *Controller) Status(ctx context.Context, appName string) (string, error) {
+	if candidate, err := c.CandidateStatus(ctx, appName); err == nil {
+		return candidate.State, nil
+	} else if !errors.Is(err, ErrCandidateStatusNotSelected) {
+		return StatusUnavailable, err
+	}
 	deployment, err := c.deployments.Get(ctx, appName, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return StatusUnavailable, nil
@@ -298,6 +309,11 @@ func (c *Controller) Status(ctx context.Context, appName string) (string, error)
 }
 
 func (c *Controller) StatusDetails(ctx context.Context, appName string) (string, int32, int32, error) {
+	if candidate, err := c.CandidateStatus(ctx, appName); err == nil {
+		return candidate.State, candidate.DesiredReplicas, candidate.AvailableReplicas, nil
+	} else if !errors.Is(err, ErrCandidateStatusNotSelected) {
+		return StatusUnavailable, 0, 0, err
+	}
 	deployment, err := c.deployments.Get(ctx, appName, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return StatusUnavailable, 0, 0, nil
