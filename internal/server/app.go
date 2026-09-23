@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	"github.com/0xivanov/self-hosted-deployer/internal/domain"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
+	"github.com/0xivanov/self-hosted-deployer/internal/registryauth"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -33,6 +35,13 @@ type AppRepository interface {
 	FindActiveByName(ctx context.Context, name string) (domain.App, error)
 	List(ctx context.Context) ([]domain.App, error)
 	MarkDeleted(ctx context.Context, name string, deletedAt time.Time) (domain.App, error)
+}
+
+type DeploymentRequestRepository interface {
+	Begin(context.Context, domain.DeployRequest) (domain.DeployRequest, bool, error)
+	Find(context.Context, string, string) (domain.DeployRequest, error)
+	Complete(context.Context, string, string, string, string, time.Time) error
+	PendingByApp(context.Context, string) (domain.DeployRequest, error)
 }
 
 type DeploymentRepository interface {
@@ -94,6 +103,7 @@ type LoggingAppRuntime interface {
 type IngressRuntime = AppRuntime
 
 type AppServiceConfig struct {
+	DeploymentRequests           DeploymentRequestRepository
 	RegistryCredentialRepository RegistryCredentialRepository
 	EnvironmentBundles           EnvironmentBundleRepository
 	RegistryCredentials          RegistryCredentialResolver
@@ -109,6 +119,7 @@ type AppServiceConfig struct {
 }
 
 type AppService struct {
+	deploymentRequests           DeploymentRequestRepository
 	registryCredentialRepository RegistryCredentialRepository
 	environmentBundles           EnvironmentBundleRepository
 	registryCredentials          RegistryCredentialResolver
@@ -131,6 +142,7 @@ func NewAppService(cfg AppServiceConfig) AppService {
 		runtime = cfg.Ingress
 	}
 	return AppService{
+		deploymentRequests:           cfg.DeploymentRequests,
 		registryCredentialRepository: cfg.RegistryCredentialRepository,
 		environmentBundles:           cfg.EnvironmentBundles,
 		registryCredentials:          cfg.RegistryCredentials,
@@ -166,11 +178,49 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	requestID := strings.TrimSpace(req.GetRequestId())
+	tracked := requestID != ""
+	if tracked && !registryauth.ValidRevision(requestID) {
+		return nil, status.Error(codes.InvalidArgument, "request_id must be a 64 character lowercase hexadecimal value")
+	}
 	release, err := s.acquireOperation(ctx, cfg.Name)
 	if err != nil {
 		return nil, err
 	}
 	defer release()
+	if strings.TrimSpace(req.GetRequestId()) == "" && s.deploymentRequests != nil {
+		if _, pendingErr := s.deploymentRequests.PendingByApp(ctx, cfg.Name); pendingErr == nil {
+			return nil, status.Error(codes.FailedPrecondition, "a tracked deployment request is pending")
+		} else if !errors.Is(pendingErr, db.ErrNotFound) {
+			return nil, status.Error(codes.Internal, "read pending deployment request")
+		}
+	}
+	desiredStateJSON, err := cfg.JSON()
+	if err != nil {
+		return nil, status.Error(codes.Internal, "encode desired state")
+	}
+	if tracked {
+		if s.deploymentRequests == nil {
+			return nil, status.Error(codes.FailedPrecondition, "tracked deployment requests are not configured")
+		}
+		existing, findErr := s.deploymentRequests.Find(ctx, cfg.Name, requestID)
+		if findErr == nil {
+			if existing.RequestedState != string(desiredStateJSON) || existing.ReportWithdrawal != req.GetReportWithdrawal() {
+				return nil, status.Error(codes.AlreadyExists, "request_id is already bound to another deployment")
+			}
+			if existing.State != "pending" {
+				var response deployerv1.DeployAppResponse
+				if json.Unmarshal([]byte(existing.ResponseJSON), &response) != nil {
+					return nil, status.Error(codes.Internal, "stored deployment result is invalid")
+				}
+				return &response, nil
+			}
+			return nil, status.Error(codes.FailedPrecondition, "deployment request is pending")
+		}
+		if !errors.Is(findErr, db.ErrNotFound) {
+			return nil, status.Error(codes.Internal, "read deployment request")
+		}
+	}
 	var secretValues map[string]string
 	var secretRevision string
 	if cfg.EnvironmentRevision != "" {
@@ -190,12 +240,24 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if err := s.validateRequestedDomain(ctx, cfg.Name, cfg.Routing.Domain); err != nil {
 		return nil, err
 	}
-	desiredStateJSON, err := cfg.JSON()
-	if err != nil {
-		return nil, status.Error(codes.Internal, "encode desired state")
-	}
 
 	now := s.now().UTC()
+	if tracked {
+		request := domain.DeployRequest{AppName: cfg.Name, RequestID: requestID, State: "pending", RequestedState: string(desiredStateJSON), ReportWithdrawal: req.GetReportWithdrawal(), CreatedAt: now, UpdatedAt: now}
+		stored, created, beginErr := s.deploymentRequests.Begin(ctx, request)
+		if beginErr != nil {
+			return nil, status.Error(codes.FailedPrecondition, "begin deployment request")
+		}
+		if !created {
+			if stored.State != "pending" {
+				var response deployerv1.DeployAppResponse
+				if json.Unmarshal([]byte(stored.ResponseJSON), &response) == nil {
+					return &response, nil
+				}
+			}
+			return nil, status.Error(codes.FailedPrecondition, "deployment request is pending")
+		}
+	}
 	app, err := s.apps.FindByName(ctx, cfg.Name)
 	var previousApp *domain.App
 	if errors.Is(err, db.ErrNotFound) {
@@ -265,7 +327,7 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if s.runtime != nil {
 		if err := reconcileRuntime(ctx, s.runtime, cfg, secretValues, secretRevision, registryCredential); err != nil {
 			if req.GetReportWithdrawal() && definitiveRuntimeRejection(err) {
-				return s.withdrawFailedDeployment(ctx, app, deployment, cfg, previousApp, now)
+				return s.withdrawFailedDeployment(ctx, app, deployment, cfg, previousApp, now, requestID)
 			}
 			if previousApp != nil {
 				if rollbackErr := s.rollbackAppUpdate(ctx, *previousApp, now); rollbackErr != nil {
@@ -278,7 +340,7 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	}
 	if err := s.syncRoute(ctx, app, cfg, now); err != nil {
 		if req.GetReportWithdrawal() {
-			return s.withdrawFailedDeployment(ctx, app, deployment, cfg, previousApp, now)
+			return s.withdrawFailedDeployment(ctx, app, deployment, cfg, previousApp, now, requestID)
 		}
 		if previousApp != nil {
 			if rollbackErr := s.rollbackAppUpdate(ctx, *previousApp, now); rollbackErr != nil {
@@ -296,7 +358,7 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if previousApp != nil {
 		if err := s.apps.Update(ctx, app); err != nil {
 			if req.GetReportWithdrawal() {
-				return s.withdrawFailedDeployment(ctx, app, deployment, cfg, previousApp, now)
+				return s.withdrawFailedDeployment(ctx, app, deployment, cfg, previousApp, now, requestID)
 			}
 			if rollbackErr := s.rollbackAppUpdate(ctx, *previousApp, now); rollbackErr != nil {
 				err = fmt.Errorf("%w; rollback to the last applied app configuration failed: %v", err, rollbackErr)
@@ -315,10 +377,52 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if err != nil {
 		return nil, status.Error(codes.Internal, "decode desired state")
 	}
-	return &deployerv1.DeployAppResponse{
+	response := &deployerv1.DeployAppResponse{
 		App:        appProto,
 		Deployment: protoDeployment(deployment),
-	}, nil
+	}
+	if tracked {
+		response.RequestedState = string(desiredStateJSON)
+		encoded, encodeErr := json.Marshal(response)
+		if encodeErr != nil || s.completeDeploymentRequest(ctx, cfg.Name, requestID, "applied", string(encoded), now) != nil {
+			return nil, status.Error(codes.Internal, "persist deployment result")
+		}
+	}
+	return response, nil
+}
+
+func (s AppService) completeDeploymentRequest(ctx context.Context, appName, requestID, state, response string, now time.Time) error {
+	completeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	return s.deploymentRequests.Complete(completeCtx, appName, requestID, state, response, now)
+}
+
+func (s AppService) GetDeployRequest(ctx context.Context, req *deployerv1.GetDeployRequestRequest) (*deployerv1.DeployRequestMetadata, error) {
+	if err := requireCaller(ctx, CallerAdmin); err != nil {
+		return nil, err
+	}
+	if s.deploymentRequests == nil {
+		return nil, status.Error(codes.FailedPrecondition, "tracked deployment requests are not configured")
+	}
+	if strings.TrimSpace(req.GetAppName()) == "" || !registryauth.ValidRevision(req.GetRequestId()) {
+		return nil, status.Error(codes.InvalidArgument, "invalid deployment request identity")
+	}
+	record, err := s.deploymentRequests.Find(ctx, req.GetAppName(), req.GetRequestId())
+	if errors.Is(err, db.ErrNotFound) {
+		return nil, status.Error(codes.NotFound, "deployment request not found")
+	}
+	if err != nil {
+		return nil, status.Error(codes.Internal, "read deployment request")
+	}
+	metadata := &deployerv1.DeployRequestMetadata{AppName: record.AppName, RequestId: record.RequestID, State: record.State, RequestedState: record.RequestedState}
+	if record.ResponseJSON != "" {
+		var response deployerv1.DeployAppResponse
+		if json.Unmarshal([]byte(record.ResponseJSON), &response) != nil {
+			return nil, status.Error(codes.Internal, "stored deployment result is invalid")
+		}
+		metadata.Result = &response
+	}
+	return metadata, nil
 }
 
 func rejectHostingProfileRemoval(requested appconfig.Config, existing domain.App) error {
@@ -368,7 +472,7 @@ func (s AppService) resolveConfiguredEnvironment(ctx context.Context, appName, a
 	return resolveSecretValues(ctx, s.secrets, s.cipher, appID, cfg.Secrets)
 }
 
-func (s AppService) withdrawFailedDeployment(ctx context.Context, app domain.App, deployment domain.Deployment, cfg appconfig.Config, previous *domain.App, now time.Time) (*deployerv1.DeployAppResponse, error) {
+func (s AppService) withdrawFailedDeployment(ctx context.Context, app domain.App, deployment domain.Deployment, cfg appconfig.Config, previous *domain.App, now time.Time, requestID string) (*deployerv1.DeployAppResponse, error) {
 	withdrawalErr := func() error {
 		if previous == nil {
 			if s.runtime != nil {
@@ -424,7 +528,14 @@ func (s AppService) withdrawFailedDeployment(ctx context.Context, app domain.App
 	if err != nil {
 		return nil, status.Error(codes.Internal, "encode withdrawal state")
 	}
-	return &deployerv1.DeployAppResponse{App: appProto, Deployment: protoDeployment(deployment), WithdrawalConfirmed: true, RequestedState: string(requestedState)}, nil
+	response := &deployerv1.DeployAppResponse{App: appProto, Deployment: protoDeployment(deployment), WithdrawalConfirmed: true, RequestedState: string(requestedState)}
+	if requestID != "" {
+		encoded, err := json.Marshal(response)
+		if err != nil || s.completeDeploymentRequest(ctx, cfg.Name, requestID, "withdrawn", string(encoded), now) != nil {
+			return nil, status.Error(codes.Internal, "persist deployment withdrawal")
+		}
+	}
+	return response, nil
 }
 
 func parseStoredConfigForDeployment(data string) (appconfig.Config, error) {
@@ -496,6 +607,13 @@ func (s AppService) DeleteApp(ctx context.Context, req *deployerv1.DeleteAppRequ
 		return nil, err
 	}
 	defer release()
+	if s.deploymentRequests != nil {
+		if _, pendingErr := s.deploymentRequests.PendingByApp(ctx, name); pendingErr == nil {
+			return nil, status.Error(codes.FailedPrecondition, "a tracked deployment request is pending")
+		} else if !errors.Is(pendingErr, db.ErrNotFound) {
+			return nil, status.Error(codes.Internal, "read pending deployment request")
+		}
+	}
 	app, err := s.apps.FindActiveByName(ctx, name)
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, status.Error(codes.NotFound, "app not found")

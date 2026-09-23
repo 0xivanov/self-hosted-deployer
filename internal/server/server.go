@@ -19,6 +19,7 @@ import (
 )
 
 type Repositories struct {
+	DeploymentRequests  DeploymentRequestRepository
 	RegistryCredentials RegistryCredentialRepository
 	EnvironmentBundles  EnvironmentBundleRepository
 	Health              HealthRepository
@@ -137,6 +138,7 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	deployerv1.RegisterAppServiceServer(grpcServer, NewAppService(AppServiceConfig{
 		RegistryCredentials:          registryCredentials,
 		RegistryCredentialRepository: repos.RegistryCredentials,
+		DeploymentRequests:           repos.DeploymentRequests,
 		EnvironmentBundles:           repos.EnvironmentBundles,
 		Apps:                         repos.Apps,
 		Deployments:                  repos.Deployments,

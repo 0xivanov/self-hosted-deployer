@@ -120,6 +120,19 @@ type EnvironmentBundle struct {
 	CreatedAt  time.Time
 }
 
+type DeployRequest struct {
+	AppName string
+	RequestID string
+	State string
+	RequestedState string
+	PreviousAppID string
+	PreviousState string
+	ReportWithdrawal bool
+	ResponseJSON string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type Route struct {
 	ID         string
 	AppID      string

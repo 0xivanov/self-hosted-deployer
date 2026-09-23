@@ -17,6 +17,7 @@ func (a cliApp) deploy(args []string, opts cliOptions) int {
 	configPath := flags.String("file", "deployer.yaml", "path to deployer.yaml")
 	flags.StringVar(configPath, "f", "deployer.yaml", "path to deployer.yaml")
 	dryRun := flags.Bool("dry-run", false, "validate and print desired state without server call")
+	requestID := flags.String("request-id", "", "durable deployment request ID (64 lowercase hexadecimal characters)")
 	reportWithdrawal := flags.Bool("report-withdrawal", false, "return a confirmed withdrawal result when deployment apply fails")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -52,7 +53,14 @@ func (a cliApp) deploy(args []string, opts cliOptions) int {
 
 	announceMutationTarget(a.stderr, resolved)
 	var result clicore.DeployResult
-	if *reportWithdrawal {
+	if *requestID != "" {
+		tracked, ok := client.(trackedDeploymentClient)
+		if !ok {
+			fmt.Fprintln(a.stderr, "client does not support tracked deployments")
+			return 1
+		}
+		result, err = tracked.DeployAppTracked(context.Background(), string(data), *requestID)
+	} else if *reportWithdrawal {
 		reporter, ok := client.(withdrawalReportingClient)
 		if !ok {
 			fmt.Fprintln(a.stderr, "client does not support withdrawal reporting")

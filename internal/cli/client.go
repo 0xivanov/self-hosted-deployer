@@ -447,19 +447,19 @@ func (c *PlatformClient) GetWorkerBootstrap(ctx context.Context) (WorkerBootstra
 }
 
 func (c *PlatformClient) DeployApp(ctx context.Context, deployerYAML string) (DeployResult, error) {
-	return c.deployApp(ctx, deployerYAML, false)
+	return c.deployApp(ctx, deployerYAML, false, "")
 }
 
 func (c *PlatformClient) DeployAppReportingWithdrawal(ctx context.Context, deployerYAML string) (DeployResult, error) {
-	return c.deployApp(ctx, deployerYAML, true)
+	return c.deployApp(ctx, deployerYAML, true, "")
 }
 
-func (c *PlatformClient) deployApp(ctx context.Context, deployerYAML string, reportWithdrawal bool) (DeployResult, error) {
+func (c *PlatformClient) deployApp(ctx context.Context, deployerYAML string, reportWithdrawal bool, requestID string) (DeployResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	ctx = c.withBearer(ctx)
 
-	response, err := c.appClient.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: deployerYAML, ReportWithdrawal: reportWithdrawal})
+	response, err := c.appClient.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: deployerYAML, ReportWithdrawal: reportWithdrawal, RequestId: requestID})
 	if err != nil {
 		return DeployResult{}, DecodeRPCError(err)
 	}

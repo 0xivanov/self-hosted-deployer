@@ -17,3 +17,14 @@ The fleet must verify the receipt against the complete successful preflight conf
 Lost responses still cannot be recovered authoritatively: there is no durable client operation ID or withdrawal tombstone in core yet. Requests accepted by Kubernetes but stuck later during rollout also remain pending. The next step is a persistent per-app operation protocol with identity, predecessor snapshot, execution/withdrawal states and a runtime fence that prevents stale submissions from activating. Do not enable broad Docker hosting based on this bounded failure path alone.
 
 Local service checks cover successful previous-release compensation, initial cleanup, compensation/persistence failure, timeout refusal and legacy behavior. Fleet checks cover receipt identity, exact preflight matching, prior-release health, restart/no-replay behavior and uncertain responses. No live deployment was changed.
+
+
+## Recorded request outcomes (implemented locally)
+
+`deployer deploy --request-id <64-lowercase-hex-id> --file app.yaml` opts into a durable request journal and withdrawal reporting. Read the recorded outcome using `deployer --output json apps request <app-name> <request-id>` with the usual connection options. The lookup does not submit or retry a deployment.
+
+Core schema 9 records the immutable candidate configuration, withdrawal option and predecessor before app mutation. At most one pending request is permitted per app. Reusing a request with changed configuration is rejected. Completed requests return their saved response; pending requests block further deployment and deletion. Terminal results are persisted with a bounded context independent of caller cancellation.
+
+An `applied` result records the server outcome, not current site availability. The fleet worker still verifies the exact app/deployment identity, configuration, replicas and HTTPS route. A confirmed withdrawal requires fresh predecessor health when there was a previous release. Missing records, incomplete requests and ambiguous runtime failures remain pending, without resubmission. Recovery of an actually stuck rollout still requires runtime fencing and is not implemented by this journal.
+
+This migration and the related worker changes are not deployed. Upgrade the server and CLI together before enabling the tracked worker path.

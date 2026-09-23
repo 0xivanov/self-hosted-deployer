@@ -7,6 +7,7 @@ import (
 
 func newRepositories(database *db.Db) server.Repositories {
 	return server.Repositories{
+		DeploymentRequests:  db.NewDeploymentRequestRepository(database),
 		RegistryCredentials: db.NewRegistryCredentialRepository(database),
 		EnvironmentBundles:  db.NewEnvironmentBundleRepository(database),
 		Health:              db.NewHealthRepository(database),

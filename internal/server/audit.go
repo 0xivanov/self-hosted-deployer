@@ -162,6 +162,7 @@ func mutationTarget(method string, req any) map[string]string {
 			if yaml.Unmarshal([]byte(request.GetDeployerYaml()), &parsed) == nil {
 				put("app", parsed.Name)
 			}
+			put("request_id", request.GetRequestId())
 		}
 	case "/deployer.v1.AppService/DeleteApp":
 		if request, ok := req.(*deployerv1.DeleteAppRequest); ok {
