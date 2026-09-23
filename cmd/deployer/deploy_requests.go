@@ -12,17 +12,48 @@ type trackedDeploymentClient interface {
 	GetDeployRequest(context.Context, string, string) (clicore.DeployRequestResult, error)
 }
 
+type candidateOperationClient interface {
+	AdvanceDeployRequest(context.Context, string, string) (clicore.DeployRequestResult, error)
+	RecoverDeployRequest(context.Context, string, string) (clicore.DeployRequestResult, error)
+}
+
 func (a cliApp) appsRequest(args []string, opts runtimeOptions, client platformClient) int {
+	return a.appsRequestAction("request", args, opts, client)
+}
+
+func (a cliApp) appsRequestAction(action string, args []string, opts runtimeOptions, client platformClient) int {
 	if len(args) != 2 {
-		fmt.Fprintln(a.stderr, "usage: deployer apps request <app-name> <request-id>")
+		fmt.Fprintf(a.stderr, "usage: deployer apps %s <app-name> <request-id>\n", action)
+		if action == "recover" {
+			fmt.Fprintln(a.stderr, "recover abandons the attempted release and restores the prior release")
+		}
 		return 2
 	}
-	tracked, ok := client.(trackedDeploymentClient)
-	if !ok {
-		fmt.Fprintln(a.stderr, "client does not support deployment request lookup")
-		return 1
+	var result clicore.DeployRequestResult
+	var err error
+	switch action {
+	case "request":
+		tracked, ok := client.(trackedDeploymentClient)
+		if !ok {
+			fmt.Fprintln(a.stderr, "client does not support deployment request lookup")
+			return 1
+		}
+		result, err = tracked.GetDeployRequest(context.Background(), args[0], args[1])
+	case "advance":
+		tracked, ok := client.(candidateOperationClient)
+		if !ok {
+			fmt.Fprintln(a.stderr, "client does not support candidate operations")
+			return 1
+		}
+		result, err = tracked.AdvanceDeployRequest(context.Background(), args[0], args[1])
+	case "recover":
+		tracked, ok := client.(candidateOperationClient)
+		if !ok {
+			fmt.Fprintln(a.stderr, "client does not support candidate operations")
+			return 1
+		}
+		result, err = tracked.RecoverDeployRequest(context.Background(), args[0], args[1])
 	}
-	result, err := tracked.GetDeployRequest(context.Background(), args[0], args[1])
 	if err != nil {
 		fmt.Fprintln(a.stderr, err)
 		return 1

@@ -13,68 +13,70 @@ import (
 )
 
 type ServerConfig struct {
-	WireGuardSubnet        string
-	GRPCListenAddress      string
-	HTTPListenAddress      string
-	DatabaseURL            string
-	PublicBaseURL          string
-	SecretKey              string
-	SecretKeyFile          string
-	TokenHashKey           string
-	ServerIdentity         string
-	ServerIdentityFile     string
-	TLSCertFile            string
-	TLSKeyFile             string
-	KubeconfigPath         string
-	IngressNamespace       string
-	IngressACMEEmail       string
-	IngressTLSIssuer       string
-	IngressACMEServer      string
-	K3sConfigPath          string
-	K3sWireGuardIP         string
-	K3sInstallerURL        string
-	K3sNodeTokenPath       string
-	WireGuardInterface     string
-	WireGuardHubPublicKey  string
-	WireGuardEndpoint      string
-	EventRetentionMaxAge   string
-	EventRetentionMaxCount string
-	EventCleanupInterval   string
-	NodeOfflineAfter       string
-	NodeMonitorInterval    string
+	EnableCandidateOperations bool
+	WireGuardSubnet           string
+	GRPCListenAddress         string
+	HTTPListenAddress         string
+	DatabaseURL               string
+	PublicBaseURL             string
+	SecretKey                 string
+	SecretKeyFile             string
+	TokenHashKey              string
+	ServerIdentity            string
+	ServerIdentityFile        string
+	TLSCertFile               string
+	TLSKeyFile                string
+	KubeconfigPath            string
+	IngressNamespace          string
+	IngressACMEEmail          string
+	IngressTLSIssuer          string
+	IngressACMEServer         string
+	K3sConfigPath             string
+	K3sWireGuardIP            string
+	K3sInstallerURL           string
+	K3sNodeTokenPath          string
+	WireGuardInterface        string
+	WireGuardHubPublicKey     string
+	WireGuardEndpoint         string
+	EventRetentionMaxAge      string
+	EventRetentionMaxCount    string
+	EventCleanupInterval      string
+	NodeOfflineAfter          string
+	NodeMonitorInterval       string
 }
 
 func LoadServer() ServerConfig {
 	return ServerConfig{
-		WireGuardSubnet:        os.Getenv("DEPLOYER_WIREGUARD_SUBNET"),
-		GRPCListenAddress:      envOrDefault("DEPLOYER_SERVER_GRPC_ADDR", ":7443"),
-		HTTPListenAddress:      envOrDefault("DEPLOYER_SERVER_HTTP_ADDR", ":7080"),
-		DatabaseURL:            envOrDefault("DEPLOYER_DATABASE_URL", "file:deployer.db"),
-		PublicBaseURL:          os.Getenv("DEPLOYER_PUBLIC_BASE_URL"),
-		SecretKey:              os.Getenv("DEPLOYER_SECRET_KEY"),
-		SecretKeyFile:          os.Getenv("DEPLOYER_SECRET_KEY_FILE"),
-		TokenHashKey:           os.Getenv("DEPLOYER_TOKEN_HASH_KEY"),
-		ServerIdentity:         os.Getenv("DEPLOYER_SERVER_IDENTITY"),
-		ServerIdentityFile:     os.Getenv("DEPLOYER_SERVER_IDENTITY_FILE"),
-		TLSCertFile:            os.Getenv("DEPLOYER_SERVER_TLS_CERT_FILE"),
-		TLSKeyFile:             os.Getenv("DEPLOYER_SERVER_TLS_KEY_FILE"),
-		KubeconfigPath:         envOrDefault("DEPLOYER_KUBECONFIG", "/etc/rancher/k3s/k3s.yaml"),
-		IngressNamespace:       envOrDefault("DEPLOYER_INGRESS_NAMESPACE", "deployer-apps"),
-		IngressACMEEmail:       os.Getenv("DEPLOYER_INGRESS_ACME_EMAIL"),
-		IngressTLSIssuer:       envOrDefault("DEPLOYER_INGRESS_TLS_ISSUER", "deployer-letsencrypt"),
-		IngressACMEServer:      envOrDefault("DEPLOYER_INGRESS_ACME_SERVER", "https://acme-v02.api.letsencrypt.org/directory"),
-		K3sConfigPath:          envOrDefault("DEPLOYER_K3S_CONFIG_PATH", "/etc/rancher/k3s/config.yaml"),
-		K3sWireGuardIP:         os.Getenv("DEPLOYER_K3S_WIREGUARD_IP"),
-		K3sInstallerURL:        envOrDefault("DEPLOYER_K3S_INSTALLER_URL", "https://get.k3s.io"),
-		K3sNodeTokenPath:       envOrDefault("DEPLOYER_K3S_NODE_TOKEN_PATH", "/var/lib/rancher/k3s/server/node-token"),
-		WireGuardInterface:     envOrDefault("DEPLOYER_WIREGUARD_INTERFACE", "wg0"),
-		WireGuardHubPublicKey:  os.Getenv("DEPLOYER_WIREGUARD_HUB_PUBLIC_KEY"),
-		WireGuardEndpoint:      os.Getenv("DEPLOYER_WIREGUARD_ENDPOINT"),
-		EventRetentionMaxAge:   envOrDefault("DEPLOYER_EVENT_RETENTION_MAX_AGE", "720h"),
-		EventRetentionMaxCount: envOrDefault("DEPLOYER_EVENT_RETENTION_MAX_COUNT", "10000"),
-		EventCleanupInterval:   envOrDefault("DEPLOYER_EVENT_CLEANUP_INTERVAL", "1h"),
-		NodeOfflineAfter:       envOrDefault("DEPLOYER_NODE_OFFLINE_AFTER", "2m"),
-		NodeMonitorInterval:    envOrDefault("DEPLOYER_NODE_MONITOR_INTERVAL", "30s"),
+		EnableCandidateOperations: os.Getenv("DEPLOYER_ENABLE_CANDIDATE_OPERATIONS") == "true",
+		WireGuardSubnet:           os.Getenv("DEPLOYER_WIREGUARD_SUBNET"),
+		GRPCListenAddress:         envOrDefault("DEPLOYER_SERVER_GRPC_ADDR", ":7443"),
+		HTTPListenAddress:         envOrDefault("DEPLOYER_SERVER_HTTP_ADDR", ":7080"),
+		DatabaseURL:               envOrDefault("DEPLOYER_DATABASE_URL", "file:deployer.db"),
+		PublicBaseURL:             os.Getenv("DEPLOYER_PUBLIC_BASE_URL"),
+		SecretKey:                 os.Getenv("DEPLOYER_SECRET_KEY"),
+		SecretKeyFile:             os.Getenv("DEPLOYER_SECRET_KEY_FILE"),
+		TokenHashKey:              os.Getenv("DEPLOYER_TOKEN_HASH_KEY"),
+		ServerIdentity:            os.Getenv("DEPLOYER_SERVER_IDENTITY"),
+		ServerIdentityFile:        os.Getenv("DEPLOYER_SERVER_IDENTITY_FILE"),
+		TLSCertFile:               os.Getenv("DEPLOYER_SERVER_TLS_CERT_FILE"),
+		TLSKeyFile:                os.Getenv("DEPLOYER_SERVER_TLS_KEY_FILE"),
+		KubeconfigPath:            envOrDefault("DEPLOYER_KUBECONFIG", "/etc/rancher/k3s/k3s.yaml"),
+		IngressNamespace:          envOrDefault("DEPLOYER_INGRESS_NAMESPACE", "deployer-apps"),
+		IngressACMEEmail:          os.Getenv("DEPLOYER_INGRESS_ACME_EMAIL"),
+		IngressTLSIssuer:          envOrDefault("DEPLOYER_INGRESS_TLS_ISSUER", "deployer-letsencrypt"),
+		IngressACMEServer:         envOrDefault("DEPLOYER_INGRESS_ACME_SERVER", "https://acme-v02.api.letsencrypt.org/directory"),
+		K3sConfigPath:             envOrDefault("DEPLOYER_K3S_CONFIG_PATH", "/etc/rancher/k3s/config.yaml"),
+		K3sWireGuardIP:            os.Getenv("DEPLOYER_K3S_WIREGUARD_IP"),
+		K3sInstallerURL:           envOrDefault("DEPLOYER_K3S_INSTALLER_URL", "https://get.k3s.io"),
+		K3sNodeTokenPath:          envOrDefault("DEPLOYER_K3S_NODE_TOKEN_PATH", "/var/lib/rancher/k3s/server/node-token"),
+		WireGuardInterface:        envOrDefault("DEPLOYER_WIREGUARD_INTERFACE", "wg0"),
+		WireGuardHubPublicKey:     os.Getenv("DEPLOYER_WIREGUARD_HUB_PUBLIC_KEY"),
+		WireGuardEndpoint:         os.Getenv("DEPLOYER_WIREGUARD_ENDPOINT"),
+		EventRetentionMaxAge:      envOrDefault("DEPLOYER_EVENT_RETENTION_MAX_AGE", "720h"),
+		EventRetentionMaxCount:    envOrDefault("DEPLOYER_EVENT_RETENTION_MAX_COUNT", "10000"),
+		EventCleanupInterval:      envOrDefault("DEPLOYER_EVENT_CLEANUP_INTERVAL", "1h"),
+		NodeOfflineAfter:          envOrDefault("DEPLOYER_NODE_OFFLINE_AFTER", "2m"),
+		NodeMonitorInterval:       envOrDefault("DEPLOYER_NODE_MONITOR_INTERVAL", "30s"),
 	}
 }
 

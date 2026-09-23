@@ -12,8 +12,19 @@ import (
 
 type requestLookupStub struct {
 	deployerv1.AppServiceClient
-	response *deployerv1.DeployRequestMetadata
-	calls    int
+	response     *deployerv1.DeployRequestMetadata
+	calls        int
+	advanceCalls int
+	recoverCalls int
+}
+
+func (s *requestLookupStub) AdvanceDeployRequest(_ context.Context, _ *deployerv1.GetDeployRequestRequest, _ ...grpc.CallOption) (*deployerv1.DeployRequestMetadata, error) {
+	s.advanceCalls++
+	return s.response, nil
+}
+func (s *requestLookupStub) RecoverDeployRequest(_ context.Context, _ *deployerv1.GetDeployRequestRequest, _ ...grpc.CallOption) (*deployerv1.DeployRequestMetadata, error) {
+	s.recoverCalls++
+	return s.response, nil
 }
 
 func (s *requestLookupStub) GetDeployRequest(_ context.Context, _ *deployerv1.GetDeployRequestRequest, _ ...grpc.CallOption) (*deployerv1.DeployRequestMetadata, error) {
@@ -44,5 +55,12 @@ func TestDeployRequestLookupValidatesRecordedIdentity(t *testing.T) {
 	before := stub.calls
 	if _, err = c.GetDeployRequest(context.Background(), "site", "bad"); err == nil || stub.calls != before {
 		t.Fatal("invalid ID reached server")
+	}
+	stub.response.State = "pending"
+	if _, err = c.AdvanceDeployRequest(context.Background(), "site", id); err != nil || stub.advanceCalls != 1 {
+		t.Fatalf("advance request: calls=%d err=%v", stub.advanceCalls, err)
+	}
+	if _, err = c.RecoverDeployRequest(context.Background(), "site", id); err != nil || stub.recoverCalls != 1 {
+		t.Fatalf("recover request: calls=%d err=%v", stub.recoverCalls, err)
 	}
 }

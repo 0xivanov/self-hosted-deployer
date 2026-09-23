@@ -195,3 +195,14 @@ func TestLoadAgentWireGuardPrivateKeyDefault(t *testing.T) {
 		t.Fatalf("unexpected k3s agent defaults: %#v", cfg)
 	}
 }
+
+func TestCandidateOperationsRequireExplicitEnablement(t *testing.T) {
+	for _, value := range []string{"", "false", "1", "TRUE", "true"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("DEPLOYER_ENABLE_CANDIDATE_OPERATIONS", value)
+			if LoadServer().EnableCandidateOperations != (value == "true") {
+				t.Fatal("unexpected candidate enablement")
+			}
+		})
+	}
+}

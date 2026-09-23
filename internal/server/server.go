@@ -19,19 +19,22 @@ import (
 )
 
 type Repositories struct {
-	DeploymentRequests  DeploymentRequestRepository
-	RegistryCredentials RegistryCredentialRepository
-	EnvironmentBundles  EnvironmentBundleRepository
-	Health              HealthRepository
-	AdminTokens         AdminTokenRepository
-	AgentTokens         AgentTokenRepository
-	JoinTokens          JoinTokenRepository
-	Nodes               NodeRepository
-	Apps                AppRepository
-	Deployments         DeploymentRepository
-	Routes              RouteRepository
-	Secrets             SecretRepository
-	Events              EventRepository
+	CandidateBindings    CandidateBindingReader
+	CandidateCheckpoints RuntimeCheckpointRepository
+	CandidateFinalizer   CandidateFinalizer
+	DeploymentRequests   DeploymentRequestRepository
+	RegistryCredentials  RegistryCredentialRepository
+	EnvironmentBundles   EnvironmentBundleRepository
+	Health               HealthRepository
+	AdminTokens          AdminTokenRepository
+	AgentTokens          AgentTokenRepository
+	JoinTokens           JoinTokenRepository
+	Nodes                NodeRepository
+	Apps                 AppRepository
+	Deployments          DeploymentRepository
+	Routes               RouteRepository
+	Secrets              SecretRepository
+	Events               EventRepository
 }
 
 type Runtime struct {
@@ -136,6 +139,10 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	deployerv1.RegisterRegistryCredentialServiceServer(grpcServer, registryCredentials)
 	deployerv1.RegisterEnvironmentServiceServer(grpcServer, NewEnvironmentBundleService(repos.EnvironmentBundles, runtime.SecretCipher))
 	deployerv1.RegisterAppServiceServer(grpcServer, NewAppService(AppServiceConfig{
+		EnableCandidateOperations:    cfg.EnableCandidateOperations,
+		CandidateBindings:            repos.CandidateBindings,
+		CandidateCheckpoints:         repos.CandidateCheckpoints,
+		CandidateFinalizer:           repos.CandidateFinalizer,
 		RegistryCredentials:          registryCredentials,
 		RegistryCredentialRepository: repos.RegistryCredentials,
 		DeploymentRequests:           repos.DeploymentRequests,

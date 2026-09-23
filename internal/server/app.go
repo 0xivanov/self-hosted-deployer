@@ -103,6 +103,10 @@ type LoggingAppRuntime interface {
 type IngressRuntime = AppRuntime
 
 type AppServiceConfig struct {
+	EnableCandidateOperations    bool
+	CandidateBindings            CandidateBindingReader
+	CandidateCheckpoints         RuntimeCheckpointRepository
+	CandidateFinalizer           CandidateFinalizer
 	DeploymentRequests           DeploymentRequestRepository
 	RegistryCredentialRepository RegistryCredentialRepository
 	EnvironmentBundles           EnvironmentBundleRepository
@@ -119,6 +123,10 @@ type AppServiceConfig struct {
 }
 
 type AppService struct {
+	enableCandidateOperations    bool
+	candidateBindings            CandidateBindingReader
+	candidateCheckpoints         RuntimeCheckpointRepository
+	candidateFinalizer           CandidateFinalizer
 	deploymentRequests           DeploymentRequestRepository
 	registryCredentialRepository RegistryCredentialRepository
 	environmentBundles           EnvironmentBundleRepository
@@ -142,6 +150,10 @@ func NewAppService(cfg AppServiceConfig) AppService {
 		runtime = cfg.Ingress
 	}
 	return AppService{
+		enableCandidateOperations:    cfg.EnableCandidateOperations,
+		candidateBindings:            cfg.CandidateBindings,
+		candidateCheckpoints:         cfg.CandidateCheckpoints,
+		candidateFinalizer:           cfg.CandidateFinalizer,
 		deploymentRequests:           cfg.DeploymentRequests,
 		registryCredentialRepository: cfg.RegistryCredentialRepository,
 		environmentBundles:           cfg.EnvironmentBundles,

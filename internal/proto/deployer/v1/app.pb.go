@@ -1667,11 +1667,13 @@ const file_deployer_v1_app_proto_rawDesc = "" +
 	"\x13InspectRouteRequest\x12\x16\n" +
 	"\x06domain\x18\x01 \x01(\tR\x06domain\"@\n" +
 	"\x14InspectRouteResponse\x12(\n" +
-	"\x05route\x18\x01 \x01(\v2\x12.deployer.v1.RouteR\x05route2\x91\a\n" +
+	"\x05route\x18\x01 \x01(\v2\x12.deployer.v1.RouteR\x05route2\xd5\b\n" +
 	"\n" +
 	"AppService\x12J\n" +
 	"\tDeployApp\x12\x1d.deployer.v1.DeployAppRequest\x1a\x1e.deployer.v1.DeployAppResponse\x12\\\n" +
-	"\x10GetDeployRequest\x12$.deployer.v1.GetDeployRequestRequest\x1a\".deployer.v1.DeployRequestMetadata\x12S\n" +
+	"\x10GetDeployRequest\x12$.deployer.v1.GetDeployRequestRequest\x1a\".deployer.v1.DeployRequestMetadata\x12`\n" +
+	"\x14AdvanceDeployRequest\x12$.deployer.v1.GetDeployRequestRequest\x1a\".deployer.v1.DeployRequestMetadata\x12`\n" +
+	"\x14RecoverDeployRequest\x12$.deployer.v1.GetDeployRequestRequest\x1a\".deployer.v1.DeployRequestMetadata\x12S\n" +
 	"\fPreflightApp\x12 .deployer.v1.PreflightAppRequest\x1a!.deployer.v1.PreflightAppResponse\x12G\n" +
 	"\bListApps\x12\x1c.deployer.v1.ListAppsRequest\x1a\x1d.deployer.v1.ListAppsResponse\x12M\n" +
 	"\n" +
@@ -1745,28 +1747,32 @@ var file_deployer_v1_app_proto_depIdxs = []int32{
 	2,  // 16: deployer.v1.InspectRouteResponse.route:type_name -> deployer.v1.Route
 	3,  // 17: deployer.v1.AppService.DeployApp:input_type -> deployer.v1.DeployAppRequest
 	5,  // 18: deployer.v1.AppService.GetDeployRequest:input_type -> deployer.v1.GetDeployRequestRequest
-	7,  // 19: deployer.v1.AppService.PreflightApp:input_type -> deployer.v1.PreflightAppRequest
-	9,  // 20: deployer.v1.AppService.ListApps:input_type -> deployer.v1.ListAppsRequest
-	11, // 21: deployer.v1.AppService.InspectApp:input_type -> deployer.v1.InspectAppRequest
-	13, // 22: deployer.v1.AppService.DeleteApp:input_type -> deployer.v1.DeleteAppRequest
-	15, // 23: deployer.v1.AppService.GetApp:input_type -> deployer.v1.GetAppRequest
-	17, // 24: deployer.v1.AppService.GetAppStatus:input_type -> deployer.v1.GetAppStatusRequest
-	20, // 25: deployer.v1.AppService.GetDeploymentLogs:input_type -> deployer.v1.GetDeploymentLogsRequest
-	22, // 26: deployer.v1.AppService.ListRoutes:input_type -> deployer.v1.ListRoutesRequest
-	24, // 27: deployer.v1.AppService.InspectRoute:input_type -> deployer.v1.InspectRouteRequest
-	4,  // 28: deployer.v1.AppService.DeployApp:output_type -> deployer.v1.DeployAppResponse
-	6,  // 29: deployer.v1.AppService.GetDeployRequest:output_type -> deployer.v1.DeployRequestMetadata
-	8,  // 30: deployer.v1.AppService.PreflightApp:output_type -> deployer.v1.PreflightAppResponse
-	10, // 31: deployer.v1.AppService.ListApps:output_type -> deployer.v1.ListAppsResponse
-	12, // 32: deployer.v1.AppService.InspectApp:output_type -> deployer.v1.InspectAppResponse
-	14, // 33: deployer.v1.AppService.DeleteApp:output_type -> deployer.v1.DeleteAppResponse
-	16, // 34: deployer.v1.AppService.GetApp:output_type -> deployer.v1.GetAppResponse
-	18, // 35: deployer.v1.AppService.GetAppStatus:output_type -> deployer.v1.GetAppStatusResponse
-	21, // 36: deployer.v1.AppService.GetDeploymentLogs:output_type -> deployer.v1.GetDeploymentLogsResponse
-	23, // 37: deployer.v1.AppService.ListRoutes:output_type -> deployer.v1.ListRoutesResponse
-	25, // 38: deployer.v1.AppService.InspectRoute:output_type -> deployer.v1.InspectRouteResponse
-	28, // [28:39] is the sub-list for method output_type
-	17, // [17:28] is the sub-list for method input_type
+	5,  // 19: deployer.v1.AppService.AdvanceDeployRequest:input_type -> deployer.v1.GetDeployRequestRequest
+	5,  // 20: deployer.v1.AppService.RecoverDeployRequest:input_type -> deployer.v1.GetDeployRequestRequest
+	7,  // 21: deployer.v1.AppService.PreflightApp:input_type -> deployer.v1.PreflightAppRequest
+	9,  // 22: deployer.v1.AppService.ListApps:input_type -> deployer.v1.ListAppsRequest
+	11, // 23: deployer.v1.AppService.InspectApp:input_type -> deployer.v1.InspectAppRequest
+	13, // 24: deployer.v1.AppService.DeleteApp:input_type -> deployer.v1.DeleteAppRequest
+	15, // 25: deployer.v1.AppService.GetApp:input_type -> deployer.v1.GetAppRequest
+	17, // 26: deployer.v1.AppService.GetAppStatus:input_type -> deployer.v1.GetAppStatusRequest
+	20, // 27: deployer.v1.AppService.GetDeploymentLogs:input_type -> deployer.v1.GetDeploymentLogsRequest
+	22, // 28: deployer.v1.AppService.ListRoutes:input_type -> deployer.v1.ListRoutesRequest
+	24, // 29: deployer.v1.AppService.InspectRoute:input_type -> deployer.v1.InspectRouteRequest
+	4,  // 30: deployer.v1.AppService.DeployApp:output_type -> deployer.v1.DeployAppResponse
+	6,  // 31: deployer.v1.AppService.GetDeployRequest:output_type -> deployer.v1.DeployRequestMetadata
+	6,  // 32: deployer.v1.AppService.AdvanceDeployRequest:output_type -> deployer.v1.DeployRequestMetadata
+	6,  // 33: deployer.v1.AppService.RecoverDeployRequest:output_type -> deployer.v1.DeployRequestMetadata
+	8,  // 34: deployer.v1.AppService.PreflightApp:output_type -> deployer.v1.PreflightAppResponse
+	10, // 35: deployer.v1.AppService.ListApps:output_type -> deployer.v1.ListAppsResponse
+	12, // 36: deployer.v1.AppService.InspectApp:output_type -> deployer.v1.InspectAppResponse
+	14, // 37: deployer.v1.AppService.DeleteApp:output_type -> deployer.v1.DeleteAppResponse
+	16, // 38: deployer.v1.AppService.GetApp:output_type -> deployer.v1.GetAppResponse
+	18, // 39: deployer.v1.AppService.GetAppStatus:output_type -> deployer.v1.GetAppStatusResponse
+	21, // 40: deployer.v1.AppService.GetDeploymentLogs:output_type -> deployer.v1.GetDeploymentLogsResponse
+	23, // 41: deployer.v1.AppService.ListRoutes:output_type -> deployer.v1.ListRoutesResponse
+	25, // 42: deployer.v1.AppService.InspectRoute:output_type -> deployer.v1.InspectRouteResponse
+	30, // [30:43] is the sub-list for method output_type
+	17, // [17:30] is the sub-list for method input_type
 	17, // [17:17] is the sub-list for extension type_name
 	17, // [17:17] is the sub-list for extension extendee
 	0,  // [0:17] is the sub-list for field type_name
