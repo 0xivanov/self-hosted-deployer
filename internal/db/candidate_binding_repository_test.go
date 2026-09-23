@@ -88,6 +88,214 @@ func TestCandidateBindingRejectsChangedActivePredecessor(t *testing.T) {
 	}
 }
 
+func TestCandidateBindingBeginAtomicReplayAndActiveReuse(t *testing.T) {
+	database := openRepositoryTestDB(t)
+	cfg, _ := candidateBindingConfig(t)
+	cfg.EnvironmentRevision = strings.Repeat("1", 64)
+	state, err := cfg.JSON()
+	if err != nil {
+		t.Fatalf("encode candidate state: %v", err)
+	}
+	now := time.Now().UTC()
+	repo := NewCandidateBindingRepository(database)
+	id := strings.Repeat("d", 64)
+	binding, created, err := repo.Begin(context.Background(), domain.DeployRequest{AppName: cfg.Name, RequestID: id, RequestedState: state, ReportWithdrawal: true}, "app-new", "deployment-new", now)
+	if err != nil || !created || binding.AppID != "app-new" {
+		t.Fatalf("initial begin: %#v created=%v err=%v", binding, created, err)
+	}
+	replay, created, err := repo.Begin(context.Background(), domain.DeployRequest{AppName: cfg.Name, RequestID: id, RequestedState: state, ReportWithdrawal: true}, "other-app", "other-deployment", now)
+	if err != nil || created || replay.AppID != "app-new" {
+		t.Fatalf("replay: %#v created=%v err=%v", replay, created, err)
+	}
+	if _, _, err := repo.Begin(context.Background(), domain.DeployRequest{AppName: cfg.Name, RequestID: id, RequestedState: state, ReportWithdrawal: false}, "app-new", "deployment-new", now); !errors.Is(err, ErrCandidateBindingConflict) {
+		t.Fatalf("changed report flag accepted: %v", err)
+	}
+}
+
+func TestCandidateBindingBeginActiveAndLegacyUnboundRefusal(t *testing.T) {
+	database := openRepositoryTestDB(t)
+	cfg, _ := candidateBindingConfig(t)
+	cfg.EnvironmentRevision = strings.Repeat("2", 64)
+	state, _ := cfg.JSON()
+	now := time.Now().UTC()
+	apps := NewAppRepository(database)
+	previous := cfg
+	previous.Image = "example/hosted-api:0.9.0"
+	previousState, err := previous.JSON()
+	if err != nil {
+		t.Fatalf("encode predecessor: %v", err)
+	}
+	if err := apps.Create(context.Background(), domain.App{ID: "active-app", Name: cfg.Name, Image: previous.Image, DesiredStateJSON: previousState, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatalf("create active app: %v", err)
+	}
+	repo := NewCandidateBindingRepository(database)
+	requestID := strings.Repeat("e", 64)
+	binding, created, err := repo.Begin(context.Background(), domain.DeployRequest{AppName: cfg.Name, RequestID: requestID, RequestedState: state}, "proposed-app", "deployment-active", now)
+	if err != nil || !created || binding.AppID != "active-app" {
+		t.Fatalf("active begin: %#v created=%v err=%v", binding, created, err)
+	}
+	legacyID := strings.Repeat("f", 64)
+	legacyCfg := cfg
+	legacyCfg.Name = "legacy-hosted-api"
+	legacyState, _ := legacyCfg.JSON()
+	seedCandidateRequest(t, database, legacyCfg, legacyState, legacyID)
+	if _, _, err := repo.Begin(context.Background(), domain.DeployRequest{AppName: legacyCfg.Name, RequestID: legacyID, RequestedState: legacyState}, "app", "deployment", now); !errors.Is(err, ErrCandidateBindingConflict) {
+		t.Fatalf("unbound legacy request adopted: %v", err)
+	}
+}
+
+func TestCandidateBindingBeginReusesDeletedAppIdentity(t *testing.T) {
+	database := openRepositoryTestDB(t)
+	ctx := context.Background()
+	cfg, state := candidateBindingConfig(t)
+	now := time.Now().UTC()
+	oldStateCfg := cfg
+	oldStateCfg.Image = "example/hosted-api:old"
+	oldState, err := oldStateCfg.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	apps := NewAppRepository(database)
+	if err := apps.Create(ctx, domain.App{ID: "deleted-app", Name: cfg.Name, Image: oldStateCfg.Image, DesiredStateJSON: oldState, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := apps.MarkDeleted(ctx, cfg.Name, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	requestID := strings.Repeat("6", 64)
+	binding, created, err := NewCandidateBindingRepository(database).Begin(ctx, domain.DeployRequest{AppName: cfg.Name, RequestID: requestID, RequestedState: state}, "fresh-app-id", "deleted-reuse-deployment", now.Add(2*time.Second))
+	if err != nil || !created || binding.AppID != "deleted-app" {
+		t.Fatalf("deleted identity not reused: %#v created=%v err=%v", binding, created, err)
+	}
+	saved, err := apps.FindByName(ctx, cfg.Name)
+	if err != nil || saved.ID != "deleted-app" || saved.Image != oldStateCfg.Image || saved.DesiredStateJSON != oldState || saved.DeletedAt == nil {
+		t.Fatalf("deleted app mutated: %#v err=%v", saved, err)
+	}
+}
+
+func TestCandidateBindingBeginAllowsEmptyEnvironmentRevision(t *testing.T) {
+	database := openRepositoryTestDB(t)
+	cfg, state := candidateBindingConfig(t)
+	if cfg.EnvironmentRevision != "" {
+		t.Fatal("fixture unexpectedly has an environment revision")
+	}
+	repo := NewCandidateBindingRepository(database)
+	binding, created, err := repo.Begin(context.Background(), domain.DeployRequest{
+		AppName: cfg.Name, RequestID: strings.Repeat("1", 64), RequestedState: state,
+	}, "empty-env-app", "empty-env-deployment", time.Now().UTC())
+	if err != nil || !created || binding.AppID != "empty-env-app" {
+		t.Fatalf("empty environment revision rejected: %#v created=%v err=%v", binding, created, err)
+	}
+}
+
+func TestCandidateBindingBeginRejectsInvalidActivePredecessorAtomically(t *testing.T) {
+	database := openRepositoryTestDB(t)
+	cfg, _ := candidateBindingConfig(t)
+	cfg.EnvironmentRevision = strings.Repeat("2", 64)
+	requested, err := cfg.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := NewAppRepository(database).Create(context.Background(), domain.App{
+		ID: "bad-active", Name: cfg.Name, Image: cfg.Image, DesiredStateJSON: `{"name":"bad-active","image":"broken"}`,
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = NewCandidateBindingRepository(database).Begin(context.Background(), domain.DeployRequest{
+		AppName: cfg.Name, RequestID: strings.Repeat("2", 64), RequestedState: requested,
+	}, "new-app", "new-deployment", now)
+	if !errors.Is(err, ErrCandidateBindingConflict) {
+		t.Fatalf("invalid predecessor accepted: %v", err)
+	}
+	if _, err := NewDeploymentRequestRepository(database).Find(context.Background(), cfg.Name, strings.Repeat("2", 64)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("request inserted after predecessor rejection: %v", err)
+	}
+}
+
+func TestCandidateBindingBeginDomainAdmission(t *testing.T) {
+	database := openRepositoryTestDB(t)
+	cfg, _ := candidateBindingConfig(t)
+	cfg.Routing.Domain = "shared.example.test"
+	firstState, err := cfg.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	repo := NewCandidateBindingRepository(database)
+	if _, created, err := repo.Begin(context.Background(), domain.DeployRequest{AppName: cfg.Name, RequestID: strings.Repeat("3", 64), RequestedState: firstState}, "first-app", "first-deployment", now); err != nil || !created {
+		t.Fatalf("first domain candidate: created=%v err=%v", created, err)
+	}
+	second := cfg
+	second.Name = "other-hosted-api"
+	secondState, err := second.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	requestID := strings.Repeat("4", 64)
+	if _, _, err := repo.Begin(context.Background(), domain.DeployRequest{AppName: second.Name, RequestID: requestID, RequestedState: secondState}, "second-app", "second-deployment", now); !errors.Is(err, ErrCandidateBindingConflict) {
+		t.Fatalf("domain collision accepted: %v", err)
+	}
+	if _, err := NewDeploymentRequestRepository(database).Find(context.Background(), second.Name, requestID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("domain collision left request: %v", err)
+	}
+}
+
+func TestCandidateBindingBeginDuplicateDeploymentRollsBackAllRows(t *testing.T) {
+	database := openRepositoryTestDB(t)
+	ctx := context.Background()
+	cfg, state := candidateBindingConfig(t)
+	now := time.Now().UTC()
+	if err := NewAppRepository(database).Create(ctx, domain.App{ID: "collision-owner", Name: "collision-owner", Image: cfg.Image, DesiredStateJSON: state, CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := NewDeploymentRepository(database).Create(ctx, domain.Deployment{ID: "collision-deployment", AppID: "collision-owner", Status: "pending", CreatedAt: now, UpdatedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Repeat("5", 64)
+	if _, _, err := NewCandidateBindingRepository(database).Begin(ctx, domain.DeployRequest{AppName: cfg.Name, RequestID: id, RequestedState: state}, "rollback-app", "collision-deployment", now); err == nil {
+		t.Fatal("duplicate deployment unexpectedly succeeded")
+	}
+	if _, err := NewDeploymentRequestRepository(database).Find(ctx, cfg.Name, id); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("request survived rollback: %v", err)
+	}
+	if _, err := NewAppRepository(database).FindByName(ctx, cfg.Name); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("app survived rollback: %v", err)
+	}
+	if _, err := NewCandidateBindingRepository(database).Find(ctx, cfg.Name, id); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("binding survived rollback: %v", err)
+	}
+}
+
+func TestCandidateBindingBeginRejectsAnotherPendingRequestAtomically(t *testing.T) {
+	database := openRepositoryTestDB(t)
+	ctx := context.Background()
+	cfg, state := candidateBindingConfig(t)
+	now := time.Now().UTC()
+	firstID := strings.Repeat("7", 64)
+	if _, created, err := NewDeploymentRequestRepository(database).Begin(ctx, domain.DeployRequest{
+		AppName: cfg.Name, RequestID: firstID, RequestedState: state, CreatedAt: now, UpdatedAt: now,
+	}); err != nil || !created {
+		t.Fatalf("seed pending request: created=%v err=%v", created, err)
+	}
+	secondID := strings.Repeat("8", 64)
+	if _, _, err := NewCandidateBindingRepository(database).Begin(ctx, domain.DeployRequest{
+		AppName: cfg.Name, RequestID: secondID, RequestedState: state,
+	}, "pending-conflict-app", "pending-conflict-deployment", now); !errors.Is(err, ErrCandidateBindingConflict) {
+		t.Fatalf("second pending request accepted: %v", err)
+	}
+	if _, err := NewAppRepository(database).FindByName(ctx, cfg.Name); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("pending conflict created app: %v", err)
+	}
+	if _, err := NewDeploymentRepository(database).FindByID(ctx, "pending-conflict-deployment"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("pending conflict created deployment: %v", err)
+	}
+	if _, err := NewCandidateBindingRepository(database).Find(ctx, cfg.Name, secondID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("pending conflict created binding: %v", err)
+	}
+}
+
 const candidateBindingYAML = `
 name: hosted-api
 image: example/hosted-api:1.0.0

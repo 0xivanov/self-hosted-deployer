@@ -211,6 +211,9 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if err != nil {
 		return nil, status.Error(codes.Internal, "encode desired state")
 	}
+	if tracked && s.enableCandidateOperations && cfg.Hosting != nil {
+		return s.deployCandidateApp(ctx, cfg, req)
+	}
 	if tracked {
 		if s.deploymentRequests == nil {
 			return nil, status.Error(codes.FailedPrecondition, "tracked deployment requests are not configured")

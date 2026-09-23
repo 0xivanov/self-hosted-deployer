@@ -85,6 +85,11 @@ func (a cliApp) deploy(args []string, opts cliOptions) int {
 		fmt.Fprintln(a.stderr, "Deployment failed. The candidate was withdrawn; verify the previous application is healthy before retrying.")
 		return 1
 	}
+	if result.Deployment.Status == "pending" && *requestID != "" {
+		fmt.Fprintln(a.stdout, "Deployment accepted and waiting for readiness.")
+		fmt.Fprintf(a.stdout, "Advance: deployer apps advance %s %s\n", cfg.Name, *requestID)
+		fmt.Fprintf(a.stdout, "Status: deployer apps request %s %s\n", cfg.Name, *requestID)
+	}
 	renderAppSummary(a.stdout, result.App)
 	clicore.RenderFields(a.stdout, clicore.Field{Name: "Deployment", Value: result.Deployment.ID})
 	return 0

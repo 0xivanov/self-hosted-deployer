@@ -82,22 +82,27 @@ func (s AppService) mutateCandidateRequest(ctx context.Context, req *deployerv1.
 		}
 		return s.GetDeployRequest(ctx, req)
 	}
-	// Require durable runtime preparation. A missing checkpoint may represent an
-	// interrupted setup, and must not be treated as permission to start over.
-	checkpoint, err := s.candidateCheckpoints.FindRuntimeCheckpoint(ctx, request.AppName, request.RequestID)
-	if err != nil {
-		return nil, status.Error(codes.FailedPrecondition, "candidate preparation is incomplete; operator review required")
+	cfg, decodeErr := appconfig.FromJSON(request.RequestedState)
+	if decodeErr != nil || cfg.Validate() != nil {
+		return nil, status.Error(codes.FailedPrecondition, "candidate configuration is invalid")
 	}
-	if checkpoint.AppName != request.AppName || checkpoint.RequestID != request.RequestID {
+	checkpoint, checkpointErr := s.candidateCheckpoints.FindRuntimeCheckpoint(ctx, request.AppName, request.RequestID)
+	if !recover && errors.Is(checkpointErr, db.ErrNotFound) {
+		preparer, ok := s.runtime.(CandidateSubmissionRuntime)
+		if !ok {
+			return nil, status.Error(codes.FailedPrecondition, "candidate preparation is unsupported")
+		}
+		if err = s.prepareCandidateRequest(ctx, request, cfg, preparer); err != nil {
+			return nil, err
+		}
+	} else if checkpointErr != nil {
+		return nil, status.Error(codes.FailedPrecondition, "candidate preparation is incomplete; operator review required")
+	} else if checkpoint.AppName != request.AppName || checkpoint.RequestID != request.RequestID {
 		return nil, status.Error(codes.FailedPrecondition, "candidate checkpoint identity is invalid")
 	}
 	if !recover {
-		if checkpoint.Stage != "fenced" && checkpoint.Stage != "activated" {
+		if checkpointErr == nil && checkpoint.Stage != "fenced" && checkpoint.Stage != "activated" {
 			return nil, status.Error(codes.FailedPrecondition, "candidate cannot advance from this stage; recovery or operator review required")
-		}
-		cfg, decodeErr := appconfig.FromJSON(request.RequestedState)
-		if decodeErr != nil || cfg.Validate() != nil {
-			return nil, status.Error(codes.FailedPrecondition, "candidate configuration is invalid")
 		}
 		_, err = AdvanceCandidateOperation(ctx, s.candidateCheckpoints, s.deploymentRequests, runtime, request.AppName, request.RequestID, cfg, cfg.EnvironmentRevision, ingress.CandidateRegistrySecretName(cfg))
 		if errors.Is(err, ingress.ErrCandidateNotReady) {
