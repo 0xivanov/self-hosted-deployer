@@ -30,6 +30,11 @@ func (s AppService) PreflightApp(ctx context.Context, req *deployerv1.PreflightA
 	if _, err := resolveRuntimeRegistry(ctx, s.runtime, s.registryCredentials, cfg); err != nil {
 		return nil, err
 	}
+	if cfg.EnvironmentRevision != "" {
+		if _, err := resolveEnvironmentBundle(ctx, s.environmentBundles, s.cipher, cfg.Name, cfg.EnvironmentRevision); err != nil {
+			return nil, err
+		}
+	}
 	if err := preflightHosting(ctx, s.runtime, cfg); err != nil {
 		return nil, err
 	}

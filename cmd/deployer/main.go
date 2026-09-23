@@ -67,6 +67,10 @@ type registryCredentialClient interface {
 	ListRegistryCredentials(context.Context, string) ([]clicore.RegistryCredentialInfo, error)
 }
 
+type environmentBundleClient interface {
+	CreateEnvironmentBundle(context.Context, string, string, map[string]string) (clicore.EnvironmentBundleInfo, error)
+}
+
 func newCLIApp(stdin io.Reader, stdout io.Writer, stderr io.Writer) cliApp {
 	return cliApp{
 		stdin:             stdin,

@@ -123,6 +123,8 @@ func isMutationMethod(method string) bool {
 		"/deployer.v1.SecretService/DeleteSecret",
 		"/deployer.v1.RegistryCredentialService/CreateRegistryCredential":
 		return true
+	case "/deployer.v1.EnvironmentService/CreateEnvironmentBundle":
+		return true
 	default:
 		return false
 	}
@@ -146,6 +148,11 @@ func mutationTarget(method string, req any) map[string]string {
 			if request.GetRegistry() == "docker.io" || request.GetRegistry() == "ghcr.io" {
 				put("registry", request.GetRegistry())
 			}
+		}
+	case "/deployer.v1.EnvironmentService/CreateEnvironmentBundle":
+		if request, ok := req.(*deployerv1.CreateEnvironmentBundleRequest); ok {
+			put("app", request.GetAppName())
+			put("revision", request.GetRevision())
 		}
 	case "/deployer.v1.AppService/DeployApp":
 		if request, ok := req.(*deployerv1.DeployAppRequest); ok {

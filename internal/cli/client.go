@@ -23,14 +23,15 @@ import (
 const defaultRequestTimeout = 10 * time.Second
 
 type PlatformClient struct {
-	platformClient deployerv1.PlatformServiceClient
-	nodeClient     deployerv1.NodeServiceClient
-	appClient      deployerv1.AppServiceClient
-	secretClient   deployerv1.SecretServiceClient
-	registryClient deployerv1.RegistryCredentialServiceClient
-	eventClient    deployerv1.EventServiceClient
-	token          string
-	timeout        time.Duration
+	platformClient    deployerv1.PlatformServiceClient
+	nodeClient        deployerv1.NodeServiceClient
+	appClient         deployerv1.AppServiceClient
+	secretClient      deployerv1.SecretServiceClient
+	registryClient    deployerv1.RegistryCredentialServiceClient
+	environmentClient deployerv1.EnvironmentServiceClient
+	eventClient       deployerv1.EventServiceClient
+	token             string
+	timeout           time.Duration
 }
 
 type ServerStatus struct {
@@ -154,6 +155,13 @@ type RegistryCredentialInfo struct {
 	CreatedAt string `json:"created_at"`
 }
 
+type EnvironmentBundleInfo struct {
+	AppName   string   `json:"app_name"`
+	Revision  string   `json:"revision"`
+	Names     []string `json:"names"`
+	CreatedAt string   `json:"created_at"`
+}
+
 type DeployResult struct {
 	App        AppInfo        `json:"app"`
 	Deployment DeploymentInfo `json:"deployment"`
@@ -217,6 +225,7 @@ func NewPlatformClient(serverURL string, token string) (*PlatformClient, *grpc.C
 	client.secretClient = deployerv1.NewSecretServiceClient(conn)
 	client.eventClient = deployerv1.NewEventServiceClient(conn)
 	client.registryClient = deployerv1.NewRegistryCredentialServiceClient(conn)
+	client.environmentClient = deployerv1.NewEnvironmentServiceClient(conn)
 	return client, conn, nil
 }
 
@@ -693,6 +702,24 @@ func registryCredentialInfo(credential *deployerv1.RegistryCredentialMetadata) R
 		return RegistryCredentialInfo{}
 	}
 	return RegistryCredentialInfo{AppName: credential.GetAppName(), Revision: credential.GetRevision(), Registry: credential.GetRegistry(), CreatedAt: credential.GetCreatedAt()}
+}
+
+func (c *PlatformClient) CreateEnvironmentBundle(ctx context.Context, appName, revision string, values map[string]string) (EnvironmentBundleInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	if c.environmentClient == nil {
+		return EnvironmentBundleInfo{}, fmt.Errorf("environment service is unavailable")
+	}
+	response, err := c.environmentClient.CreateEnvironmentBundle(ctx, &deployerv1.CreateEnvironmentBundleRequest{AppName: appName, Revision: revision, Values: values})
+	if err != nil {
+		return EnvironmentBundleInfo{}, DecodeRPCError(err)
+	}
+	bundle := response.GetBundle()
+	if bundle == nil || bundle.GetAppName() != appName || bundle.GetRevision() != revision {
+		return EnvironmentBundleInfo{}, fmt.Errorf("environment service returned invalid metadata")
+	}
+	return EnvironmentBundleInfo{AppName: bundle.GetAppName(), Revision: bundle.GetRevision(), Names: append([]string(nil), bundle.GetNames()...), CreatedAt: bundle.GetCreatedAt()}, nil
 }
 
 func (c *PlatformClient) ListEvents(ctx context.Context, filter EventFilter) ([]EventInfo, error) {

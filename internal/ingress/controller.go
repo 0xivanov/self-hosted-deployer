@@ -160,6 +160,9 @@ func (c *Controller) Reconcile(ctx context.Context, cfg appconfig.Config, secret
 // registry credential. Registry credentials are validated before any resource
 // is read or written.
 func (c *Controller) ReconcileWithRegistry(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string, credential *registryauth.Credential) error {
+	if err := validateEnvironmentReference(cfg, secretValues, secretRevision); err != nil {
+		return err
+	}
 	if err := validateRegistryReference(cfg, credential); err != nil {
 		return err
 	}
@@ -259,7 +262,7 @@ func (c *Controller) Delete(ctx context.Context, appName string) error {
 		return err
 	}
 	// Preserve pull credentials when resource deletion has not completed.
-	return c.deleteRegistrySecrets(ctx, appName)
+	return errors.Join(c.deleteRegistrySecrets(ctx, appName), c.deleteEnvironmentSecrets(ctx, appName))
 }
 
 func (c *Controller) deleteIngress(ctx context.Context, appName string) error {

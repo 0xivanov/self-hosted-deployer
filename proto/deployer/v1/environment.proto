@@ -1,0 +1,19 @@
+syntax = "proto3";
+package deployer.v1;
+option go_package = "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1;deployerv1";
+
+service EnvironmentService {
+  rpc CreateEnvironmentBundle(CreateEnvironmentBundleRequest) returns (CreateEnvironmentBundleResponse);
+}
+message CreateEnvironmentBundleRequest {
+  string app_name = 1;
+  string revision = 2;
+  map<string, string> values = 3;
+}
+message EnvironmentBundleMetadata {
+  string app_name = 1;
+  string revision = 2;
+  repeated string names = 3;
+  string created_at = 4;
+}
+message CreateEnvironmentBundleResponse { EnvironmentBundleMetadata bundle = 1; }

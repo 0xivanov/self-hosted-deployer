@@ -94,6 +94,7 @@ type IngressRuntime = AppRuntime
 
 type AppServiceConfig struct {
 	RegistryCredentialRepository RegistryCredentialRepository
+	EnvironmentBundles           EnvironmentBundleRepository
 	RegistryCredentials          RegistryCredentialResolver
 	Apps                         AppRepository
 	Deployments                  DeploymentRepository
@@ -108,6 +109,7 @@ type AppServiceConfig struct {
 
 type AppService struct {
 	registryCredentialRepository RegistryCredentialRepository
+	environmentBundles           EnvironmentBundleRepository
 	registryCredentials          RegistryCredentialResolver
 	deployerv1.UnimplementedAppServiceServer
 	apps            AppRepository
@@ -128,6 +130,7 @@ func NewAppService(cfg AppServiceConfig) AppService {
 	}
 	return AppService{
 		registryCredentialRepository: cfg.RegistryCredentialRepository,
+		environmentBundles:           cfg.EnvironmentBundles,
 		registryCredentials:          cfg.RegistryCredentials,
 		apps:                         cfg.Apps,
 		deployments:                  cfg.Deployments,
@@ -152,6 +155,15 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	cfg, err := appconfig.Parse([]byte(req.GetDeployerYaml()))
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	var secretValues map[string]string
+	var secretRevision string
+	if cfg.EnvironmentRevision != "" {
+		secretValues, err = resolveEnvironmentBundle(ctx, s.environmentBundles, s.cipher, cfg.Name, cfg.EnvironmentRevision)
+		if err != nil {
+			return nil, err
+		}
+		secretRevision = cfg.EnvironmentRevision
 	}
 	registryCredential, err := resolveRuntimeRegistry(ctx, s.runtime, s.registryCredentials, cfg)
 	if err != nil {
@@ -223,7 +235,9 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 		return nil, status.Error(codes.Internal, "create deployment")
 	}
 	s.recordDeployEvent(ctx, domain.EventTypeAppDeployStarted, domain.EventSeverityInfo, "deployment started", app, deployment, cfg, "")
-	secretValues, secretRevision, err := resolveSecretValues(ctx, s.secrets, s.cipher, app.ID, cfg.Secrets)
+	if cfg.EnvironmentRevision == "" {
+		secretValues, secretRevision, err = s.resolveConfiguredEnvironment(ctx, app.Name, app.ID, cfg)
+	}
 	if err != nil {
 		var missing requiredSecretNotSetError
 		if errors.As(err, &missing) {
@@ -301,7 +315,7 @@ func (s AppService) rollbackAppUpdate(ctx context.Context, previous domain.App, 
 	if err != nil {
 		return fmt.Errorf("decode last applied app configuration: %w", err)
 	}
-	secretValues, secretRevision, err := resolveSecretValues(ctx, s.secrets, s.cipher, previous.ID, cfg.Secrets)
+	secretValues, secretRevision, err := s.resolveConfiguredEnvironment(ctx, previous.Name, previous.ID, cfg)
 	if err != nil {
 		return fmt.Errorf("resolve last applied app secrets: %w", err)
 	}
@@ -319,6 +333,14 @@ func (s AppService) rollbackAppUpdate(ctx context.Context, previous domain.App, 
 		rollbackErrors = append(rollbackErrors, fmt.Errorf("restore app route: %w", err))
 	}
 	return errors.Join(rollbackErrors...)
+}
+
+func (s AppService) resolveConfiguredEnvironment(ctx context.Context, appName, appID string, cfg appconfig.Config) (map[string]string, string, error) {
+	if cfg.EnvironmentRevision != "" {
+		values, err := resolveEnvironmentBundle(ctx, s.environmentBundles, s.cipher, appName, cfg.EnvironmentRevision)
+		return values, cfg.EnvironmentRevision, err
+	}
+	return resolveSecretValues(ctx, s.secrets, s.cipher, appID, cfg.Secrets)
 }
 
 func parseStoredConfigForDeployment(data string) (appconfig.Config, error) {
@@ -405,6 +427,11 @@ func (s AppService) DeleteApp(ctx context.Context, req *deployerv1.DeleteAppRequ
 	if s.registryCredentialRepository != nil {
 		if err := s.registryCredentialRepository.DeleteByApp(ctx, app.Name); err != nil {
 			return nil, status.Error(codes.Internal, "delete app registry credentials")
+		}
+	}
+	if s.environmentBundles != nil {
+		if err := s.environmentBundles.DeleteByApp(ctx, app.Name); err != nil {
+			return nil, status.Error(codes.Internal, "delete app environment bundles")
 		}
 	}
 	app, err = s.apps.MarkDeleted(ctx, name, s.now().UTC())

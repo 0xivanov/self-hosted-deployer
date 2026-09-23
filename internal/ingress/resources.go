@@ -224,7 +224,8 @@ func jsonEqual(a, b map[string][]byte) bool {
 		return false
 	}
 	for key, value := range a {
-		if string(value) != string(b[key]) {
+		other, ok := b[key]
+		if !ok || string(value) != string(other) {
 			return false
 		}
 	}
@@ -355,6 +356,9 @@ func legacyAffinityMigrationStrategy() appsv1.DeploymentStrategy {
 }
 
 func (c *Controller) reconcileSecret(ctx context.Context, cfg appconfig.Config, secretValues map[string]string) error {
+	if cfg.EnvironmentRevision != "" {
+		return c.reconcileEnvironmentSecret(ctx, cfg, secretValues)
+	}
 	if len(cfg.Secrets) == 0 {
 		return c.deleteAppSecret(ctx, cfg.Name)
 	}
@@ -634,6 +638,16 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 				),
 			},
 		}
+	}
+	if cfg.EnvironmentRevision != "" {
+		if !registryauth.ValidRevision(cfg.EnvironmentRevision) || secretRevision != cfg.EnvironmentRevision || len(cfg.Secrets) > 0 {
+			return nil, errors.New("invalid environment revision")
+		}
+		if deployment.Spec.Template.Annotations == nil {
+			deployment.Spec.Template.Annotations = map[string]string{}
+		}
+		deployment.Spec.Template.Annotations[secretHashAnnotation] = cfg.EnvironmentRevision
+		deployment.Spec.Template.Spec.Containers[0].EnvFrom = append(deployment.Spec.Template.Spec.Containers[0].EnvFrom, corev1.EnvFromSource{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: environmentSecretName(cfg.Name, cfg.EnvironmentRevision)}}})
 	}
 	if len(cfg.Secrets) > 0 {
 		if strings.TrimSpace(secretRevision) == "" {

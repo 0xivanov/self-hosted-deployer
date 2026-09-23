@@ -20,6 +20,7 @@ import (
 
 type Repositories struct {
 	RegistryCredentials RegistryCredentialRepository
+	EnvironmentBundles  EnvironmentBundleRepository
 	Health              HealthRepository
 	AdminTokens         AdminTokenRepository
 	AgentTokens         AgentTokenRepository
@@ -132,9 +133,11 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	}
 	registryCredentials := NewRegistryCredentialService(repos.RegistryCredentials, runtime.SecretCipher)
 	deployerv1.RegisterRegistryCredentialServiceServer(grpcServer, registryCredentials)
+	deployerv1.RegisterEnvironmentServiceServer(grpcServer, NewEnvironmentBundleService(repos.EnvironmentBundles, runtime.SecretCipher))
 	deployerv1.RegisterAppServiceServer(grpcServer, NewAppService(AppServiceConfig{
 		RegistryCredentials:          registryCredentials,
 		RegistryCredentialRepository: repos.RegistryCredentials,
+		EnvironmentBundles:           repos.EnvironmentBundles,
 		Apps:                         repos.Apps,
 		Deployments:                  repos.Deployments,
 		Routes:                       repos.Routes,

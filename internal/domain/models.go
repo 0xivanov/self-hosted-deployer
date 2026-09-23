@@ -112,6 +112,14 @@ type RegistryCredential struct {
 	CreatedAt  time.Time
 }
 
+type EnvironmentBundle struct {
+	AppName    string
+	Revision   string
+	NamesJSON  string
+	Ciphertext string `json:"-"`
+	CreatedAt  time.Time
+}
+
 type Route struct {
 	ID         string
 	AppID      string

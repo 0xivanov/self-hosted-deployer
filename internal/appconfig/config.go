@@ -26,8 +26,11 @@ const (
 var appNamePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 var secretNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+func ValidAppName(name string) bool { return len(name) <= 63 && appNamePattern.MatchString(name) }
+
 type Config struct {
 	ImagePullCredential string           `json:"image_pull_credential,omitempty" yaml:"imagePullCredential,omitempty"`
+	EnvironmentRevision string           `json:"environment_revision,omitempty" yaml:"environmentRevision,omitempty"`
 	Name                string           `json:"name" yaml:"name"`
 	Image               string           `json:"image" yaml:"image"`
 	Service             ServiceConfig    `json:"service" yaml:"service"`
@@ -108,6 +111,7 @@ func (c *Config) Normalize() {
 	c.Placement.Arch = strings.TrimSpace(c.Placement.Arch)
 	c.State.Mode = strings.TrimSpace(c.State.Mode)
 	c.Resilience.Mode = strings.TrimSpace(c.Resilience.Mode)
+	c.EnvironmentRevision = strings.TrimSpace(c.EnvironmentRevision)
 
 	if c.Deploy.Strategy == "" {
 		c.Deploy.Strategy = DefaultDeployStrategy
@@ -131,6 +135,12 @@ func (c *Config) Normalize() {
 func (c Config) Validate() error {
 	if c.ImagePullCredential != "" && !registryauth.ValidRevision(c.ImagePullCredential) {
 		return fmt.Errorf("imagePullCredential must be an immutable credential revision")
+	}
+	if c.EnvironmentRevision != "" && !registryauth.ValidRevision(c.EnvironmentRevision) {
+		return fmt.Errorf("environmentRevision must be an immutable environment revision")
+	}
+	if c.EnvironmentRevision != "" && len(c.Secrets) > 0 {
+		return fmt.Errorf("environmentRevision cannot be combined with legacy secrets")
 	}
 	if c.Name == "" {
 		return fmt.Errorf("name is required")
