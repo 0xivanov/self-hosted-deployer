@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
@@ -16,7 +15,6 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 )
 
 const candidateGenerationLabel = "deployer.io/candidate-generation"
@@ -103,9 +101,8 @@ func candidateDeploymentName(appName, requestID string) string {
 
 // PrepareCandidateDeployment creates the candidate exactly once. An existing
 // object is accepted only when it is owned by the same app and is byte-for-
-// byte equivalent to the requested immutable render; it is never updated.
-// API-defaulted fields may currently make replay fail closed. Normalize and
-// qualify those defaults before this path is enabled on a real cluster.
+// byte equivalent after normalization of known Kubernetes defaults; it is
+// never updated. Unexpected defaults or mutations fail closed.
 func (c *Controller) PrepareCandidateDeployment(ctx context.Context, cfg appconfig.Config, secretRevision, requestID, registrySecretName string) error {
 	if c.deployments == nil || c.networkPolicies == nil {
 		return errors.New("candidate deployment runtime is unavailable")
@@ -135,7 +132,7 @@ func (c *Controller) PrepareCandidateDeployment(ctx context.Context, cfg appconf
 	if err := requireAppResourceOwnership("Deployment", existing.Name, cfg.Name, existing.Labels); err != nil {
 		return err
 	}
-	if existing.Spec.Selector == nil || existing.Labels[candidateGenerationLabel] != desired.Labels[candidateGenerationLabel] || !labels.SelectorFromSet(desired.Spec.Selector.MatchLabels).Matches(labels.Set(existing.Spec.Selector.MatchLabels)) || !reflect.DeepEqual(existing.Spec, desired.Spec) {
+	if !candidateDeploymentMatches(existing, desired) {
 		return errors.New("candidate deployment already exists with different immutable content")
 	}
 	return nil
@@ -171,7 +168,7 @@ func (c *Controller) ensureCandidateNetworkPolicy(ctx context.Context, desired *
 	if err := requireAppResourceOwnership("NetworkPolicy", existing.Name, desired.Labels[appOwnershipLabel], existing.Labels); err != nil {
 		return err
 	}
-	if existing.Spec.PodSelector.MatchLabels == nil || !reflect.DeepEqual(existing.Spec, desired.Spec) {
+	if !candidateNetworkPolicyMatches(existing, desired) {
 		return errors.New("candidate NetworkPolicy already exists with different immutable content")
 	}
 	return nil
