@@ -58,6 +58,13 @@ func (c *Controller) CandidateStatus(ctx context.Context, appName string) (Candi
 	if !candidateManagedService(service) {
 		return result, ErrCandidateStatusNotSelected
 	}
+	if initialID, initial := service.Annotations[initialCandidateRequestAnnotation]; initial {
+		_, activated := service.Annotations[activationOperationAnnotation]
+		inactive := map[string]string{appOwnershipLabel: appName, candidateGenerationLabel: "inactive-" + candidateGeneration(appName, initialID)}
+		if !activated && registryauth.ValidRevision(initialID) && maps.Equal(service.Spec.Selector, inactive) && service.DeletionTimestamp == nil {
+			return CandidateStatus{State: StatusUnavailable}, nil
+		}
+	}
 	if _, activation := service.Annotations[activationOperationAnnotation]; activation && operationID == "" {
 		return result, fmt.Errorf("candidate activation operation is invalid")
 	}

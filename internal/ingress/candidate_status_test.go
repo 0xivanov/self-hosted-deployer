@@ -83,7 +83,7 @@ func TestStatusPathsNeverUseHealthyLegacyDeploymentForPendingCandidate(t *testin
 	legacy.Status = appsv1.DeploymentStatus{ObservedGeneration: 1, Replicas: 2, UpdatedReplicas: 2, ReadyReplicas: 2, AvailableReplicas: 2}
 	service.Annotations[initialCandidateRequestAnnotation] = strings.Repeat("c", 64)
 	delete(service.Annotations, activationOperationAnnotation)
-	service.Spec.Selector = map[string]string{appOwnershipLabel: appName, candidateGenerationLabel: "inactive-generation"}
+	service.Spec.Selector = map[string]string{appOwnershipLabel: appName, candidateGenerationLabel: "inactive-" + candidateGeneration(appName, strings.Repeat("c", 64))}
 	client := fake.NewSimpleClientset(service, legacy)
 	controller := &Controller{namespace: DefaultNamespace, services: client.CoreV1().Services(DefaultNamespace), deployments: client.AppsV1().Deployments(DefaultNamespace)}
 	state, desired, available, err := controller.StatusDetails(context.Background(), appName)

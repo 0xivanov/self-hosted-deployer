@@ -232,7 +232,7 @@ func (c *Controller) RemoveNode(ctx context.Context, nodeName string) error {
 
 func (c *Controller) RuntimeStatus(ctx context.Context, appName string) (string, int32, int32, []string, error) {
 	if candidate, candidateErr := c.CandidateStatus(ctx, appName); candidateErr == nil {
-		if c.pods == nil {
+		if c.pods == nil || candidate.DeploymentName == "" {
 			return candidate.State, candidate.DesiredReplicas, candidate.AvailableReplicas, nil, nil
 		}
 		selector := labels.Set(candidate.Selector).AsSelector().String()
