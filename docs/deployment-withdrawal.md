@@ -45,4 +45,15 @@ Candidate replay comparison normalizes known Kubernetes defaults and ignores onl
 
 Core schema 10 adds runtime activation checkpoints linked to the durable request journal. The repository saves immutable intent before runtime mutation and supports conditional stage transitions through prepared, fenced, activated, recovering and withdrawn. Saved JSON objects are bounded to 64 KiB; the coordinator must only include non-secret resource identities and traffic targets. Completed requests freeze checkpoints. Tests verify persistence across reopen, conflicting intent/gate rejection and terminal freeze.
 
-The checkpoint repository and readiness switch are implemented but not yet called by the server deployment coordinator. End-to-end stuck-request recovery, initial routing setup, coordinated port changes, rollout capacity, cleanup and live qualification remain incomplete. No live database migration has been performed.
+The checkpoint repository and readiness switch are implemented. An internal coordinator now connects them, but the public deployment handlers do not invoke it yet. End-to-end stuck-request recovery, initial routing setup, coordinated port changes, rollout capacity, cleanup and live qualification remain incomplete. No live database migration has been performed.
+
+
+### Candidate coordinator integration
+
+`AdvanceCandidateOperation` now connects the deployment request journal, activation checkpoints and isolated runtime operations. It validates the exact pending request and immutable secret references; captures and saves the predecessor target before fencing; records the fenced gate before preparing pods; and records the activation receipt. Fenced requests may resume readiness checks with the same saved token. Activated checkpoint replay is read-only. A missing fence receipt remains unresolved instead of acquiring a fresh token. Runtime responses are validated before being recorded; post-write receipts use a bounded five-second context independent of caller cancellation.
+
+Runtime prerequisites now admit overlapping capacity, create only immutable environment/pull secrets, and can create an inactive initial Service without selecting any candidate. Existing Services are never overwritten by bootstrap. These helpers do not create a public Ingress or activate a site.
+
+The normal deployment RPC remains unchanged. The coordinator requires its caller to hold the app mutation lock and complete prerequisite preparation first. Outstanding integration includes fenced rollback, recovery after ambiguous receipts, legacy-writer exclusion, application/route records, selected-release status, deletion/cleanup and real API qualification. Do not enable this path merely because isolated coordinator checks pass.
+
+The candidate status reader now follows the owned Service's exact generation selector and requires one matching owned Deployment. Recovery operation IDs may differ from the generation being served. Missing or malformed candidate routing cannot fall back to an old healthy Deployment. This read-only helper is not yet wired into the ordinary status RPC.

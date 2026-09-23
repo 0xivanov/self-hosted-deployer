@@ -38,6 +38,9 @@ func CandidateDeploymentForApp(cfg appconfig.Config, namespace, secretRevision, 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid candidate configuration: %w", err)
 	}
+	if err := ValidateCandidateReferences(cfg, secretRevision, registrySecretName); err != nil {
+		return nil, err
+	}
 	desired, err := deploymentForApp(cfg, namespace, secretRevision)
 	if err != nil {
 		return nil, err
@@ -90,7 +93,11 @@ func candidateGeneration(appName, requestID string) string {
 }
 
 func candidateDeploymentName(appName, requestID string) string {
-	suffix := "-candidate-" + candidateGeneration(appName, requestID)
+	return candidateNameForGeneration(appName, candidateGeneration(appName, requestID))
+}
+
+func candidateNameForGeneration(appName, generation string) string {
+	suffix := "-candidate-" + generation
 	name := strings.ToLower(strings.TrimSpace(appName))
 	maxPrefix := 63 - len(suffix)
 	if len(name) > maxPrefix {
@@ -170,6 +177,22 @@ func (c *Controller) ensureCandidateNetworkPolicy(ctx context.Context, desired *
 	}
 	if !candidateNetworkPolicyMatches(existing, desired) {
 		return errors.New("candidate NetworkPolicy already exists with different immutable content")
+	}
+	return nil
+}
+
+// ValidateCandidateReferences prevents a trusted coordinator from binding a
+// candidate to secrets outside the immutable configuration saved in its journal.
+func ValidateCandidateReferences(cfg appconfig.Config, revision, pullSecret string) error {
+	if len(cfg.Secrets) > 0 || revision != cfg.EnvironmentRevision {
+		return errors.New("candidate environment reference does not match saved configuration")
+	}
+	expected := ""
+	if cfg.ImagePullCredential != "" {
+		expected = registrySecretName(cfg.Name, cfg.ImagePullCredential)
+	}
+	if pullSecret != expected {
+		return errors.New("candidate registry reference does not match saved configuration")
 	}
 	return nil
 }
