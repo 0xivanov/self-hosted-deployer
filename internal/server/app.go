@@ -14,6 +14,7 @@ import (
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 )
 
@@ -121,6 +122,7 @@ type AppService struct {
 	routeTLSEnabled bool
 	events          EventRecorder
 	now             func() time.Time
+	operationMu     *appMutationLocks
 }
 
 func NewAppService(cfg AppServiceConfig) AppService {
@@ -141,7 +143,15 @@ func NewAppService(cfg AppServiceConfig) AppService {
 		routeTLSEnabled:              cfg.RouteTLSEnabled,
 		events:                       cfg.Events,
 		now:                          time.Now,
+		operationMu:                  &appMutationLocks{},
 	}
+}
+
+func (s AppService) acquireOperation(ctx context.Context, app string) (func(), error) {
+	if s.operationMu == nil {
+		return nil, status.Error(codes.FailedPrecondition, "app mutation coordinator is not configured")
+	}
+	return s.operationMu.acquire(ctx, app)
 }
 
 func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequest) (*deployerv1.DeployAppResponse, error) {
@@ -156,6 +166,11 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	release, err := s.acquireOperation(ctx, cfg.Name)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	var secretValues map[string]string
 	var secretRevision string
 	if cfg.EnvironmentRevision != "" {
@@ -207,6 +222,9 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 		}
 		wasDeleted := app.DeletedAt != nil
 		previous := app
+		if !wasDeleted || req.GetReportWithdrawal() {
+			previousApp = &previous
+		}
 		app.Image = cfg.Image
 		app.DesiredStateJSON = desiredStateJSON
 		app.UpdatedAt = now
@@ -215,8 +233,6 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 			if err := s.apps.Update(ctx, app); err != nil {
 				return nil, status.Error(codes.Internal, "update app")
 			}
-		} else {
-			previousApp = &previous
 		}
 	}
 
@@ -248,6 +264,9 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	}
 	if s.runtime != nil {
 		if err := reconcileRuntime(ctx, s.runtime, cfg, secretValues, secretRevision, registryCredential); err != nil {
+			if req.GetReportWithdrawal() && definitiveRuntimeRejection(err) {
+				return s.withdrawFailedDeployment(ctx, app, deployment, cfg, previousApp, now)
+			}
 			if previousApp != nil {
 				if rollbackErr := s.rollbackAppUpdate(ctx, *previousApp, now); rollbackErr != nil {
 					err = fmt.Errorf("%w; rollback to the last applied app configuration failed: %v", err, rollbackErr)
@@ -258,6 +277,9 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 		}
 	}
 	if err := s.syncRoute(ctx, app, cfg, now); err != nil {
+		if req.GetReportWithdrawal() {
+			return s.withdrawFailedDeployment(ctx, app, deployment, cfg, previousApp, now)
+		}
 		if previousApp != nil {
 			if rollbackErr := s.rollbackAppUpdate(ctx, *previousApp, now); rollbackErr != nil {
 				err = status.Errorf(
@@ -273,6 +295,9 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	}
 	if previousApp != nil {
 		if err := s.apps.Update(ctx, app); err != nil {
+			if req.GetReportWithdrawal() {
+				return s.withdrawFailedDeployment(ctx, app, deployment, cfg, previousApp, now)
+			}
 			if rollbackErr := s.rollbackAppUpdate(ctx, *previousApp, now); rollbackErr != nil {
 				err = fmt.Errorf("%w; rollback to the last applied app configuration failed: %v", err, rollbackErr)
 			}
@@ -343,6 +368,65 @@ func (s AppService) resolveConfiguredEnvironment(ctx context.Context, appName, a
 	return resolveSecretValues(ctx, s.secrets, s.cipher, appID, cfg.Secrets)
 }
 
+func (s AppService) withdrawFailedDeployment(ctx context.Context, app domain.App, deployment domain.Deployment, cfg appconfig.Config, previous *domain.App, now time.Time) (*deployerv1.DeployAppResponse, error) {
+	withdrawalErr := func() error {
+		if previous == nil {
+			if s.runtime != nil {
+				if err := s.runtime.Delete(ctx, app.Name); err != nil {
+					return err
+				}
+			}
+			if s.routes != nil {
+				if err := s.routes.DeleteByApp(ctx, app.ID); err != nil {
+					return err
+				}
+			}
+			_, err := s.apps.MarkDeleted(ctx, app.Name, now)
+			return err
+		}
+		if previous.DeletedAt != nil {
+			if s.runtime != nil {
+				if err := s.runtime.Delete(ctx, app.Name); err != nil {
+					return err
+				}
+			}
+			if s.routes != nil {
+				if err := s.routes.DeleteByApp(ctx, app.ID); err != nil {
+					return err
+				}
+			}
+		} else if err := s.rollbackAppUpdate(ctx, *previous, now); err != nil {
+			return err
+		}
+		return s.apps.Update(ctx, *previous)
+	}()
+	if withdrawalErr != nil {
+		return nil, status.Error(codes.Internal, "deployment withdrawal failed")
+	}
+	if err := s.deployments.UpdateStatus(ctx, deployment.ID, deploymentStatusFailed, "deployment withdrawn after failed apply", now); err != nil {
+		return nil, status.Error(codes.Internal, "deployment withdrawal failed")
+	}
+	deployment.Status = deploymentStatusFailed
+	s.recordDeployEvent(ctx, domain.EventTypeAppDeployFailed, domain.EventSeverityError, "deployment withdrawn", app, deployment, cfg, "deployment withdrawn after failed apply")
+	responseApp := app
+	if previous != nil {
+		responseApp = *previous
+	} else {
+		if restored, err := s.apps.FindByName(ctx, app.Name); err == nil {
+			responseApp = restored
+		}
+	}
+	appProto, err := protoApp(responseApp)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "encode withdrawn app")
+	}
+	requestedState, err := cfg.JSON()
+	if err != nil {
+		return nil, status.Error(codes.Internal, "encode withdrawal state")
+	}
+	return &deployerv1.DeployAppResponse{App: appProto, Deployment: protoDeployment(deployment), WithdrawalConfirmed: true, RequestedState: string(requestedState)}, nil
+}
+
 func parseStoredConfigForDeployment(data string) (appconfig.Config, error) {
 	cfg, err := appconfig.FromJSON(data)
 	if err != nil {
@@ -407,6 +491,11 @@ func (s AppService) DeleteApp(ctx context.Context, req *deployerv1.DeleteAppRequ
 	if name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
+	release, err := s.acquireOperation(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	app, err := s.apps.FindActiveByName(ctx, name)
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, status.Error(codes.NotFound, "app not found")
@@ -1117,4 +1206,25 @@ func protoDeployment(deployment domain.Deployment) *deployerv1.Deployment {
 		CreatedAt:     formatProtoTime(deployment.CreatedAt),
 		UpdatedAt:     formatProtoTime(deployment.UpdatedAt),
 	}
+}
+
+// A successful compensation cannot fence an original Kubernetes write whose
+// reply was lost. Only explicit API rejection responses qualify here. Unknown,
+// transport, timeout, joined and server errors remain ambiguous.
+func definitiveRuntimeRejection(err error) bool {
+	for depth := 0; err != nil && depth < 16; depth++ {
+		if _, joined := err.(interface{ Unwrap() []error }); joined {
+			return false
+		}
+		if reply, ok := err.(apierrors.APIStatus); ok {
+			code := reply.Status().Code
+			return code >= 400 && code < 500 && code != 408
+		}
+		wrapped, ok := err.(interface{ Unwrap() error })
+		if !ok {
+			return false
+		}
+		err = wrapped.Unwrap()
+	}
+	return false
 }

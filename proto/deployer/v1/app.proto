@@ -47,11 +47,14 @@ message Route {
 
 message DeployAppRequest {
   string deployer_yaml = 1;
+  bool report_withdrawal = 2;
 }
 
 message DeployAppResponse {
   App app = 1;
   Deployment deployment = 2;
+  bool withdrawal_confirmed = 3;
+  string requested_state = 4;
 }
 
 message PreflightAppRequest {

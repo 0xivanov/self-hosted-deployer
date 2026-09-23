@@ -71,6 +71,10 @@ type environmentBundleClient interface {
 	CreateEnvironmentBundle(context.Context, string, string, map[string]string) (clicore.EnvironmentBundleInfo, error)
 }
 
+type withdrawalReportingClient interface {
+	DeployAppReportingWithdrawal(context.Context, string) (clicore.DeployResult, error)
+}
+
 func newCLIApp(stdin io.Reader, stdout io.Writer, stderr io.Writer) cliApp {
 	return cliApp{
 		stdin:             stdin,

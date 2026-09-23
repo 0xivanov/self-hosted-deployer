@@ -163,8 +163,10 @@ type EnvironmentBundleInfo struct {
 }
 
 type DeployResult struct {
-	App        AppInfo        `json:"app"`
-	Deployment DeploymentInfo `json:"deployment"`
+	App                 AppInfo         `json:"app"`
+	Deployment          DeploymentInfo  `json:"deployment"`
+	WithdrawalConfirmed bool            `json:"withdrawal_confirmed,omitempty"`
+	RequestedState      json.RawMessage `json:"requested_state,omitempty"`
 }
 
 type DeleteAppResult struct {
@@ -445,11 +447,19 @@ func (c *PlatformClient) GetWorkerBootstrap(ctx context.Context) (WorkerBootstra
 }
 
 func (c *PlatformClient) DeployApp(ctx context.Context, deployerYAML string) (DeployResult, error) {
+	return c.deployApp(ctx, deployerYAML, false)
+}
+
+func (c *PlatformClient) DeployAppReportingWithdrawal(ctx context.Context, deployerYAML string) (DeployResult, error) {
+	return c.deployApp(ctx, deployerYAML, true)
+}
+
+func (c *PlatformClient) deployApp(ctx context.Context, deployerYAML string, reportWithdrawal bool) (DeployResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
 	ctx = c.withBearer(ctx)
 
-	response, err := c.appClient.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: deployerYAML})
+	response, err := c.appClient.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: deployerYAML, ReportWithdrawal: reportWithdrawal})
 	if err != nil {
 		return DeployResult{}, DecodeRPCError(err)
 	}
@@ -458,8 +468,10 @@ func (c *PlatformClient) DeployApp(ctx context.Context, deployerYAML string) (De
 		return DeployResult{}, err
 	}
 	return DeployResult{
-		App:        app,
-		Deployment: deploymentInfo(response.GetDeployment()),
+		App:                 app,
+		Deployment:          deploymentInfo(response.GetDeployment()),
+		WithdrawalConfirmed: response.GetWithdrawalConfirmed(),
+		RequestedState:      json.RawMessage(response.GetRequestedState()),
 	}, nil
 }
 

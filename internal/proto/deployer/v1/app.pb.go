@@ -282,10 +282,11 @@ func (x *Route) GetTlsEnabled() bool {
 }
 
 type DeployAppRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	DeployerYaml  string                 `protobuf:"bytes,1,opt,name=deployer_yaml,json=deployerYaml,proto3" json:"deployer_yaml,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	DeployerYaml     string                 `protobuf:"bytes,1,opt,name=deployer_yaml,json=deployerYaml,proto3" json:"deployer_yaml,omitempty"`
+	ReportWithdrawal bool                   `protobuf:"varint,2,opt,name=report_withdrawal,json=reportWithdrawal,proto3" json:"report_withdrawal,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *DeployAppRequest) Reset() {
@@ -325,12 +326,21 @@ func (x *DeployAppRequest) GetDeployerYaml() string {
 	return ""
 }
 
+func (x *DeployAppRequest) GetReportWithdrawal() bool {
+	if x != nil {
+		return x.ReportWithdrawal
+	}
+	return false
+}
+
 type DeployAppResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	App           *App                   `protobuf:"bytes,1,opt,name=app,proto3" json:"app,omitempty"`
-	Deployment    *Deployment            `protobuf:"bytes,2,opt,name=deployment,proto3" json:"deployment,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state               protoimpl.MessageState `protogen:"open.v1"`
+	App                 *App                   `protobuf:"bytes,1,opt,name=app,proto3" json:"app,omitempty"`
+	Deployment          *Deployment            `protobuf:"bytes,2,opt,name=deployment,proto3" json:"deployment,omitempty"`
+	WithdrawalConfirmed bool                   `protobuf:"varint,3,opt,name=withdrawal_confirmed,json=withdrawalConfirmed,proto3" json:"withdrawal_confirmed,omitempty"`
+	RequestedState      string                 `protobuf:"bytes,4,opt,name=requested_state,json=requestedState,proto3" json:"requested_state,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *DeployAppResponse) Reset() {
@@ -375,6 +385,20 @@ func (x *DeployAppResponse) GetDeployment() *Deployment {
 		return x.Deployment
 	}
 	return nil
+}
+
+func (x *DeployAppResponse) GetWithdrawalConfirmed() bool {
+	if x != nil {
+		return x.WithdrawalConfirmed
+	}
+	return false
+}
+
+func (x *DeployAppResponse) GetRequestedState() string {
+	if x != nil {
+		return x.RequestedState
+	}
+	return ""
 }
 
 type PreflightAppRequest struct {
@@ -1422,14 +1446,17 @@ const file_deployer_v1_app_proto_rawDesc = "" +
 	"targetPort\x12\x16\n" +
 	"\x06status\x18\x05 \x01(\tR\x06status\x12\x1f\n" +
 	"\vtls_enabled\x18\x06 \x01(\bR\n" +
-	"tlsEnabled\"7\n" +
+	"tlsEnabled\"d\n" +
 	"\x10DeployAppRequest\x12#\n" +
-	"\rdeployer_yaml\x18\x01 \x01(\tR\fdeployerYaml\"p\n" +
+	"\rdeployer_yaml\x18\x01 \x01(\tR\fdeployerYaml\x12+\n" +
+	"\x11report_withdrawal\x18\x02 \x01(\bR\x10reportWithdrawal\"\xcc\x01\n" +
 	"\x11DeployAppResponse\x12\"\n" +
 	"\x03app\x18\x01 \x01(\v2\x10.deployer.v1.AppR\x03app\x127\n" +
 	"\n" +
 	"deployment\x18\x02 \x01(\v2\x17.deployer.v1.DeploymentR\n" +
-	"deployment\":\n" +
+	"deployment\x121\n" +
+	"\x14withdrawal_confirmed\x18\x03 \x01(\bR\x13withdrawalConfirmed\x12'\n" +
+	"\x0frequested_state\x18\x04 \x01(\tR\x0erequestedState\":\n" +
 	"\x13PreflightAppRequest\x12#\n" +
 	"\rdeployer_yaml\x18\x01 \x01(\tR\fdeployerYaml\"W\n" +
 	"\x14PreflightAppResponse\x12#\n" +

@@ -3,9 +3,11 @@ package server
 import (
 	"context"
 	"errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"strings"
 	"testing"
 
+	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc/codes"
@@ -55,6 +57,46 @@ func TestDeployEnvironmentMissingBundleFailsBeforeAppAndDeploymentWrites(t *test
 	}
 	if deploymentsForTest, err := deployments.ListByApp(context.Background(), "missing"); err != nil || len(deploymentsForTest) != 0 {
 		t.Fatalf("unexpected deployment state: %#v %v", deploymentsForTest, err)
+	}
+}
+
+func TestAppServiceSerializesMutationsWithContextCancellation(t *testing.T) {
+	service := NewAppService(AppServiceConfig{})
+	release, err := service.acquireOperation(context.Background(), "my-api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := service.acquireOperation(ctx, "my-api"); err == nil {
+		t.Fatal("second mutation was not context-cancelable")
+	}
+}
+
+type failingEnvironmentRuntime struct{ deleted bool }
+
+func (r *failingEnvironmentRuntime) Reconcile(context.Context, appconfig.Config, map[string]string, string) error {
+	return apierrors.NewBadRequest("apply failed")
+}
+func (r *failingEnvironmentRuntime) Delete(context.Context, string) error {
+	r.deleted = true
+	return nil
+}
+func (r *failingEnvironmentRuntime) Status(context.Context, string) (string, error) {
+	return "failed", nil
+}
+
+func TestDeployReportsConfirmedInitialWithdrawal(t *testing.T) {
+	database := openTestDB(t)
+	runtime := &failingEnvironmentRuntime{}
+	service := NewAppService(AppServiceConfig{Apps: db.NewAppRepository(database), Deployments: db.NewDeploymentRepository(database), Routes: db.NewRouteRepository(database), Runtime: runtime})
+	response, err := service.DeployApp(WithCaller(context.Background(), Caller{Kind: CallerAdmin}), &deployerv1.DeployAppRequest{DeployerYaml: testAppYAML("ivan/my-api:1.0.0", 1), ReportWithdrawal: true})
+	if err != nil {
+		t.Fatalf("withdrawal response: %v", err)
+	}
+	if !response.GetWithdrawalConfirmed() || response.GetDeployment().GetStatus() != deploymentStatusFailed || !runtime.deleted || response.GetRequestedState() == "" {
+		t.Fatalf("unexpected withdrawal response: %#v", response)
 	}
 }
 

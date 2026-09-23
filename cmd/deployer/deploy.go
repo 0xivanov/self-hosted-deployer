@@ -17,6 +17,7 @@ func (a cliApp) deploy(args []string, opts cliOptions) int {
 	configPath := flags.String("file", "deployer.yaml", "path to deployer.yaml")
 	flags.StringVar(configPath, "f", "deployer.yaml", "path to deployer.yaml")
 	dryRun := flags.Bool("dry-run", false, "validate and print desired state without server call")
+	reportWithdrawal := flags.Bool("report-withdrawal", false, "return a confirmed withdrawal result when deployment apply fails")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -24,7 +25,7 @@ func (a cliApp) deploy(args []string, opts cliOptions) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(a.stderr, "usage: deployer deploy [--file path|-f path] [--dry-run]")
+		fmt.Fprintln(a.stderr, "usage: deployer deploy [--file path|-f path] [--dry-run] [--report-withdrawal]")
 		return 2
 	}
 
@@ -50,7 +51,17 @@ func (a cliApp) deploy(args []string, opts cliOptions) int {
 	defer closeClient()
 
 	announceMutationTarget(a.stderr, resolved)
-	result, err := client.DeployApp(context.Background(), string(data))
+	var result clicore.DeployResult
+	if *reportWithdrawal {
+		reporter, ok := client.(withdrawalReportingClient)
+		if !ok {
+			fmt.Fprintln(a.stderr, "client does not support withdrawal reporting")
+			return 1
+		}
+		result, err = reporter.DeployAppReportingWithdrawal(context.Background(), string(data))
+	} else {
+		result, err = client.DeployApp(context.Background(), string(data))
+	}
 	if err != nil {
 		fmt.Fprintln(a.stderr, err)
 		return 1
@@ -61,6 +72,10 @@ func (a cliApp) deploy(args []string, opts cliOptions) int {
 			return 1
 		}
 		return 0
+	}
+	if result.WithdrawalConfirmed {
+		fmt.Fprintln(a.stderr, "Deployment failed. The candidate was withdrawn; verify the previous application is healthy before retrying.")
+		return 1
 	}
 	renderAppSummary(a.stdout, result.App)
 	clicore.RenderFields(a.stdout, clicore.Field{Name: "Deployment", Value: result.Deployment.ID})

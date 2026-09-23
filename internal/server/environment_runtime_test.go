@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"strings"
 	"testing"
 
@@ -23,7 +24,7 @@ func (r *environmentRuntime) Reconcile(ctx context.Context, cfg appconfig.Config
 		return err
 	}
 	if revision == r.failRevision {
-		return errors.New("environment apply failed")
+		return apierrors.NewBadRequest("environment apply failed")
 	}
 	return nil
 }
