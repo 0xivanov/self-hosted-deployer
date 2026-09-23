@@ -82,6 +82,8 @@ func (a cliApp) dispatch(args []string, opts cliOptions) int {
 		return a.routes(args[1:], opts)
 	case "secrets":
 		return a.secrets(args[1:], opts)
+	case "registry":
+		return a.registry(args[1:], opts)
 	case "events":
 		return a.events(args[1:], opts)
 	case "doctor":

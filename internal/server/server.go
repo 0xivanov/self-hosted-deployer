@@ -19,16 +19,17 @@ import (
 )
 
 type Repositories struct {
-	Health      HealthRepository
-	AdminTokens AdminTokenRepository
-	AgentTokens AgentTokenRepository
-	JoinTokens  JoinTokenRepository
-	Nodes       NodeRepository
-	Apps        AppRepository
-	Deployments DeploymentRepository
-	Routes      RouteRepository
-	Secrets     SecretRepository
-	Events      EventRepository
+	RegistryCredentials RegistryCredentialRepository
+	Health              HealthRepository
+	AdminTokens         AdminTokenRepository
+	AgentTokens         AgentTokenRepository
+	JoinTokens          JoinTokenRepository
+	Nodes               NodeRepository
+	Apps                AppRepository
+	Deployments         DeploymentRepository
+	Routes              RouteRepository
+	Secrets             SecretRepository
+	Events              EventRepository
 }
 
 type Runtime struct {
@@ -129,22 +130,27 @@ func Serve(ctx context.Context, cfg config.ServerConfig, logger *slog.Logger, re
 	if appRuntime == nil {
 		appRuntime = runtime.Ingress
 	}
+	registryCredentials := NewRegistryCredentialService(repos.RegistryCredentials, runtime.SecretCipher)
+	deployerv1.RegisterRegistryCredentialServiceServer(grpcServer, registryCredentials)
 	deployerv1.RegisterAppServiceServer(grpcServer, NewAppService(AppServiceConfig{
-		Apps:            repos.Apps,
-		Deployments:     repos.Deployments,
-		Routes:          repos.Routes,
-		Secrets:         repos.Secrets,
-		Cipher:          runtime.SecretCipher,
-		Runtime:         appRuntime,
-		RouteTLSEnabled: runtime.RouteTLSEnabled,
-		Events:          eventRecorder,
+		RegistryCredentials:          registryCredentials,
+		RegistryCredentialRepository: repos.RegistryCredentials,
+		Apps:                         repos.Apps,
+		Deployments:                  repos.Deployments,
+		Routes:                       repos.Routes,
+		Secrets:                      repos.Secrets,
+		Cipher:                       runtime.SecretCipher,
+		Runtime:                      appRuntime,
+		RouteTLSEnabled:              runtime.RouteTLSEnabled,
+		Events:                       eventRecorder,
 	}))
 	deployerv1.RegisterSecretServiceServer(grpcServer, NewSecretService(SecretServiceConfig{
-		Apps:    repos.Apps,
-		Secrets: repos.Secrets,
-		Cipher:  runtime.SecretCipher,
-		Runtime: appRuntime,
-		Events:  eventRecorder,
+		RegistryCredentials: registryCredentials,
+		Apps:                repos.Apps,
+		Secrets:             repos.Secrets,
+		Cipher:              runtime.SecretCipher,
+		Runtime:             appRuntime,
+		Events:              eventRecorder,
 	}))
 	deployerv1.RegisterEventServiceServer(grpcServer, NewEventService(EventServiceConfig{
 		Events: repos.Events,

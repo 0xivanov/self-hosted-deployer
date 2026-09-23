@@ -48,3 +48,14 @@ func ownedDeleteOptions(object metav1.Object) metav1.DeleteOptions {
 	}
 	return options
 }
+
+func ownedDeleteOptionsWithResourceVersion(object metav1.Object) metav1.DeleteOptions {
+	options := ownedDeleteOptions(object)
+	if resourceVersion := object.GetResourceVersion(); resourceVersion != "" {
+		if options.Preconditions == nil {
+			options.Preconditions = &metav1.Preconditions{}
+		}
+		options.Preconditions.ResourceVersion = &resourceVersion
+	}
+	return options
+}

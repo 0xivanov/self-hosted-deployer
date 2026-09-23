@@ -62,6 +62,11 @@ type platformIdentityVerifier interface {
 	VerifyServerIdentity(context.Context, string) error
 }
 
+type registryCredentialClient interface {
+	CreateRegistryCredential(context.Context, string, string, string, string, string) (clicore.RegistryCredentialInfo, error)
+	ListRegistryCredentials(context.Context, string) ([]clicore.RegistryCredentialInfo, error)
+}
+
 func newCLIApp(stdin io.Reader, stdout io.Writer, stderr io.Writer) cliApp {
 	return cliApp{
 		stdin:             stdin,

@@ -27,6 +27,9 @@ func (s AppService) PreflightApp(ctx context.Context, req *deployerv1.PreflightA
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	if _, err := resolveRuntimeRegistry(ctx, s.runtime, s.registryCredentials, cfg); err != nil {
+		return nil, err
+	}
 	if err := preflightHosting(ctx, s.runtime, cfg); err != nil {
 		return nil, err
 	}

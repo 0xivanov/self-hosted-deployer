@@ -7,15 +7,16 @@ import (
 
 func newRepositories(database *db.Db) server.Repositories {
 	return server.Repositories{
-		Health:      db.NewHealthRepository(database),
-		AdminTokens: db.NewAdminTokenRepository(database),
-		AgentTokens: db.NewAgentTokenRepository(database),
-		JoinTokens:  db.NewJoinTokenRepository(database),
-		Nodes:       db.NewNodeRepository(database),
-		Apps:        db.NewAppRepository(database),
-		Deployments: db.NewDeploymentRepository(database),
-		Routes:      db.NewRouteRepository(database),
-		Secrets:     db.NewSecretRepository(database),
-		Events:      db.NewEventRepository(database),
+		RegistryCredentials: db.NewRegistryCredentialRepository(database),
+		Health:              db.NewHealthRepository(database),
+		AdminTokens:         db.NewAdminTokenRepository(database),
+		AgentTokens:         db.NewAgentTokenRepository(database),
+		JoinTokens:          db.NewJoinTokenRepository(database),
+		Nodes:               db.NewNodeRepository(database),
+		Apps:                db.NewAppRepository(database),
+		Deployments:         db.NewDeploymentRepository(database),
+		Routes:              db.NewRouteRepository(database),
+		Secrets:             db.NewSecretRepository(database),
+		Events:              db.NewEventRepository(database),
 	}
 }

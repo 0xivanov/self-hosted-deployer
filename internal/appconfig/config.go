@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/0xivanov/self-hosted-deployer/internal/registryauth"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,18 +27,19 @@ var appNamePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
 var secretNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type Config struct {
-	Name       string           `json:"name" yaml:"name"`
-	Image      string           `json:"image" yaml:"image"`
-	Service    ServiceConfig    `json:"service" yaml:"service"`
-	Metrics    *MetricsConfig   `json:"metrics,omitempty" yaml:"metrics,omitempty"`
-	Routing    RoutingConfig    `json:"routing" yaml:"routing"`
-	Deploy     DeployConfig     `json:"deploy" yaml:"deploy"`
-	Placement  PlacementConfig  `json:"placement" yaml:"placement"`
-	Secrets    []string         `json:"secrets,omitempty" yaml:"secrets"`
-	State      StateConfig      `json:"state" yaml:"state"`
-	Resilience ResilienceConfig `json:"resilience" yaml:"resilience"`
-	Database   DatabaseConfig   `json:"database,omitempty" yaml:"database,omitempty"`
-	Hosting    *HostingConfig   `json:"hosting,omitempty" yaml:"hosting,omitempty"`
+	ImagePullCredential string           `json:"image_pull_credential,omitempty" yaml:"imagePullCredential,omitempty"`
+	Name                string           `json:"name" yaml:"name"`
+	Image               string           `json:"image" yaml:"image"`
+	Service             ServiceConfig    `json:"service" yaml:"service"`
+	Metrics             *MetricsConfig   `json:"metrics,omitempty" yaml:"metrics,omitempty"`
+	Routing             RoutingConfig    `json:"routing" yaml:"routing"`
+	Deploy              DeployConfig     `json:"deploy" yaml:"deploy"`
+	Placement           PlacementConfig  `json:"placement" yaml:"placement"`
+	Secrets             []string         `json:"secrets,omitempty" yaml:"secrets"`
+	State               StateConfig      `json:"state" yaml:"state"`
+	Resilience          ResilienceConfig `json:"resilience" yaml:"resilience"`
+	Database            DatabaseConfig   `json:"database,omitempty" yaml:"database,omitempty"`
+	Hosting             *HostingConfig   `json:"hosting,omitempty" yaml:"hosting,omitempty"`
 }
 
 type ServiceConfig struct {
@@ -127,6 +129,9 @@ func (c *Config) Normalize() {
 }
 
 func (c Config) Validate() error {
+	if c.ImagePullCredential != "" && !registryauth.ValidRevision(c.ImagePullCredential) {
+		return fmt.Errorf("imagePullCredential must be an immutable credential revision")
+	}
 	if c.Name == "" {
 		return fmt.Errorf("name is required")
 	}

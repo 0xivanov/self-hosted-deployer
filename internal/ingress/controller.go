@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
+	"github.com/0xivanov/self-hosted-deployer/internal/registryauth"
 	appsv1 "k8s.io/api/apps/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -152,6 +153,16 @@ func (c *Controller) TLSEnabled() bool {
 }
 
 func (c *Controller) Reconcile(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string) error {
+	return c.ReconcileWithRegistry(ctx, cfg, secretValues, secretRevision, nil)
+}
+
+// ReconcileWithRegistry reconciles an application and its optional private
+// registry credential. Registry credentials are validated before any resource
+// is read or written.
+func (c *Controller) ReconcileWithRegistry(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string, credential *registryauth.Credential) error {
+	if err := validateRegistryReference(cfg, credential); err != nil {
+		return err
+	}
 	if err := c.validateHostingRuntime(cfg); err != nil {
 		return err
 	}
@@ -165,9 +176,9 @@ func (c *Controller) Reconcile(ctx context.Context, cfg appconfig.Config, secret
 		if err := c.deleteIngress(ctx, cfg.Name); err != nil {
 			return err
 		}
-		return c.reconcileAppResources(ctx, cfg, secretValues, secretRevision)
+		return c.reconcileAppResources(ctx, cfg, secretValues, secretRevision, credential)
 	}
-	if err := c.reconcileAppResources(ctx, cfg, secretValues, secretRevision); err != nil {
+	if err := c.reconcileAppResources(ctx, cfg, secretValues, secretRevision, credential); err != nil {
 		return err
 	}
 	manifest, ok, err := ManifestForApp(cfg, c.namespace, c.tls)
@@ -235,7 +246,7 @@ func (c *Controller) Delete(ctx context.Context, appName string) error {
 	if appName == "" {
 		return nil
 	}
-	return errors.Join(
+	err := errors.Join(
 		c.deleteIngress(ctx, appName),
 		c.deleteHostingNetworkPolicy(ctx, appName),
 		c.deleteService(ctx, appName),
@@ -244,6 +255,11 @@ func (c *Controller) Delete(ctx context.Context, appName string) error {
 		c.deletePodDisruptionBudget(ctx, appName),
 		c.deleteAppSecret(ctx, appName),
 	)
+	if err != nil {
+		return err
+	}
+	// Preserve pull credentials when resource deletion has not completed.
+	return c.deleteRegistrySecrets(ctx, appName)
 }
 
 func (c *Controller) deleteIngress(ctx context.Context, appName string) error {

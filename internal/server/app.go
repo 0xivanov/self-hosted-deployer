@@ -93,18 +93,22 @@ type LoggingAppRuntime interface {
 type IngressRuntime = AppRuntime
 
 type AppServiceConfig struct {
-	Apps            AppRepository
-	Deployments     DeploymentRepository
-	Routes          RouteRepository
-	Secrets         SecretRepository
-	Cipher          SecretCipher
-	Runtime         AppRuntime
-	Ingress         IngressRuntime
-	RouteTLSEnabled bool
-	Events          EventRecorder
+	RegistryCredentialRepository RegistryCredentialRepository
+	RegistryCredentials          RegistryCredentialResolver
+	Apps                         AppRepository
+	Deployments                  DeploymentRepository
+	Routes                       RouteRepository
+	Secrets                      SecretRepository
+	Cipher                       SecretCipher
+	Runtime                      AppRuntime
+	Ingress                      IngressRuntime
+	RouteTLSEnabled              bool
+	Events                       EventRecorder
 }
 
 type AppService struct {
+	registryCredentialRepository RegistryCredentialRepository
+	registryCredentials          RegistryCredentialResolver
 	deployerv1.UnimplementedAppServiceServer
 	apps            AppRepository
 	deployments     DeploymentRepository
@@ -123,15 +127,17 @@ func NewAppService(cfg AppServiceConfig) AppService {
 		runtime = cfg.Ingress
 	}
 	return AppService{
-		apps:            cfg.Apps,
-		deployments:     cfg.Deployments,
-		routes:          cfg.Routes,
-		secrets:         cfg.Secrets,
-		cipher:          cfg.Cipher,
-		runtime:         runtime,
-		routeTLSEnabled: cfg.RouteTLSEnabled,
-		events:          cfg.Events,
-		now:             time.Now,
+		registryCredentialRepository: cfg.RegistryCredentialRepository,
+		registryCredentials:          cfg.RegistryCredentials,
+		apps:                         cfg.Apps,
+		deployments:                  cfg.Deployments,
+		routes:                       cfg.Routes,
+		secrets:                      cfg.Secrets,
+		cipher:                       cfg.Cipher,
+		runtime:                      runtime,
+		routeTLSEnabled:              cfg.RouteTLSEnabled,
+		events:                       cfg.Events,
+		now:                          time.Now,
 	}
 }
 
@@ -146,6 +152,10 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	cfg, err := appconfig.Parse([]byte(req.GetDeployerYaml()))
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	registryCredential, err := resolveRuntimeRegistry(ctx, s.runtime, s.registryCredentials, cfg)
+	if err != nil {
+		return nil, err
 	}
 	if err := preflightHosting(ctx, s.runtime, cfg); err != nil {
 		return nil, err
@@ -223,7 +233,7 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 		return nil, err
 	}
 	if s.runtime != nil {
-		if err := s.runtime.Reconcile(ctx, cfg, secretValues, secretRevision); err != nil {
+		if err := reconcileRuntime(ctx, s.runtime, cfg, secretValues, secretRevision, registryCredential); err != nil {
 			if previousApp != nil {
 				if rollbackErr := s.rollbackAppUpdate(ctx, *previousApp, now); rollbackErr != nil {
 					err = fmt.Errorf("%w; rollback to the last applied app configuration failed: %v", err, rollbackErr)
@@ -295,9 +305,13 @@ func (s AppService) rollbackAppUpdate(ctx context.Context, previous domain.App, 
 	if err != nil {
 		return fmt.Errorf("resolve last applied app secrets: %w", err)
 	}
+	registryCredential, err := resolveRuntimeRegistry(ctx, s.runtime, s.registryCredentials, cfg)
+	if err != nil {
+		return err
+	}
 	var rollbackErrors []error
 	if s.runtime != nil {
-		if err := s.runtime.Reconcile(ctx, cfg, secretValues, secretRevision); err != nil {
+		if err := reconcileRuntime(ctx, s.runtime, cfg, secretValues, secretRevision, registryCredential); err != nil {
 			rollbackErrors = append(rollbackErrors, fmt.Errorf("restore app resources: %w", err))
 		}
 	}
@@ -386,6 +400,11 @@ func (s AppService) DeleteApp(ctx context.Context, req *deployerv1.DeleteAppRequ
 	if s.routes != nil {
 		if err := s.routes.DeleteByApp(ctx, app.ID); err != nil {
 			return nil, status.Error(codes.Internal, "delete app routes")
+		}
+	}
+	if s.registryCredentialRepository != nil {
+		if err := s.registryCredentialRepository.DeleteByApp(ctx, app.Name); err != nil {
+			return nil, status.Error(codes.Internal, "delete app registry credentials")
 		}
 	}
 	app, err = s.apps.MarkDeleted(ctx, name, s.now().UTC())

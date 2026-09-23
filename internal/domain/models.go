@@ -104,6 +104,14 @@ type Secret struct {
 	UpdatedAt  time.Time
 }
 
+type RegistryCredential struct {
+	Revision   string
+	AppName    string
+	Registry   string
+	Ciphertext string `json:"-"`
+	CreatedAt  time.Time
+}
+
 type Route struct {
 	ID         string
 	AppID      string

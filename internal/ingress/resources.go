@@ -2,6 +2,9 @@ package ingress
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -9,6 +12,7 @@ import (
 	"time"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
+	"github.com/0xivanov/self-hosted-deployer/internal/registryauth"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -23,7 +27,7 @@ const (
 	legacyAffinityMigrationTimeout    = 5 * time.Minute
 )
 
-func (c *Controller) reconcileAppResources(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string) error {
+func (c *Controller) reconcileAppResources(ctx context.Context, cfg appconfig.Config, secretValues map[string]string, secretRevision string, credential *registryauth.Credential) error {
 	if err := c.reconcileNamespace(ctx); err != nil {
 		return err
 	}
@@ -36,7 +40,11 @@ func (c *Controller) reconcileAppResources(ctx context.Context, cfg appconfig.Co
 	if err := c.reconcileSecret(ctx, cfg, secretValues); err != nil {
 		return err
 	}
-	if err := c.reconcileDeployment(ctx, cfg, secretRevision); err != nil {
+	registrySecretName, err := c.reconcileRegistrySecret(ctx, cfg, credential)
+	if err != nil {
+		return err
+	}
+	if err := c.reconcileDeployment(ctx, cfg, secretRevision, registrySecretName); err != nil {
 		return err
 	}
 	if err := c.reconcilePodDisruptionBudget(ctx, cfg); err != nil {
@@ -107,10 +115,17 @@ func (c *Controller) reconcileNamespace(ctx context.Context) error {
 	return nil
 }
 
-func (c *Controller) reconcileDeployment(ctx context.Context, cfg appconfig.Config, secretRevision string) error {
+func (c *Controller) reconcileDeployment(ctx context.Context, cfg appconfig.Config, secretRevision string, registrySecretNames ...string) error {
 	desired, err := deploymentForApp(cfg, c.namespace, secretRevision)
 	if err != nil {
 		return err
+	}
+	registrySecretName := ""
+	if len(registrySecretNames) > 0 {
+		registrySecretName = registrySecretNames[0]
+	}
+	if registrySecretName != "" {
+		desired.Spec.Template.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: registrySecretName}}
 	}
 	existing, err := c.deployments.Get(ctx, desired.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
@@ -133,6 +148,110 @@ func (c *Controller) reconcileDeployment(ctx context.Context, cfg appconfig.Conf
 		return fmt.Errorf("update Deployment %q: %w", desired.Name, err)
 	}
 	return nil
+}
+
+const registrySecretLabel = "deployer.io/registry-secret"
+
+func validateRegistryReference(cfg appconfig.Config, credential *registryauth.Credential) error {
+	revision := cfg.ImagePullCredential
+	if revision == "" {
+		if credential != nil {
+			return fmt.Errorf("image pull credential must be omitted for a public image")
+		}
+		return nil
+	}
+	if credential == nil {
+		return errors.New("image pull credential is unavailable")
+	}
+	if err := credential.ValidateFor(cfg.Name, revision, cfg.Image); err != nil {
+		return fmt.Errorf("invalid image pull credential: %w", err)
+	}
+	if _, err := credential.DockerConfigJSON(); err != nil {
+		return fmt.Errorf("invalid image pull credential: %w", err)
+	}
+	return nil
+}
+
+func registrySecretName(appName, revision string) string {
+	sum := sha256.Sum256([]byte(appName + "\x00" + revision))
+	suffix := hex.EncodeToString(sum[:])[:24]
+	name := strings.ToLower(strings.TrimSpace(appName)) + "-pull-" + suffix
+	if len(name) > 253 {
+		name = name[:253]
+	}
+	return name
+}
+
+func (c *Controller) reconcileRegistrySecret(ctx context.Context, cfg appconfig.Config, credential *registryauth.Credential) (string, error) {
+	if credential == nil || cfg.ImagePullCredential == "" {
+		return "", nil
+	}
+	name := registrySecretName(cfg.Name, cfg.ImagePullCredential)
+	data, err := credential.DockerConfigJSON()
+	if err != nil {
+		return "", fmt.Errorf("build image pull credential: %w", err)
+	}
+	desired := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+		Name: name, Namespace: c.namespace,
+		Annotations: map[string]string{"deployer.io/registry-revision": cfg.ImagePullCredential},
+		Labels: func() map[string]string {
+			labels := managedAppLabels(cfg.Name)
+			labels[registrySecretLabel] = "true"
+			return labels
+		}(),
+	}, Type: corev1.SecretTypeDockerConfigJson, Immutable: boolPtr(true), Data: map[string][]byte{corev1.DockerConfigJsonKey: data}}
+	existing, err := c.appSecrets.Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		if _, err := c.appSecrets.Create(ctx, desired, metav1.CreateOptions{}); err != nil {
+			return "", errors.New("create image pull credential failed")
+		}
+		return name, nil
+	}
+	if err != nil {
+		return "", errors.New("get image pull credential failed")
+	}
+	if err := requireAppResourceOwnership("Secret", existing.Name, cfg.Name, existing.Labels); err != nil {
+		return "", err
+	}
+	if existing.Labels[managedByLabel] != managedByDeployer || existing.Labels[registrySecretLabel] != "true" || existing.Annotations["deployer.io/registry-revision"] != cfg.ImagePullCredential || existing.Type != corev1.SecretTypeDockerConfigJson || existing.Immutable == nil || !*existing.Immutable || !jsonEqual(existing.Data, desired.Data) {
+		return "", fmt.Errorf("image pull credential Secret %q is not a matching immutable managed credential", name)
+	}
+	return name, nil
+}
+
+func jsonEqual(a, b map[string][]byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, value := range a {
+		if string(value) != string(b[key]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (c *Controller) deleteRegistrySecrets(ctx context.Context, appName string) error {
+	secrets, err := c.appSecrets.List(ctx, metav1.ListOptions{LabelSelector: appOwnershipLabel + "=" + appName + "," + registrySecretLabel + "=true"})
+	if err != nil {
+		return errors.New("list image pull credentials failed")
+	}
+	var errs []error
+	for i := range secrets.Items {
+		secret := &secrets.Items[i]
+		if err := requireAppResourceOwnership("Secret", secret.Name, appName, secret.Labels); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		if secret.Labels[managedByLabel] != managedByDeployer || !registryauth.ValidRevision(secret.Annotations["deployer.io/registry-revision"]) || secret.Name != registrySecretName(appName, secret.Annotations["deployer.io/registry-revision"]) || secret.Labels[registrySecretLabel] != "true" || secret.Type != corev1.SecretTypeDockerConfigJson || secret.Immutable == nil || !*secret.Immutable {
+			errs = append(errs, fmt.Errorf("image pull credential Secret %q is not a managed immutable docker credential", secret.Name))
+			continue
+		}
+		if err := c.appSecrets.Delete(ctx, secret.Name, ownedDeleteOptionsWithResourceVersion(secret)); err != nil && !apierrors.IsNotFound(err) {
+			errs = append(errs, errors.New("delete image pull credential failed"))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func needsLegacyAffinityMigration(existing *appsv1.Deployment, desired *appsv1.Deployment) bool {

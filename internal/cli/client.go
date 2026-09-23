@@ -27,6 +27,7 @@ type PlatformClient struct {
 	nodeClient     deployerv1.NodeServiceClient
 	appClient      deployerv1.AppServiceClient
 	secretClient   deployerv1.SecretServiceClient
+	registryClient deployerv1.RegistryCredentialServiceClient
 	eventClient    deployerv1.EventServiceClient
 	token          string
 	timeout        time.Duration
@@ -146,6 +147,13 @@ type EventFilter struct {
 	Limit    int
 }
 
+type RegistryCredentialInfo struct {
+	AppName   string `json:"app_name"`
+	Revision  string `json:"revision"`
+	Registry  string `json:"registry"`
+	CreatedAt string `json:"created_at"`
+}
+
 type DeployResult struct {
 	App        AppInfo        `json:"app"`
 	Deployment DeploymentInfo `json:"deployment"`
@@ -208,6 +216,7 @@ func NewPlatformClient(serverURL string, token string) (*PlatformClient, *grpc.C
 	)
 	client.secretClient = deployerv1.NewSecretServiceClient(conn)
 	client.eventClient = deployerv1.NewEventServiceClient(conn)
+	client.registryClient = deployerv1.NewRegistryCredentialServiceClient(conn)
 	return client, conn, nil
 }
 
@@ -645,6 +654,45 @@ func (c *PlatformClient) DeleteSecret(ctx context.Context, appName string, name 
 
 	_, err := c.secretClient.DeleteSecret(ctx, &deployerv1.DeleteSecretRequest{AppName: appName, Name: name})
 	return DecodeRPCError(err)
+}
+
+func (c *PlatformClient) CreateRegistryCredential(ctx context.Context, appName, revision, registry, username, password string) (RegistryCredentialInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	if c.registryClient == nil {
+		return RegistryCredentialInfo{}, fmt.Errorf("registry credential service is unavailable")
+	}
+	response, err := c.registryClient.CreateRegistryCredential(ctx, &deployerv1.CreateRegistryCredentialRequest{AppName: appName, Revision: revision, Registry: registry, Username: username, Password: password})
+	if err != nil {
+		return RegistryCredentialInfo{}, fmt.Errorf("registry credential creation failed (%s)", status.Code(err))
+	}
+	return registryCredentialInfo(response.GetCredential()), nil
+}
+
+func (c *PlatformClient) ListRegistryCredentials(ctx context.Context, appName string) ([]RegistryCredentialInfo, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	ctx = c.withBearer(ctx)
+	if c.registryClient == nil {
+		return nil, fmt.Errorf("registry credential service is unavailable")
+	}
+	response, err := c.registryClient.ListRegistryCredentials(ctx, &deployerv1.ListRegistryCredentialsRequest{AppName: appName})
+	if err != nil {
+		return nil, fmt.Errorf("registry credential listing failed (%s)", status.Code(err))
+	}
+	result := make([]RegistryCredentialInfo, 0, len(response.GetCredentials()))
+	for _, credential := range response.GetCredentials() {
+		result = append(result, registryCredentialInfo(credential))
+	}
+	return result, nil
+}
+
+func registryCredentialInfo(credential *deployerv1.RegistryCredentialMetadata) RegistryCredentialInfo {
+	if credential == nil {
+		return RegistryCredentialInfo{}
+	}
+	return RegistryCredentialInfo{AppName: credential.GetAppName(), Revision: credential.GetRevision(), Registry: credential.GetRegistry(), CreatedAt: credential.GetCreatedAt()}
 }
 
 func (c *PlatformClient) ListEvents(ctx context.Context, filter EventFilter) ([]EventInfo, error) {

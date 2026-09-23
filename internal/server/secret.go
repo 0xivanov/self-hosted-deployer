@@ -38,14 +38,16 @@ func (e requiredSecretNotSetError) Error() string {
 }
 
 type SecretServiceConfig struct {
-	Apps    AppRepository
-	Secrets SecretRepository
-	Cipher  SecretCipher
-	Runtime AppRuntime
-	Events  EventRecorder
+	RegistryCredentials RegistryCredentialResolver
+	Apps                AppRepository
+	Secrets             SecretRepository
+	Cipher              SecretCipher
+	Runtime             AppRuntime
+	Events              EventRecorder
 }
 
 type SecretService struct {
+	registryCredentials RegistryCredentialResolver
 	deployerv1.UnimplementedSecretServiceServer
 	apps    AppRepository
 	secrets SecretRepository
@@ -57,12 +59,13 @@ type SecretService struct {
 
 func NewSecretService(cfg SecretServiceConfig) SecretService {
 	return SecretService{
-		apps:    cfg.Apps,
-		secrets: cfg.Secrets,
-		cipher:  cfg.Cipher,
-		runtime: cfg.Runtime,
-		events:  cfg.Events,
-		now:     time.Now,
+		registryCredentials: cfg.RegistryCredentials,
+		apps:                cfg.Apps,
+		secrets:             cfg.Secrets,
+		cipher:              cfg.Cipher,
+		runtime:             cfg.Runtime,
+		events:              cfg.Events,
+		now:                 time.Now,
 	}
 }
 
@@ -223,7 +226,11 @@ func (s SecretService) reconcileReferencedSecret(ctx context.Context, app domain
 		}
 		return err
 	}
-	if err := s.runtime.Reconcile(ctx, cfg, secretValues, secretRevision); err != nil {
+	registryCredential, err := resolveRuntimeRegistry(ctx, s.runtime, s.registryCredentials, cfg)
+	if err != nil {
+		return err
+	}
+	if err := reconcileRuntime(ctx, s.runtime, cfg, secretValues, secretRevision, registryCredential); err != nil {
 		return status.Error(codes.Internal, "apply updated app secret")
 	}
 	return nil

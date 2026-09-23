@@ -98,6 +98,7 @@ func usage(w io.Writer, flags *flag.FlagSet) {
 	fmt.Fprintln(w, "  login      Save CLI access to the control plane")
 	fmt.Fprintln(w, "  contexts   List or select customer control plane contexts")
 	fmt.Fprintln(w, "  nodes      Add, inspect, drain, remove, purge, and rename nodes")
+	fmt.Fprintln(w, "  registry   Create and list private registry credentials")
 	fmt.Fprintln(w, "  routes     List and inspect public routes")
 	fmt.Fprintln(w, "  secrets    Set, list, and remove app secrets")
 	fmt.Fprintln(w, "  events     List and watch platform events")

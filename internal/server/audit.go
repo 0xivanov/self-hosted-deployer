@@ -120,7 +120,8 @@ func isMutationMethod(method string) bool {
 		"/deployer.v1.NodeService/PurgeNode",
 		"/deployer.v1.NodeService/RenameNode",
 		"/deployer.v1.SecretService/SetSecret",
-		"/deployer.v1.SecretService/DeleteSecret":
+		"/deployer.v1.SecretService/DeleteSecret",
+		"/deployer.v1.RegistryCredentialService/CreateRegistryCredential":
 		return true
 	default:
 		return false
@@ -138,6 +139,14 @@ func mutationTarget(method string, req any) map[string]string {
 		}
 	}
 	switch method {
+	case "/deployer.v1.RegistryCredentialService/CreateRegistryCredential":
+		if request, ok := req.(*deployerv1.CreateRegistryCredentialRequest); ok {
+			put("app", request.GetAppName())
+			put("revision", request.GetRevision())
+			if request.GetRegistry() == "docker.io" || request.GetRegistry() == "ghcr.io" {
+				put("registry", request.GetRegistry())
+			}
+		}
 	case "/deployer.v1.AppService/DeployApp":
 		if request, ok := req.(*deployerv1.DeployAppRequest); ok {
 			var parsed struct {
