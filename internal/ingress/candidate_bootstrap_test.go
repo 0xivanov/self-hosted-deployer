@@ -23,6 +23,9 @@ func TestCandidateBootstrapSelectsNoCandidateAndNeverOverwrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !IsInactiveCandidateTarget(cfg, id, ActivationTarget{Selector: before.Spec.Selector, Ports: before.Spec.Ports}) {
+		t.Fatal("bootstrap target is not recognized as inactive")
+	}
 	for _, request := range []string{id, strings.Repeat("b", 64)} {
 		candidate, err := CandidateDeploymentForApp(cfg, DefaultNamespace, "", request, "")
 		if err != nil {

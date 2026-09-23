@@ -41,12 +41,15 @@ func CandidateDeploymentForApp(cfg appconfig.Config, namespace, secretRevision, 
 	if err := ValidateCandidateReferences(cfg, secretRevision, registrySecretName); err != nil {
 		return nil, err
 	}
+	return candidateDeploymentForGeneration(cfg, namespace, secretRevision, candidateGeneration(cfg.Name, requestID), registrySecretName)
+}
+
+func candidateDeploymentForGeneration(cfg appconfig.Config, namespace, secretRevision, generation, registrySecretName string) (*appsv1.Deployment, error) {
 	desired, err := deploymentForApp(cfg, namespace, secretRevision)
 	if err != nil {
 		return nil, err
 	}
-	desired.Name = candidateDeploymentName(cfg.Name, requestID)
-	generation := candidateGeneration(cfg.Name, requestID)
+	desired.Name = candidateNameForGeneration(cfg.Name, generation)
 	if registrySecretName != "" {
 		desired.Spec.Template.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: registrySecretName}}
 	}
