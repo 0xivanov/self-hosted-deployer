@@ -121,16 +121,24 @@ type EnvironmentBundle struct {
 }
 
 type DeployRequest struct {
-	AppName string
-	RequestID string
-	State string
-	RequestedState string
-	PreviousAppID string
-	PreviousState string
+	AppName          string
+	RequestID        string
+	State            string
+	RequestedState   string
+	PreviousAppID    string
+	PreviousState    string
 	ReportWithdrawal bool
-	ResponseJSON string
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ResponseJSON     string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type CandidateBinding struct {
+	AppName      string
+	RequestID    string
+	AppID        string
+	DeploymentID string
+	CreatedAt    time.Time
 }
 
 type Route struct {

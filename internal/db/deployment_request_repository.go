@@ -117,7 +117,9 @@ func (r *DeploymentRequestRepository) Complete(ctx context.Context, appName, req
 	if (state != "applied" && state != "withdrawn") || !json.Valid([]byte(response)) || response == "null" {
 		return ErrDeployRequestIdentity
 	}
-	return mapRowsAffected(r.db.conn.ExecContext(ctx, `UPDATE deployment_requests SET state = ?, response_json = ?, updated_at = ? WHERE app_name = ? AND request_id = ? AND state = 'pending'`, state, response, formatTime(updated), appName, requestID))
+	// Bound candidates must commit app, deployment, route and receipt together.
+	// Preserve this legacy completion path only for requests without a binding.
+	return mapRowsAffected(r.db.conn.ExecContext(ctx, `UPDATE deployment_requests SET state = ?, response_json = ?, updated_at = ? WHERE app_name = ? AND request_id = ? AND state = 'pending' AND NOT EXISTS (SELECT 1 FROM candidate_request_bindings b WHERE b.app_name = deployment_requests.app_name AND b.request_id = deployment_requests.request_id)`, state, response, formatTime(updated), appName, requestID))
 }
 func (r *DeploymentRequestRepository) PendingByApp(ctx context.Context, appName string) (domain.DeployRequest, error) {
 	var req domain.DeployRequest
