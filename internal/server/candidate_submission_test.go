@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -21,6 +22,10 @@ type submissionRuntime struct {
 	hasService       bool
 	dependencies     int
 	failDependencies bool
+	initialRequestID string
+	resetCalls       int
+	resetLost        bool
+	resetStale       bool
 }
 
 func (r *submissionRuntime) PrepareCandidateDependencies(_ context.Context, _ appconfig.Config, _ map[string]string, _, _ string, _ *registryauth.Credential) (string, error) {
@@ -41,8 +46,29 @@ func (r *submissionRuntime) CreateInactiveCandidateService(_ context.Context, cf
 	selector["deployer.io/candidate-generation"] = "inactive-" + selector["deployer.io/candidate-generation"]
 	r.gate = ingress.ActivationGate{App: cfg.Name, Namespace: "apps", UID: "service-1", ResourceVersion: "1"}
 	r.target = ingress.ActivationTarget{Selector: selector, Ports: []corev1.ServicePort{{Name: "http", Port: int32(cfg.Service.Port), TargetPort: intstr.FromInt32(int32(cfg.Service.Port)), Protocol: corev1.ProtocolTCP}}}
+	r.initialRequestID = id
 	r.hasService = true
 	return nil
+}
+func (r *submissionRuntime) InitialCandidateRequest(context.Context, ingress.ActivationGate) (string, error) {
+	return r.initialRequestID, nil
+}
+func (r *submissionRuntime) ResetInactiveCandidateService(_ context.Context, gate ingress.ActivationGate, cfg appconfig.Config, oldID, newID string) (ingress.ActivationGate, ingress.ActivationTarget, error) {
+	if r.resetStale || gate != r.gate || oldID != r.initialRequestID {
+		return ingress.ActivationGate{}, ingress.ActivationTarget{}, ingress.ErrActivationSuperseded
+	}
+	r.resetCalls++
+	r.initialRequestID = newID
+	selector, _ := ingress.CandidateSelector(cfg.Name, newID)
+	selector["deployer.io/candidate-generation"] = "inactive-" + selector["deployer.io/candidate-generation"]
+	r.target = ingress.ActivationTarget{Selector: selector, Ports: []corev1.ServicePort{{Name: "http", Port: int32(cfg.Service.Port), TargetPort: intstr.FromInt32(int32(cfg.Service.Port)), Protocol: corev1.ProtocolTCP}}}
+	r.gate.ResourceVersion = "reset-" + newID[:4]
+	r.gate.OperationID = ingress.CandidateBootstrapOperationID(cfg.Name, newID)
+	if r.resetLost {
+		r.resetLost = false
+		return ingress.ActivationGate{}, ingress.ActivationTarget{}, errors.New("lost reset response")
+	}
+	return r.gate, r.target, nil
 }
 func (r *submissionRuntime) ActivatePreparedCandidate(ctx context.Context, gate ingress.ActivationGate, _ appconfig.Config, _, id, _ string) (ingress.ActivationGate, error) {
 	if !r.previousReady {
@@ -121,6 +147,95 @@ func TestCandidateSubmissionInitialRecoveryKeepsAppHidden(t *testing.T) {
 	}
 	if _, err = db.NewAppRepository(database).FindActiveByName(ctx, "hosted-api"); err == nil {
 		t.Fatal("withdrawn initial app became active")
+	}
+}
+
+func TestCandidateSubmissionRetriesWithdrawnInitialCandidate(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		lostReset  bool
+		staleGate  bool
+		retireGone bool
+		wantRetry  bool
+	}{
+		{name: "rebinds same app", wantRetry: true},
+		{name: "replays lost reset", lostReset: true, wantRetry: true},
+		{name: "requires retired proof", retireGone: true},
+		{name: "rejects stale reset gate", staleGate: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service, database, runtime, firstRequest := submissionFixture(t)
+			ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+			first, err := service.DeployApp(ctx, firstRequest)
+			if err != nil || first.Deployment == nil {
+				t.Fatalf("initial submission: %+v %v", first, err)
+			}
+			withdrawn, err := service.RecoverDeployRequest(ctx, &deployerv1.GetDeployRequestRequest{AppName: "hosted-api", RequestId: firstRequest.RequestId})
+			if err != nil || withdrawn.State != "withdrawn" {
+				t.Fatalf("initial recovery: %+v %v", withdrawn, err)
+			}
+			runtime.resetLost = tc.lostReset
+			runtime.resetStale = tc.staleGate
+			runtime.drained = !tc.retireGone
+			runtime.previousReady = true
+			secondRequest := &deployerv1.DeployAppRequest{
+				DeployerYaml:     strings.Replace(firstRequest.DeployerYaml, "port: 8080", "port: 9090", 1),
+				RequestId:        strings.Repeat("b", 64),
+				ReportWithdrawal: true,
+			}
+			second, err := service.DeployApp(ctx, secondRequest)
+			if tc.lostReset {
+				if err == nil || runtime.resetCalls != 1 {
+					t.Fatalf("lost reset unexpectedly completed or was not recorded: %+v %v resets=%d", second, err, runtime.resetCalls)
+				}
+				second, err = service.DeployApp(ctx, secondRequest)
+			}
+			if tc.wantRetry {
+				if err != nil || second.Deployment == nil || second.Deployment.AppId != first.Deployment.AppId || second.Deployment.Id == first.Deployment.Id {
+					t.Fatalf("retry did not reuse app safely: %+v %v", second, err)
+				}
+				metadata, metadataErr := service.GetDeployRequest(ctx, &deployerv1.GetDeployRequestRequest{AppName: "hosted-api", RequestId: secondRequest.RequestId})
+				if metadataErr != nil || metadata.State != "applied" {
+					t.Fatalf("retry did not reach applied state: %+v %v", metadata, metadataErr)
+				}
+				active, appErr := db.NewAppRepository(database).FindActiveByName(ctx, "hosted-api")
+				activeConfig, configErr := appconfig.FromJSON(active.DesiredStateJSON)
+				if appErr != nil || configErr != nil || activeConfig.Service.Port != 9090 {
+					t.Fatalf("retry did not persist new requested port: %+v %v", active, appErr)
+				}
+				if tc.lostReset && runtime.resetCalls != 1 {
+					t.Fatalf("lost reset was replayed: %d", runtime.resetCalls)
+				}
+			} else {
+				if err == nil || runtime.resetCalls != 0 {
+					t.Fatalf("unsafe retry was accepted: response=%+v err=%v resets=%d", second, err, runtime.resetCalls)
+				}
+			}
+			if _, err = db.NewDeploymentRequestRepository(database).Find(ctx, "hosted-api", secondRequest.RequestId); err != nil {
+				t.Fatalf("retry request journal: %v", err)
+			}
+		})
+	}
+}
+
+func TestCandidateRecoveryAfterPriorWithdrawalBeforeCheckpoint(t *testing.T) {
+	service, _, runtime, firstRequest := submissionFixture(t)
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	if _, err := service.DeployApp(ctx, firstRequest); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.RecoverDeployRequest(ctx, &deployerv1.GetDeployRequestRequest{AppName: "hosted-api", RequestId: firstRequest.RequestId}); err != nil {
+		t.Fatal(err)
+	}
+	secondRequest := &deployerv1.DeployAppRequest{DeployerYaml: strings.Replace(firstRequest.DeployerYaml, "port: 8080", "port: 9090", 1), RequestId: strings.Repeat("c", 64), ReportWithdrawal: true}
+	runtime.failDependencies = true
+	if _, err := service.DeployApp(ctx, secondRequest); err == nil {
+		t.Fatal("expected second request to remain unprepared")
+	}
+	runtime.failDependencies = false
+	result, err := service.RecoverDeployRequest(ctx, &deployerv1.GetDeployRequestRequest{AppName: "hosted-api", RequestId: secondRequest.RequestId})
+	if err != nil || result.State != "withdrawn" || runtime.resetCalls != 1 {
+		t.Fatalf("before-checkpoint recovery did not safely rebind: %+v %v resets=%d", result, err, runtime.resetCalls)
 	}
 }
 

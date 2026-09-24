@@ -67,9 +67,9 @@ func (c *Controller) RetireCandidateDeployment(ctx context.Context, cfg appconfi
 	return nil
 }
 
-// CandidateRetired proves only the immutable tombstone and zero observed
-// workload state. It does not prove that old pods have disappeared from the
-// cluster or that external traffic has been switched.
+// CandidateRetired verifies the immutable tombstone, zero observed workload
+// state, and absence of generation-matching Pod objects. It does not prove
+// that external traffic has been switched.
 func (c *Controller) CandidateRetired(ctx context.Context, cfg appconfig.Config, secretRevision, requestID, registrySecretName string) (bool, error) {
 	if c.deployments == nil || c.pods == nil {
 		return false, errors.New("candidate deployment runtime is unavailable")

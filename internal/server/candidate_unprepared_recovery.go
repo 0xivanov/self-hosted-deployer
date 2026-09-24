@@ -44,7 +44,10 @@ func (s AppService) prepareUnstartedRecovery(ctx context.Context, record domain.
 	}
 	if record.PreviousAppID == "" {
 		if !ingress.IsInactiveCandidateTarget(cfg, record.RequestID, target) {
-			return errors.New("initial recovery target is not inactive")
+			gate, target, err = s.reuseWithdrawnInitialCandidate(ctx, record, cfg, gate, target, runtime)
+			if err != nil {
+				return errors.New("initial recovery target is not a safely reusable withdrawn target")
+			}
 		}
 	} else {
 		previous, decodeErr := appconfig.FromJSON(record.PreviousState)

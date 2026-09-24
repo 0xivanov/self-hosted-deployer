@@ -117,3 +117,35 @@ Recovery now handles an atomically bound pending request whose dependency prepar
 The resulting intent enters the ordinary recovery flow: fence traffic, preserve the inactive/previous target, retire the candidate generation, observe drain/readiness, reconcile the route and finalize the request atomically. A lost preparation response remains retryable under the same request identity. Focused tests verify dependency failure followed by withdrawal, no candidate workload preparation, terminal replay and refusal to adopt another initial Service. Relevant package checks and vet passed.
 
 Still outstanding before enablement: missing-request ambiguity after a lost initial submission, retry/cleanup of initial withdrawn Service identities, candidate-aware deletion, old generation resource cleanup and real API qualification of delayed cross-resource writes. No live resources or flags changed.
+
+### Reusing a withdrawn first deployment
+
+An initial deployment that has been fully withdrawn can now be followed by a
+new request ID for the same app. The coordinator requires the old terminal
+withdrawal, both bindings to the same deleted app, the exact saved recovery
+Service gate and inactive target, and retirement with no matching pods. It then
+rebinds the existing Service through a resourceVersion-checked update, preserving
+its UID. The new request may select a different service port because neither
+inactive selector serves a workload.
+
+The update changes the bootstrap annotation, selector, ports and operation fence
+together. Its deterministic bootstrap fence differs from the old recovery fence,
+so a delayed recovery cannot recapture the new Service identity and overwrite
+its target. A lost update reply is recognized on the next attempt by the new
+request's exact inactive target. This also permits abandoning a new request that
+failed dependency preparation before its first checkpoint.
+
+This addresses initial retry only. Candidate-aware app deletion, old-generation
+cleanup, withdrawal of an ambiguously submitted request that has no journal row,
+and real-cluster cross-resource qualification remain required before enabling
+Docker hosting. A missing request lookup is not proof that a delayed submission
+cannot arrive; that case still needs a durable rejection/withdrawal record under
+the original request identity. Live flags remain unchanged.
+
+Focused checks passed for initial withdrawal followed by a new applied request
+with a changed port and preserved app ID, lost reset replies, stale gates,
+missing retirement proof, and abandonment before the retry's first checkpoint.
+These use a real database with simulated runtime state; the ingress reset also
+has a fake Kubernetes client check. The database, server, ingress, CLI and server
+command suites pass, as do relevant vet checks and Linux/AMD64 server/CLI builds.
+They do not substitute for the outstanding real-cluster qualification.

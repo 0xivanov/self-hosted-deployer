@@ -146,7 +146,10 @@ func (s AppService) prepareCandidateRequest(ctx context.Context, record domain.D
 		return status.Error(codes.FailedPrecondition, "candidate traffic target is invalid")
 	}
 	if record.PreviousAppID == "" && !ingress.IsInactiveCandidateTarget(cfg, record.RequestID, target) {
-		return status.Error(codes.FailedPrecondition, "initial candidate service is not the saved request's inactive target")
+		gate, target, err = s.reuseWithdrawnInitialCandidate(ctx, record, cfg, gate, target, runtime)
+		if err != nil {
+			return status.Error(codes.FailedPrecondition, "initial candidate service is not a safely reusable withdrawn target")
+		}
 	}
 	if record.PreviousAppID != "" {
 		previous, decodeErr := appconfig.FromJSON(record.PreviousState)
