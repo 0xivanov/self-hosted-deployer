@@ -200,6 +200,9 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 		return nil, err
 	}
 	defer release()
+	if err := s.checkCandidateDeletion(ctx, cfg.Name); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(req.GetRequestId()) == "" && s.deploymentRequests != nil {
 		if _, pendingErr := s.deploymentRequests.PendingByApp(ctx, cfg.Name); pendingErr == nil {
 			return nil, status.Error(codes.FailedPrecondition, "a tracked deployment request is pending")
@@ -628,6 +631,9 @@ func (s AppService) DeleteApp(ctx context.Context, req *deployerv1.DeleteAppRequ
 		} else if !errors.Is(pendingErr, db.ErrNotFound) {
 			return nil, status.Error(codes.Internal, "read pending deployment request")
 		}
+	}
+	if response, handled, deleteErr := s.tryDeleteCandidateApp(ctx, name); handled {
+		return response, deleteErr
 	}
 	app, err := s.apps.FindActiveByName(ctx, name)
 	if errors.Is(err, db.ErrNotFound) {

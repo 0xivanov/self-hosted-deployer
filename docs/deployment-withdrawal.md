@@ -149,3 +149,42 @@ These use a real database with simulated runtime state; the ingress reset also
 has a fake Kubernetes client check. The database, server, ingress, CLI and server
 command suites pass, as do relevant vet checks and Linux/AMD64 server/CLI builds.
 They do not substitute for the outstanding real-cluster qualification.
+
+### Candidate-aware project deletion
+
+`DeleteApp` now removes apps with bound candidate history, including hidden apps
+whose initial deployment was withdrawn. It rejects pending requests before any
+runtime mutation and enumerates generations by both app name and bound app ID.
+Every recorded generation is retired and observed drained before dependencies
+are removed. The legacy Deployment is scaled to an observed zero-replica
+tombstone, and unknown app-owned Deployments or remaining Pod objects block
+cleanup. Other app resources and the namespace remain untouched.
+
+An owned Service marker carries the app ID and deterministic deletion operation.
+A single CAS writes the marker, activation fence, inactive selector and ports.
+New legacy and candidate submissions check this marker before accepting work;
+preflight also rejects deletion in progress. The Service stays in place while
+Ingress, legacy policy, PDB, traffic resources and runtime Secrets are removed,
+then route records, registry credentials and environment versions are cleared
+and the app is marked deleted. The final Service removal uses its UID and
+resourceVersion. A retry can resume after the database mark; a deleted app with
+a missing Service temporarily recreates only the inactive deletion marker while
+checking retained resources again. A missing Service for an active app is
+ambiguous and rejected.
+
+This protocol uses the existing per-app mutation lock and requires exactly one
+server writer, with older server/worker writers stopped and drained before
+rollout. It is not a distributed deletion lock and is not safe to bypass through
+direct database writes. No new schema is introduced. Candidate and legacy
+zero-replica tombstones remain to prevent delayed creates from restarting old
+workloads; candidate policies remain with them. They consume metadata storage,
+not running workload capacity. Separate garbage collection must establish that
+old writers cannot return before removing those tombstones.
+
+Connected database/server checks cover all-release retirement, admission denial,
+preflight denial, hidden apps and retry after the database mark. Fake Kubernetes
+checks cover lost atomic marker replies, malformed markers, Pod drain, unknown
+workloads, other-app preservation and missing-Service retry. Relevant DB,
+server, ingress, CLI and command suites plus vet passed. This remains source-only
+and does not constitute real-cluster qualification. Retirement after successful
+updates, missing-request ambiguity and controlled fleet enablement remain open.

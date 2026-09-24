@@ -27,6 +27,9 @@ func (s AppService) PreflightApp(ctx context.Context, req *deployerv1.PreflightA
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	if err := s.checkCandidateDeletion(ctx, cfg.Name); err != nil {
+		return nil, err
+	}
 	if _, err := resolveRuntimeRegistry(ctx, s.runtime, s.registryCredentials, cfg); err != nil {
 		return nil, err
 	}
