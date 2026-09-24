@@ -95,6 +95,14 @@ func (s AppService) mutateCandidateRequest(ctx context.Context, req *deployerv1.
 		if err = s.prepareCandidateRequest(ctx, request, cfg, preparer); err != nil {
 			return nil, err
 		}
+	} else if recover && errors.Is(checkpointErr, db.ErrNotFound) {
+		passive, ok := s.runtime.(UnpreparedCandidateRecoveryRuntime)
+		if !ok {
+			return nil, status.Error(codes.FailedPrecondition, "unprepared candidate recovery is unsupported")
+		}
+		if err = s.prepareUnstartedRecovery(ctx, request, cfg, passive); err != nil {
+			return nil, status.Error(codes.FailedPrecondition, "candidate recovery preparation remains unconfirmed")
+		}
 	} else if checkpointErr != nil {
 		return nil, status.Error(codes.FailedPrecondition, "candidate preparation is incomplete; operator review required")
 	} else if checkpoint.AppName != request.AppName || checkpoint.RequestID != request.RequestID {

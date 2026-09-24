@@ -169,3 +169,56 @@ func TestCandidateSubmissionRejectsMissingEnvironmentBeforeAcceptance(t *testing
 		t.Fatal("rejected request mutated dependencies")
 	}
 }
+
+func (r *submissionRuntime) EnsureCandidateRecoveryNamespace(context.Context) error { return nil }
+
+func TestCandidateRecoveryBeforeCheckpointDoesNotPrepareWorkload(t *testing.T) {
+	service, database, runtime, req := submissionFixture(t)
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	runtime.failDependencies = true
+	if _, err := service.DeployApp(ctx, req); err == nil {
+		t.Fatal("expected dependency preparation failure")
+	}
+	if _, err := db.NewRuntimeCheckpointRepository(database).FindRuntimeCheckpoint(ctx, "hosted-api", req.RequestId); err != db.ErrNotFound {
+		t.Fatalf("unexpected checkpoint: %v", err)
+	}
+	result, err := service.RecoverDeployRequest(ctx, &deployerv1.GetDeployRequestRequest{AppName: "hosted-api", RequestId: req.RequestId})
+	if err != nil || result.State != "withdrawn" || !result.Result.WithdrawalConfirmed {
+		t.Fatalf("unprepared recovery: %+v %v", result, err)
+	}
+	if runtime.dependencies != 1 || runtime.prepareCalls != 0 || runtime.retireCalls != 1 {
+		t.Fatal("recovery prepared a workload or skipped retirement")
+	}
+	if _, err = db.NewAppRepository(database).FindActiveByName(ctx, "hosted-api"); err == nil {
+		t.Fatal("unprepared recovery activated initial app")
+	}
+	before := runtime.retireCalls
+	if _, err = service.RecoverDeployRequest(ctx, &deployerv1.GetDeployRequestRequest{AppName: "hosted-api", RequestId: req.RequestId}); err != nil || runtime.retireCalls != before {
+		t.Fatal("terminal recovery repeated runtime work")
+	}
+}
+
+func TestUnpreparedRecoveryRejectsUnrelatedInitialService(t *testing.T) {
+	service, database, runtime, req := submissionFixture(t)
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	runtime.failDependencies = true
+	if _, err := service.DeployApp(ctx, req); err == nil {
+		t.Fatal("expected dependency failure")
+	}
+	cfg, err := appconfig.Parse([]byte(req.DeployerYaml))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = runtime.CreateInactiveCandidateService(ctx, cfg, strings.Repeat("d", 64)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.RecoverDeployRequest(ctx, &deployerv1.GetDeployRequestRequest{AppName: cfg.Name, RequestId: req.RequestId}); err == nil {
+		t.Fatal("unrelated initial service adopted")
+	}
+	if runtime.fenceCalls != 0 || runtime.retireCalls != 0 {
+		t.Fatal("unrelated target mutated")
+	}
+	if _, err = db.NewRuntimeCheckpointRepository(database).FindRuntimeCheckpoint(ctx, cfg.Name, req.RequestId); err != db.ErrNotFound {
+		t.Fatal("unrelated target recorded as predecessor")
+	}
+}
