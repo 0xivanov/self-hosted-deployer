@@ -291,3 +291,33 @@ and project deletion. The temporary namespace and DNS record were cleaned up.
 Private registry credential rotation, portal end-to-end rollout and independent
 delayed-writer checks remain. Candidate binaries are still not installed in the
 production services.
+
+
+### Reopened state and delayed writer evidence (September 25)
+
+The real-cluster lifecycle check now captures an independent controller's Service
+activation gate before recovery, then attempts both activation and candidate
+preparation after recovery completes. The old activation is rejected as
+superseded and the retired workload cannot be recreated. A subsequent healthy
+update completes after closing/reopening the same SQLite database and recreating
+the controller and application service. The prior running generation is confirmed
+retired before project deletion. This run passed in 50.59 seconds on both Pi
+workers. It models reopened server state, not an operating-system process crash.
+The temporary namespace was removed and all eight existing deployments remained
+at their expected available replica counts.
+
+Private-image runs can additionally set
+`DEPLOYER_CANDIDATE_CHECK_REGISTRY_FILE` to an owner-only regular JSON file with
+only `username` and `password` fields. The harness registers the credential in
+its isolated encrypted database and resolves it through the normal registry
+service. The file must belong to the executing user and have mode 0600 or 0400;
+symlinks and oversized files are rejected. Never pass tokens as arguments or
+print them. Remove the temporary credential file after the run.
+
+A dedicated private ARM64 fixture is available at
+`ghcr.io/0xivanov/launchstead-private-qualification@sha256:98ae898055c08d3f2738a27d23fe3cbb3e256aa6060239cbaa17b4cd7f3f31ac`.
+Private visibility and denial of anonymous access were confirmed. Actual worker
+pulls await a separate read-only package token; the broad local publishing token
+was not copied to the cluster. The optional credential path passed compilation
+and server package checks but has not yet been exercised against the private
+registry. This does not establish credential rotation or portal publication.

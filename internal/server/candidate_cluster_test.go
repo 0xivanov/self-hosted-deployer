@@ -2,17 +2,22 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	"github.com/0xivanov/self-hosted-deployer/internal/db"
 	"github.com/0xivanov/self-hosted-deployer/internal/ingress"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
+	"github.com/0xivanov/self-hosted-deployer/internal/security"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
@@ -75,8 +80,31 @@ func TestCandidateRealClusterLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	database := openTestDB(t)
-	service := NewAppService(AppServiceConfig{EnableCandidateOperations: true, DeploymentRequests: db.NewDeploymentRequestRepository(database), CandidateBindings: db.NewCandidateBindingRepository(database), CandidateCheckpoints: db.NewRuntimeCheckpointRepository(database), CandidateFinalizer: db.NewCandidateFinalizationRepository(database), Apps: db.NewAppRepository(database), Deployments: db.NewDeploymentRepository(database), Routes: db.NewRouteRepository(database), Runtime: controller, RouteTLSEnabled: tls.Enabled()})
+	databasePath := filepath.Join(t.TempDir(), "candidate.db")
+	database, err := db.Open(ctx, "file:"+databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if database != nil {
+			_ = database.Close()
+		}
+	})
+	key := make([]byte, security.SecretKeyBytes)
+	if _, err = rand.Read(key); err != nil {
+		t.Fatal(err)
+	}
+	cipher, err := security.NewSecretCipher(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registryService := func() *RegistryCredentialService {
+		return NewRegistryCredentialService(db.NewRegistryCredentialRepository(database), cipher)
+	}
+	newService := func() AppService {
+		return NewAppService(AppServiceConfig{EnableCandidateOperations: true, RegistryCredentialRepository: db.NewRegistryCredentialRepository(database), RegistryCredentials: registryService(), DeploymentRequests: db.NewDeploymentRequestRepository(database), CandidateBindings: db.NewCandidateBindingRepository(database), CandidateCheckpoints: db.NewRuntimeCheckpointRepository(database), CandidateFinalizer: db.NewCandidateFinalizationRepository(database), Apps: db.NewAppRepository(database), Deployments: db.NewDeploymentRepository(database), Routes: db.NewRouteRepository(database), Runtime: controller, RouteTLSEnabled: tls.Enabled()})
+	}
+	service := newService()
 	spec := fmt.Sprintf(`name: candidate-check
 image: %s
 service:
@@ -94,6 +122,15 @@ hosting:
     requests: {cpu: 50m, memory: 64Mi, ephemeralStorage: 64Mi}
     limits: {cpu: 500m, memory: 256Mi, ephemeralStorage: 256Mi}
 `, image)
+	credentialRevision := ""
+	if path := os.Getenv("DEPLOYER_CANDIDATE_CHECK_REGISTRY_FILE"); path != "" {
+		username, password := readCandidateCheckCredential(t, path)
+		credentialRevision = strings.Repeat("e", 64)
+		if _, err = registryService().CreateRegistryCredential(ctx, &deployerv1.CreateRegistryCredentialRequest{AppName: "candidate-check", Revision: credentialRevision, Registry: "ghcr.io", Username: username, Password: password}); err != nil {
+			t.Fatal("register isolated pull credential:", err)
+		}
+		spec = "imagePullCredential: " + credentialRevision + "\n" + spec
+	}
 	if domain != "" {
 		spec = strings.Replace(spec, "routing: {}", "routing: {domain: "+domain+"}", 1)
 	}
@@ -180,6 +217,18 @@ hosting:
 	if _, err = service.DeployApp(ctx, request("c", bad)); err != nil {
 		t.Fatal("publish unhealthy candidate:", err)
 	}
+	lateController, err := ingress.NewController(ingress.ControllerConfig{KubeconfigPath: kubeconfig, Namespace: ns.Name, TLS: tls})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lateGate, lateTarget, err := lateController.CaptureActivationGate(ctx, "candidate-check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lateTarget.Selector, err = ingress.CandidateSelector("candidate-check", strings.Repeat("c", 64))
+	if err != nil {
+		t.Fatal(err)
+	}
 	wait("unhealthy update recovery", func() error {
 		m, e := service.RecoverDeployRequest(ctx, lookup("c"))
 		if e == nil && m.State != "withdrawn" {
@@ -187,6 +236,19 @@ hosting:
 		}
 		return e
 	})
+	// These calls bypass the new server lock and model a delayed independent
+	// runtime writer retaining the original activation gate/configuration.
+	if _, err = lateController.ReplaceActivationTarget(ctx, lateGate, lateTarget); !errors.Is(err, ingress.ErrActivationSuperseded) {
+		t.Fatalf("late independent activation was not fenced: %v", err)
+	}
+	badConfig, err := appconfig.Parse([]byte(bad))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = lateController.PrepareCandidateDeployment(ctx, badConfig, "", strings.Repeat("c", 64), ingress.CandidateRegistrySecretName(badConfig)); err == nil {
+		t.Fatal("late writer revived retired candidate")
+	}
+	t.Log("independent delayed activation and create rejected")
 	if _, err = service.AdvanceDeployRequest(ctx, lookup("c")); err == nil {
 		t.Fatal("withdrawn update advanced")
 	}
@@ -195,6 +257,41 @@ hosting:
 	}
 	if domain != "" {
 		wait("HTTPS after recovery", checkHTTPS)
+	}
+	// A successful update must survive database/controller recreation and
+	// retire the old running generation before reporting completion.
+	updated := strings.Replace(spec, "cpu: 500m", "cpu: 600m", 1)
+	if _, err = service.DeployApp(ctx, request("d", updated)); err != nil {
+		t.Fatal("publish successful update:", err)
+	}
+	if err = database.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err = db.Open(ctx, "file:"+databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	controller, err = ingress.NewController(ingress.ControllerConfig{KubeconfigPath: kubeconfig, Namespace: ns.Name, TLS: tls})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service = newService()
+	wait("successful update after server state reopen", func() error {
+		m, e := service.AdvanceDeployRequest(ctx, lookup("d"))
+		if e == nil && m.State != "applied" {
+			return fmt.Errorf("outcome %s", m.State)
+		}
+		return e
+	})
+	previousConfig, err := appconfig.Parse([]byte(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retired, err := controller.CandidateRetired(ctx, previousConfig, "", strings.Repeat("b", 64), ingress.CandidateRegistrySecretName(previousConfig)); err != nil || !retired {
+		t.Fatalf("old running generation retained: %v %v", retired, err)
+	}
+	if domain != "" {
+		wait("HTTPS after successful update", checkHTTPS)
 	}
 	wait("candidate project deletion", func() error {
 		_, e := service.DeleteApp(ctx, &deployerv1.DeleteAppRequest{Name: "candidate-check"})
