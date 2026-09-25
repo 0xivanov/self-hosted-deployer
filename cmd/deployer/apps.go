@@ -13,7 +13,7 @@ import (
 
 func (a cliApp) apps(args []string, opts cliOptions) int {
 	if len(args) == 0 {
-		fmt.Fprintln(a.stderr, "usage: deployer apps <list|inspect|request|advance|recover>")
+		fmt.Fprintln(a.stderr, "usage: deployer apps <list|inspect|request|advance|recover|withdraw>")
 		return 2
 	}
 	resolved, err := resolveRuntimeOptions(opts)
@@ -37,11 +37,13 @@ func (a cliApp) apps(args []string, opts cliOptions) int {
 		return a.appsRequestAction("advance", args[1:], resolved, client)
 	case "recover":
 		return a.appsRequestAction("recover", args[1:], resolved, client)
+	case "withdraw":
+		return a.appsWithdraw(args[1:], resolved, client)
 	case "inspect":
 		return a.appsInspect(args[1:], resolved, client)
 	default:
 		fmt.Fprintf(a.stderr, "unknown apps command %q\n", args[0])
-		fmt.Fprintln(a.stderr, "usage: deployer apps <list|inspect|request|advance|recover>")
+		fmt.Fprintln(a.stderr, "usage: deployer apps <list|inspect|request|advance|recover|withdraw>")
 		return 2
 	}
 }

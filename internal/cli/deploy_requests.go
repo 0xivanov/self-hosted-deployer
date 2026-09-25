@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc"
 )
@@ -46,6 +47,28 @@ func (c *PlatformClient) AdvanceDeployRequest(ctx context.Context, app, id strin
 
 func (c *PlatformClient) RecoverDeployRequest(ctx context.Context, app, id string) (DeployRequestResult, error) {
 	return c.mutateDeployRequest(ctx, app, id, c.appClient.RecoverDeployRequest)
+}
+
+// WithdrawDeployRequest binds the original deployment request, if necessary,
+// and explicitly recovers it without creating candidate workload Pods.
+func (c *PlatformClient) WithdrawDeployRequest(ctx context.Context, deployerYAML, id string) (DeployRequestResult, error) {
+	if !deployRequestIDPattern.MatchString(id) {
+		return DeployRequestResult{}, fmt.Errorf("invalid deployment request ID")
+	}
+	cfg, err := appconfig.Parse([]byte(deployerYAML))
+	if err != nil {
+		return DeployRequestResult{}, fmt.Errorf("parse deployment configuration: %w", err)
+	}
+	if cfg.Name == "" {
+		return DeployRequestResult{}, fmt.Errorf("deployment configuration name is required")
+	}
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	response, err := c.appClient.WithdrawDeployRequest(c.withBearer(ctx), &deployerv1.DeployAppRequest{DeployerYaml: deployerYAML, RequestId: id, ReportWithdrawal: true})
+	if err != nil {
+		return DeployRequestResult{}, DecodeRPCError(err)
+	}
+	return decodeDeployRequestMetadata(response, cfg.Name, id)
 }
 
 func (c *PlatformClient) mutateDeployRequest(ctx context.Context, app, id string, call func(context.Context, *deployerv1.GetDeployRequestRequest, ...grpc.CallOption) (*deployerv1.DeployRequestMetadata, error)) (DeployRequestResult, error) {

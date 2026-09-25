@@ -55,6 +55,10 @@ func (s AppService) mutateCandidateRequest(ctx context.Context, req *deployerv1.
 		return nil, err
 	}
 	defer release()
+	return s.mutateCandidateRequestLocked(ctx, req, recover, runtime)
+}
+
+func (s AppService) mutateCandidateRequestLocked(ctx context.Context, req *deployerv1.GetDeployRequestRequest, recover bool, runtime CandidateRequestRuntime) (*deployerv1.DeployRequestMetadata, error) {
 	binding, err := s.candidateBindings.Find(ctx, req.GetAppName(), req.GetRequestId())
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, status.Error(codes.FailedPrecondition, "request is not a prepared candidate")
@@ -86,6 +90,18 @@ func (s AppService) mutateCandidateRequest(ctx context.Context, req *deployerv1.
 			}
 		}
 		return s.GetDeployRequest(ctx, req)
+	}
+	if recover {
+		if creator, ok := s.candidateBindings.(candidateWithdrawalCreator); ok {
+			if _, _, err := creator.BeginWithdrawal(ctx, request, binding.AppID, binding.DeploymentID, s.now().UTC()); err != nil {
+				return nil, status.Error(codes.FailedPrecondition, "could not persist deployment withdrawal decision")
+			}
+		}
+	}
+	if !recover {
+		if err := s.rejectRequestedWithdrawal(ctx, request.AppName, request.RequestID); err != nil {
+			return nil, err
+		}
 	}
 	cfg, decodeErr := appconfig.FromJSON(request.RequestedState)
 	if decodeErr != nil || cfg.Validate() != nil {

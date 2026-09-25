@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	deployerv1 "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"strings"
 	"testing"
 	"time"
@@ -12,10 +14,11 @@ import (
 
 type requestLookupStub struct {
 	deployerv1.AppServiceClient
-	response     *deployerv1.DeployRequestMetadata
-	calls        int
-	advanceCalls int
-	recoverCalls int
+	response      *deployerv1.DeployRequestMetadata
+	calls         int
+	advanceCalls  int
+	recoverCalls  int
+	withdrawCalls int
 }
 
 func (s *requestLookupStub) AdvanceDeployRequest(_ context.Context, _ *deployerv1.GetDeployRequestRequest, _ ...grpc.CallOption) (*deployerv1.DeployRequestMetadata, error) {
@@ -24,6 +27,13 @@ func (s *requestLookupStub) AdvanceDeployRequest(_ context.Context, _ *deployerv
 }
 func (s *requestLookupStub) RecoverDeployRequest(_ context.Context, _ *deployerv1.GetDeployRequestRequest, _ ...grpc.CallOption) (*deployerv1.DeployRequestMetadata, error) {
 	s.recoverCalls++
+	return s.response, nil
+}
+func (s *requestLookupStub) WithdrawDeployRequest(_ context.Context, request *deployerv1.DeployAppRequest, _ ...grpc.CallOption) (*deployerv1.DeployRequestMetadata, error) {
+	s.withdrawCalls++
+	if !request.GetReportWithdrawal() {
+		return nil, status.Error(codes.InvalidArgument, "withdrawal flag missing")
+	}
 	return s.response, nil
 }
 
@@ -62,5 +72,12 @@ func TestDeployRequestLookupValidatesRecordedIdentity(t *testing.T) {
 	}
 	if _, err = c.RecoverDeployRequest(context.Background(), "site", id); err != nil || stub.recoverCalls != 1 {
 		t.Fatalf("recover request: calls=%d err=%v", stub.recoverCalls, err)
+	}
+	if _, err = c.WithdrawDeployRequest(context.Background(), "name: site\nimage: example/site:1\nservice:\n  port: 8080\n  health:\n    path: /health\ndeploy:\n  replicas: 1\n", id); err != nil || stub.withdrawCalls != 1 {
+		t.Fatalf("withdraw request: calls=%d err=%v", stub.withdrawCalls, err)
+	}
+	before = stub.withdrawCalls
+	if _, err = c.WithdrawDeployRequest(context.Background(), "name: site\nimage: example/site:1\nservice:\n  port: 8080\n  health:\n    path: /health\ndeploy:\n  replicas: 1\n", "bad"); err == nil || stub.withdrawCalls != before {
+		t.Fatal("invalid withdrawal ID reached server")
 	}
 }

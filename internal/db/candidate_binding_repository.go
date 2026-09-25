@@ -23,6 +23,23 @@ func NewCandidateBindingRepository(db *Db) *CandidateBindingRepository {
 // only when no app row exists; active and deleted rows always retain their
 // existing identity.
 func (r *CandidateBindingRepository) Begin(ctx context.Context, req domain.DeployRequest, proposedAppID, deploymentID string, now time.Time) (domain.CandidateBinding, bool, error) {
+	return r.beginCandidate(ctx, req, proposedAppID, deploymentID, now, false)
+}
+
+// BeginWithdrawal records the no-activation decision in the same transaction
+// as an absent request's binding. It bypasses deployment admission: recovery
+// never starts a workload or claims a new domain.
+func (r *CandidateBindingRepository) BeginWithdrawal(ctx context.Context, req domain.DeployRequest, proposedAppID, deploymentID string, now time.Time) (domain.CandidateBinding, bool, error) {
+	return r.beginCandidate(ctx, req, proposedAppID, deploymentID, now, true)
+}
+
+func (r *CandidateBindingRepository) WithdrawalRequested(ctx context.Context, appName, requestID string) (bool, error) {
+	var exists bool
+	err := r.db.conn.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM deployment_request_withdrawals WHERE app_name=? AND request_id=?)`, appName, requestID).Scan(&exists)
+	return exists, err
+}
+
+func (r *CandidateBindingRepository) beginCandidate(ctx context.Context, req domain.DeployRequest, proposedAppID, deploymentID string, now time.Time, withdrawal bool) (domain.CandidateBinding, bool, error) {
 	if strings.TrimSpace(req.AppName) == "" || !deployRequestIDPattern.MatchString(req.RequestID) || strings.TrimSpace(proposedAppID) == "" || strings.TrimSpace(deploymentID) == "" || now.IsZero() {
 		return domain.CandidateBinding{}, false, ErrCandidateBindingConflict
 	}
@@ -50,6 +67,16 @@ func (r *CandidateBindingRepository) Begin(ctx context.Context, req domain.Deplo
 		binding.CreatedAt, err = parseStoredTime("created_at", created)
 		if err != nil {
 			return domain.CandidateBinding{}, false, err
+		}
+		if withdrawal {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO deployment_request_withdrawals(app_name,request_id,requested_at)
+				SELECT app_name,request_id,? FROM deployment_requests WHERE app_name=? AND request_id=? AND state='pending'
+				ON CONFLICT(app_name,request_id) DO NOTHING`, formatTime(now), req.AppName, req.RequestID); err != nil {
+				return domain.CandidateBinding{}, false, err
+			}
+			if err := tx.Commit(); err != nil {
+				return domain.CandidateBinding{}, false, err
+			}
 		}
 		return binding, false, nil
 	}
@@ -97,10 +124,12 @@ func (r *CandidateBindingRepository) Begin(ctx context.Context, req domain.Deplo
 	if previousID.Valid && (deletedID != previousID.String || deletedAt.Valid || deletedState != previousState.String) {
 		return domain.CandidateBinding{}, false, ErrCandidateBindingConflict
 	}
-	if err := validateCandidateDomainAdmission(ctx, tx, req.AppName, cfg); err != nil {
-		return domain.CandidateBinding{}, false, err
+	if !withdrawal {
+		if err := validateCandidateDomainAdmission(ctx, tx, req.AppName, cfg); err != nil {
+			return domain.CandidateBinding{}, false, err
+		}
 	}
-	if err := validateCandidatePredecessor(ctx, tx, req.AppName, previousID.String, previousState.String, cfg); err != nil {
+	if err := validateCandidatePredecessor(ctx, tx, req.AppName, previousID.String, previousState.String, cfg, withdrawal); err != nil {
 		return domain.CandidateBinding{}, false, err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO deployment_requests (app_name, request_id, state, requested_state, previous_app_id, previous_state, report_withdrawal, created_at, updated_at) VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)`, req.AppName, req.RequestID, req.RequestedState, nullableString(previousID), nullableString(previousState), req.ReportWithdrawal, formatTime(now), formatTime(now)); err != nil {
@@ -119,6 +148,11 @@ func (r *CandidateBindingRepository) Begin(ctx context.Context, req domain.Deplo
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO candidate_request_bindings (app_name, request_id, app_id, deployment_id, created_at) VALUES (?, ?, ?, ?, ?)`, req.AppName, req.RequestID, actualID, deploymentID, formatTime(now)); err != nil {
 		return domain.CandidateBinding{}, false, err
+	}
+	if withdrawal {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO deployment_request_withdrawals(app_name,request_id,requested_at) VALUES(?,?,?)`, req.AppName, req.RequestID, formatTime(now)); err != nil {
+			return domain.CandidateBinding{}, false, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return domain.CandidateBinding{}, false, err
@@ -215,7 +249,7 @@ func (r *CandidateBindingRepository) Bind(ctx context.Context, appName, requestI
 	if err != nil || canonicalErr != nil || canonical != requestedState || cfg.Name != appName || cfg.Hosting == nil || cfg.State.Mode != appconfig.DefaultStateMode || cfg.Validate() != nil {
 		return domain.CandidateBinding{}, ErrCandidateBindingConflict
 	}
-	if err := validateCandidatePredecessor(ctx, tx, appName, previousID, previousStateValue, cfg); err != nil {
+	if err := validateCandidatePredecessor(ctx, tx, appName, previousID, previousStateValue, cfg, false); err != nil {
 		return domain.CandidateBinding{}, err
 	}
 	var actualID string
@@ -254,7 +288,7 @@ func (r *CandidateBindingRepository) Bind(ctx context.Context, appName, requestI
 	return domain.CandidateBinding{AppName: appName, RequestID: requestID, AppID: actualID, DeploymentID: deploymentID, CreatedAt: now}, nil
 }
 
-func validateCandidatePredecessor(ctx context.Context, tx *sql.Tx, appName, previousID, previousState string, candidate appconfig.Config) error {
+func validateCandidatePredecessor(ctx context.Context, tx *sql.Tx, appName, previousID, previousState string, candidate appconfig.Config, withdrawal bool) error {
 	var id, state string
 	var deletedAt sql.NullString
 	err := tx.QueryRowContext(ctx, `SELECT id, desired_state_json, deleted_at FROM apps WHERE name = ?`, appName).Scan(&id, &state, &deletedAt)
@@ -281,7 +315,7 @@ func validateCandidatePredecessor(ctx context.Context, tx *sql.Tx, appName, prev
 		return ErrCandidateBindingConflict
 	}
 	canonical, err := predecessor.JSON()
-	if err != nil || canonical != state || predecessor.Name != appName || predecessor.Hosting == nil || predecessor.State.Mode != appconfig.DefaultStateMode || predecessor.Service.Port != candidate.Service.Port || predecessor.Validate() != nil {
+	if err != nil || canonical != state || predecessor.Name != appName || predecessor.Hosting == nil || predecessor.State.Mode != appconfig.DefaultStateMode || (!withdrawal && predecessor.Service.Port != candidate.Service.Port) || predecessor.Validate() != nil {
 		return ErrCandidateBindingConflict
 	}
 	return nil

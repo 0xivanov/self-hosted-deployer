@@ -738,6 +738,8 @@ func (c recordingClient) WatchEvents(context.Context, clicore.EventFilter, func(
 type recordingAppClient struct {
 	serverStatus         clicore.ServerStatus
 	deployerYAML         string
+	withdrawYAML         string
+	withdrawRequestID    string
 	deployResult         clicore.DeployResult
 	deleteAppName        string
 	deleteResult         clicore.DeleteAppResult
@@ -810,6 +812,12 @@ func (c *recordingAppClient) RenameNode(_ context.Context, ref string, newName s
 func (c *recordingAppClient) DeployApp(_ context.Context, deployerYAML string) (clicore.DeployResult, error) {
 	c.deployerYAML = deployerYAML
 	return c.deployResult, c.err
+}
+
+func (c *recordingAppClient) WithdrawDeployRequest(_ context.Context, deployerYAML, requestID string) (clicore.DeployRequestResult, error) {
+	c.withdrawYAML = deployerYAML
+	c.withdrawRequestID = requestID
+	return clicore.DeployRequestResult{AppName: "my-api", RequestID: requestID, State: "withdrawn"}, c.err
 }
 
 func (c *recordingAppClient) DeleteApp(_ context.Context, name string) (clicore.DeleteAppResult, error) {

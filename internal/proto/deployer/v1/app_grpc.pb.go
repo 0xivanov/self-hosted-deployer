@@ -19,19 +19,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AppService_DeployApp_FullMethodName            = "/deployer.v1.AppService/DeployApp"
-	AppService_GetDeployRequest_FullMethodName     = "/deployer.v1.AppService/GetDeployRequest"
-	AppService_AdvanceDeployRequest_FullMethodName = "/deployer.v1.AppService/AdvanceDeployRequest"
-	AppService_RecoverDeployRequest_FullMethodName = "/deployer.v1.AppService/RecoverDeployRequest"
-	AppService_PreflightApp_FullMethodName         = "/deployer.v1.AppService/PreflightApp"
-	AppService_ListApps_FullMethodName             = "/deployer.v1.AppService/ListApps"
-	AppService_InspectApp_FullMethodName           = "/deployer.v1.AppService/InspectApp"
-	AppService_DeleteApp_FullMethodName            = "/deployer.v1.AppService/DeleteApp"
-	AppService_GetApp_FullMethodName               = "/deployer.v1.AppService/GetApp"
-	AppService_GetAppStatus_FullMethodName         = "/deployer.v1.AppService/GetAppStatus"
-	AppService_GetDeploymentLogs_FullMethodName    = "/deployer.v1.AppService/GetDeploymentLogs"
-	AppService_ListRoutes_FullMethodName           = "/deployer.v1.AppService/ListRoutes"
-	AppService_InspectRoute_FullMethodName         = "/deployer.v1.AppService/InspectRoute"
+	AppService_DeployApp_FullMethodName             = "/deployer.v1.AppService/DeployApp"
+	AppService_GetDeployRequest_FullMethodName      = "/deployer.v1.AppService/GetDeployRequest"
+	AppService_AdvanceDeployRequest_FullMethodName  = "/deployer.v1.AppService/AdvanceDeployRequest"
+	AppService_RecoverDeployRequest_FullMethodName  = "/deployer.v1.AppService/RecoverDeployRequest"
+	AppService_WithdrawDeployRequest_FullMethodName = "/deployer.v1.AppService/WithdrawDeployRequest"
+	AppService_PreflightApp_FullMethodName          = "/deployer.v1.AppService/PreflightApp"
+	AppService_ListApps_FullMethodName              = "/deployer.v1.AppService/ListApps"
+	AppService_InspectApp_FullMethodName            = "/deployer.v1.AppService/InspectApp"
+	AppService_DeleteApp_FullMethodName             = "/deployer.v1.AppService/DeleteApp"
+	AppService_GetApp_FullMethodName                = "/deployer.v1.AppService/GetApp"
+	AppService_GetAppStatus_FullMethodName          = "/deployer.v1.AppService/GetAppStatus"
+	AppService_GetDeploymentLogs_FullMethodName     = "/deployer.v1.AppService/GetDeploymentLogs"
+	AppService_ListRoutes_FullMethodName            = "/deployer.v1.AppService/ListRoutes"
+	AppService_InspectRoute_FullMethodName          = "/deployer.v1.AppService/InspectRoute"
 )
 
 // AppServiceClient is the client API for AppService service.
@@ -42,6 +43,7 @@ type AppServiceClient interface {
 	GetDeployRequest(ctx context.Context, in *GetDeployRequestRequest, opts ...grpc.CallOption) (*DeployRequestMetadata, error)
 	AdvanceDeployRequest(ctx context.Context, in *GetDeployRequestRequest, opts ...grpc.CallOption) (*DeployRequestMetadata, error)
 	RecoverDeployRequest(ctx context.Context, in *GetDeployRequestRequest, opts ...grpc.CallOption) (*DeployRequestMetadata, error)
+	WithdrawDeployRequest(ctx context.Context, in *DeployAppRequest, opts ...grpc.CallOption) (*DeployRequestMetadata, error)
 	PreflightApp(ctx context.Context, in *PreflightAppRequest, opts ...grpc.CallOption) (*PreflightAppResponse, error)
 	ListApps(ctx context.Context, in *ListAppsRequest, opts ...grpc.CallOption) (*ListAppsResponse, error)
 	InspectApp(ctx context.Context, in *InspectAppRequest, opts ...grpc.CallOption) (*InspectAppResponse, error)
@@ -95,6 +97,16 @@ func (c *appServiceClient) RecoverDeployRequest(ctx context.Context, in *GetDepl
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeployRequestMetadata)
 	err := c.cc.Invoke(ctx, AppService_RecoverDeployRequest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *appServiceClient) WithdrawDeployRequest(ctx context.Context, in *DeployAppRequest, opts ...grpc.CallOption) (*DeployRequestMetadata, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeployRequestMetadata)
+	err := c.cc.Invoke(ctx, AppService_WithdrawDeployRequest_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -208,6 +220,7 @@ type AppServiceServer interface {
 	GetDeployRequest(context.Context, *GetDeployRequestRequest) (*DeployRequestMetadata, error)
 	AdvanceDeployRequest(context.Context, *GetDeployRequestRequest) (*DeployRequestMetadata, error)
 	RecoverDeployRequest(context.Context, *GetDeployRequestRequest) (*DeployRequestMetadata, error)
+	WithdrawDeployRequest(context.Context, *DeployAppRequest) (*DeployRequestMetadata, error)
 	PreflightApp(context.Context, *PreflightAppRequest) (*PreflightAppResponse, error)
 	ListApps(context.Context, *ListAppsRequest) (*ListAppsResponse, error)
 	InspectApp(context.Context, *InspectAppRequest) (*InspectAppResponse, error)
@@ -238,6 +251,9 @@ func (UnimplementedAppServiceServer) AdvanceDeployRequest(context.Context, *GetD
 }
 func (UnimplementedAppServiceServer) RecoverDeployRequest(context.Context, *GetDeployRequestRequest) (*DeployRequestMetadata, error) {
 	return nil, status.Error(codes.Unimplemented, "method RecoverDeployRequest not implemented")
+}
+func (UnimplementedAppServiceServer) WithdrawDeployRequest(context.Context, *DeployAppRequest) (*DeployRequestMetadata, error) {
+	return nil, status.Error(codes.Unimplemented, "method WithdrawDeployRequest not implemented")
 }
 func (UnimplementedAppServiceServer) PreflightApp(context.Context, *PreflightAppRequest) (*PreflightAppResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PreflightApp not implemented")
@@ -355,6 +371,24 @@ func _AppService_RecoverDeployRequest_Handler(srv interface{}, ctx context.Conte
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AppServiceServer).RecoverDeployRequest(ctx, req.(*GetDeployRequestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AppService_WithdrawDeployRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeployAppRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AppServiceServer).WithdrawDeployRequest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AppService_WithdrawDeployRequest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AppServiceServer).WithdrawDeployRequest(ctx, req.(*DeployAppRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -536,6 +570,10 @@ var AppService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RecoverDeployRequest",
 			Handler:    _AppService_RecoverDeployRequest_Handler,
+		},
+		{
+			MethodName: "WithdrawDeployRequest",
+			Handler:    _AppService_WithdrawDeployRequest_Handler,
 		},
 		{
 			MethodName: "PreflightApp",

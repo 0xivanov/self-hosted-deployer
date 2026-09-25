@@ -85,6 +85,9 @@ func (s AppService) deployCandidateApp(ctx context.Context, cfg appconfig.Config
 		}
 		return decodeCandidateReply(record.ResponseJSON)
 	}
+	if err := s.rejectRequestedWithdrawal(ctx, record.AppName, record.RequestID); err != nil {
+		return nil, err
+	}
 	if err = s.prepareCandidateRequest(ctx, record, cfg, runtime); err != nil {
 		return nil, err
 	}

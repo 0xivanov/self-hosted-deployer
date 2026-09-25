@@ -214,3 +214,28 @@ stale advance requests and a pending recovery window. Fleet checks verify
 retryable cleanup errors after expiry without recovery or another submission.
 Relevant package checks passed. These changes remain source-only; missing-request
 ambiguity and actual Kubernetes rollout qualification still block enablement.
+
+### Withdrawal before a submission is recorded
+
+`WithdrawDeployRequest` accepts the original YAML and tracked request ID with
+withdrawal reporting enabled. The CLI exposes `apps withdraw <app> <request-id>
+--file <original.yaml>`. For an absent request, it atomically records the bound
+request and a durable no-activation decision before passive runtime recovery.
+Existing pending requests acquire the same decision. Normal recovery also saves
+that decision before any preparation, so a transient namespace or Service error
+cannot let a late original submission activate afterward.
+
+Schema 12 adds `deployment_request_withdrawals`; journal, binding and withdrawal
+marker creation share a transaction. Late submit/advance calls reject pending
+withdrawal intent, while terminal withdrawal replays return the original result.
+An already-applied request is returned as applied and is never reversed by the
+new RPC. Original configuration and reporting mode must match exactly. The RPC
+requires admin access and enabled candidate operations. It starts no workload
+and does not resolve environment or registry secrets.
+
+Focused checks cover interrupted recovery of both absent and existing requests,
+late submit/advance denial, terminal replay, applied-race preservation, changed
+configuration rejection and atomic rollback on marker insertion failure. This
+is source-only. Fleet integration of the missing-request path and actual cluster
+qualification remain before production enablement. Upgrade the server before
+using the new CLI command; older servers do not support this additive RPC.
