@@ -321,3 +321,23 @@ pulls await a separate read-only package token; the broad local publishing token
 was not copied to the cluster. The optional credential path passed compilation
 and server package checks but has not yet been exercised against the private
 registry. This does not establish credential rotation or portal publication.
+
+
+### Coordinated production installation (September 25)
+
+Core server/CLI `1a00d2e` and the matching admin-panel portal/fleet release
+`81407a8` were installed on the VPS at approximately 08:42 UTC. All database
+writers were stopped for consistent backups, then core migrated from schema 6
+to 12 and portal from 42 to 46. Existing record counts and integrity/foreign-key
+checks passed. All services returned, all three nodes and eight application
+Deployments remained healthy, and the existing public site/portal returned HTTPS
+200. The Pi agent binaries were not replaced in this change.
+
+Production candidate/container feature flags remain disabled pending the private
+registry check and portal publication verification. The supporting binaries are
+now installed; earlier source-only notes above describe historical milestones.
+Rollback material is private at
+`/var/backups/launchstead-coordinated-20260925` on the VPS. Old executables cannot
+be restarted against the migrated schemas: rollback requires a coordinated
+review of both database snapshots, binaries, configuration and runtime activity
+since the snapshot, rather than a binary-only downgrade.
