@@ -9,6 +9,7 @@ import (
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	"github.com/0xivanov/self-hosted-deployer/internal/registryauth"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -64,7 +65,7 @@ func (c *Controller) ResetInactiveCandidateService(ctx context.Context, gate Act
 	}
 	selector[candidateGenerationLabel] = "inactive-" + candidateGeneration(cfg.Name, newRequestID)
 	service.Spec.Selector = maps.Clone(selector)
-	service.Spec.Ports = serviceForApp(cfg, c.namespace).Spec.Ports
+	service.Spec.Ports = candidateServiceForApp(cfg, c.namespace).Spec.Ports
 	service.Annotations[initialCandidateRequestAnnotation] = newRequestID
 	service.Annotations[activationOperationAnnotation] = CandidateBootstrapOperationID(cfg.Name, newRequestID)
 	updated, err := c.updateActivationGate(ctx, service)
@@ -89,11 +90,21 @@ func (c *Controller) CreateInactiveCandidateService(ctx context.Context, cfg app
 	if c.services == nil {
 		return errors.New("candidate service runtime is unavailable")
 	}
-	service := serviceForApp(cfg, c.namespace)
+	service := candidateServiceForApp(cfg, c.namespace)
 	// Candidate generation values are 32 hex characters, so none can match
 	// this explicit inactive selector. An empty selector would be unsafe.
 	service.Spec.Selector = map[string]string{appOwnershipLabel: cfg.Name, candidateGenerationLabel: "inactive-" + candidateGeneration(cfg.Name, requestID)}
 	service.Annotations[initialCandidateRequestAnnotation] = requestID
 	_, err := c.services.Create(ctx, service, metav1.CreateOptions{})
 	return err
+}
+
+// Candidate gates compare ports exactly. Set the API default explicitly so
+// saved targets match the Service returned by Kubernetes.
+func candidateServiceForApp(cfg appconfig.Config, namespace string) *corev1.Service {
+	service := serviceForApp(cfg, namespace)
+	for i := range service.Spec.Ports {
+		service.Spec.Ports[i].Protocol = corev1.ProtocolTCP
+	}
+	return service
 }

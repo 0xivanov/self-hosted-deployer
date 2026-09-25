@@ -35,7 +35,7 @@ func (c *Controller) RestoredCandidateTargetReady(ctx context.Context, gate Acti
 		return false, errors.New("restored activation target changed")
 	}
 	expectedService := serviceForApp(previous, c.namespace)
-	if !apiequality.Semantic.DeepEqual(target.Ports, expectedService.Spec.Ports) {
+	if !candidateServicePortsMatch(target.Ports, expectedService.Spec.Ports) {
 		return false, errors.New("restored activation ports changed")
 	}
 	if len(target.Selector) == 0 {

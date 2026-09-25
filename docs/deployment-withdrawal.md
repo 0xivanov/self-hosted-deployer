@@ -239,3 +239,28 @@ configuration rejection and atomic rollback on marker insertion failure. This
 is source-only. Fleet integration of the missing-request path and actual cluster
 qualification remain before production enablement. Upgrade the server before
 using the new CLI command; older servers do not support this additive RPC.
+
+### Real Kubernetes lifecycle check (September 25)
+
+The opt-in `TestCandidateRealClusterLifecycle` runs with a new generated
+namespace and temporary database. It requires an explicit kubeconfig and pinned
+ARM64 HTTP image through `DEPLOYER_CANDIDATE_CHECK_KUBECONFIG` and
+`DEPLOYER_CANDIDATE_CHECK_IMAGE`. It leaves existing app namespaces and the live
+server database untouched and deletes only its own namespace with a UID guard.
+
+The check exposed two API default differences which fake clients did not add:
+an empty pod security context and TCP Service port protocol. Candidate comparison
+now accepts the empty default security context while preserving explicit security
+changes; candidate Service generation sets TCP explicitly, and restored-target
+comparison normalizes only an omitted TCP default. Legacy manifest rendering is
+unchanged, with compatibility checks still passing.
+
+On the VPS/Pi cluster, the corrected check passed missing-request withdrawal,
+initial retry/publication on both ARM64 workers, unhealthy update recovery with
+prior-release health, rejection of a withdrawn request advance, and project
+removal with zero remaining app Pods (36.39 seconds). Image used:
+`nginxinc/nginx-unprivileged@sha256:4714e0b1b2577eaa1a6131d07c958b67f0eb68e6d0521e90c6e5287db8cf0bc5`.
+This is real runtime evidence but does not establish private registry rotation,
+public DNS/HTTPS, portal end-to-end behavior or delayed independent writer
+isolation. Those checks and the coordinated production upgrade remain. No live
+application binaries, feature flags or database schemas were changed.

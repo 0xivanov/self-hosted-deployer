@@ -60,7 +60,7 @@ func (c *Controller) ActivatePreparedCandidate(ctx context.Context, gate Activat
 	}
 	// Port changes also require ingress coordination, which is deliberately not
 	// inferred from the candidate. Do not switch traffic with a mismatched route.
-	target := serviceForApp(cfg, c.namespace)
+	target := candidateServiceForApp(cfg, c.namespace)
 	if len(service.Spec.Ports) != 1 || service.Spec.Ports[0].Port != target.Spec.Ports[0].Port {
 		return ActivationGate{}, fmt.Errorf("candidate port change requires route coordination")
 	}

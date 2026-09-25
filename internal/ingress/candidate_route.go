@@ -35,7 +35,7 @@ func (c *Controller) ReconcileCandidateRoute(ctx context.Context, gate Activatio
 	if !apiequality.Semantic.DeepEqual(service.Spec.Selector, target.Selector) || !apiequality.Semantic.DeepEqual(service.Spec.Ports, target.Ports) {
 		return errors.New("candidate route target is not selected by the fenced Service")
 	}
-	expected := serviceForApp(cfg, c.namespace)
+	expected := candidateServiceForApp(cfg, c.namespace)
 	if !apiequality.Semantic.DeepEqual(service.Spec.Ports, expected.Spec.Ports) {
 		return errors.New("candidate route port does not match configuration")
 	}

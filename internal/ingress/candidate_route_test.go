@@ -15,7 +15,7 @@ import (
 func candidateRouteController(t *testing.T, cfg appconfig.Config, operation string) (*Controller, ActivationGate, ActivationTarget, *fake.Clientset) {
 	t.Helper()
 	clientset := fake.NewSimpleClientset()
-	service := serviceForApp(cfg, DefaultNamespace)
+	service := candidateServiceForApp(cfg, DefaultNamespace)
 	service.UID = types.UID("service-uid")
 	service.ResourceVersion = "7"
 	if service.Annotations == nil {

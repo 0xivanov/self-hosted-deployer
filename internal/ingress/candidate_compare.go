@@ -61,6 +61,11 @@ func normalizeCandidateDeployment(d *appsv1.Deployment) {
 }
 
 func normalizeCandidatePodSpec(p *corev1.PodSpec) {
+	// The API server defaults an omitted pod security context to an empty
+	// object. Preserve every explicitly configured security setting.
+	if p.SecurityContext == nil {
+		p.SecurityContext = &corev1.PodSecurityContext{}
+	}
 	if p.RestartPolicy == "" {
 		p.RestartPolicy = corev1.RestartPolicyAlways
 	}
@@ -181,3 +186,16 @@ func normalizeCandidatePolicy(p *networkingv1.NetworkPolicy) {
 
 func int32Ptr(v int32) *int32 { return &v }
 func int64Ptr(v int64) *int64 { return &v }
+
+func candidateServicePortsMatch(a, b []corev1.ServicePort) bool {
+	normalize := func(ports []corev1.ServicePort) []corev1.ServicePort {
+		out := append([]corev1.ServicePort(nil), ports...)
+		for i := range out {
+			if out[i].Protocol == "" {
+				out[i].Protocol = corev1.ProtocolTCP
+			}
+		}
+		return out
+	}
+	return apiequality.Semantic.DeepEqual(normalize(a), normalize(b))
+}

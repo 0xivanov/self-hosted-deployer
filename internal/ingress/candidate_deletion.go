@@ -37,7 +37,7 @@ func deletionTarget(cfg appconfig.Config, operationID, namespace string) (Activa
 	}
 	return ActivationTarget{
 		Selector: map[string]string{appOwnershipLabel: cfg.Name, candidateGenerationLabel: "inactive-" + candidateGeneration(cfg.Name, operationID)},
-		Ports:    serviceForApp(cfg, namespace).Spec.Ports,
+		Ports:    candidateServiceForApp(cfg, namespace).Spec.Ports,
 	}, nil
 }
 
@@ -81,7 +81,7 @@ func (c *Controller) BeginCandidateDeletion(ctx context.Context, cfg appconfig.C
 		if !allowMissing {
 			return ActivationGate{}, errors.New("app Service is missing before deletion")
 		}
-		service = serviceForApp(cfg, c.namespace)
+		service = candidateServiceForApp(cfg, c.namespace)
 		service.Spec.Selector = maps.Clone(target.Selector)
 		service.Annotations[deletionOperationAnnotation] = operationID
 		service.Annotations[deletingAppIDAnnotation] = appID

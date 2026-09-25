@@ -82,3 +82,39 @@ func TestCandidateNetworkPolicyMatchesProtocolDefaults(t *testing.T) {
 		t.Fatal("changed policy selector compared equal")
 	}
 }
+
+func TestCandidateMatchesEmptyAPISecurityContext(t *testing.T) {
+	cfg := hostingTestConfig(t)
+	desired, err := CandidateDeploymentForApp(cfg, DefaultNamespace, "", strings.Repeat("d", 64), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	desired.Spec.Template.Spec.SecurityContext = nil
+	observed := desired.DeepCopy()
+	observed.Spec.Template.Spec.SecurityContext = &corev1.PodSecurityContext{}
+	if !candidateDeploymentMatches(observed, desired) {
+		t.Fatal("empty API security context rejected")
+	}
+	observed.Spec.Template.Spec.SecurityContext.RunAsUser = int64Ptr(0)
+	if candidateDeploymentMatches(observed, desired) {
+		t.Fatal("explicit security change accepted")
+	}
+}
+
+func TestCandidateServicePortsAcceptOnlyDefaultProtocol(t *testing.T) {
+	expected := []corev1.ServicePort{{Name: "http", Port: 8080}}
+	actual := append([]corev1.ServicePort(nil), expected...)
+	actual[0].Protocol = corev1.ProtocolTCP
+	if !candidateServicePortsMatch(actual, expected) {
+		t.Fatal("API TCP default rejected")
+	}
+	actual[0].Protocol = corev1.ProtocolUDP
+	if candidateServicePortsMatch(actual, expected) {
+		t.Fatal("UDP accepted as TCP")
+	}
+	actual[0].Protocol = corev1.ProtocolTCP
+	actual[0].Port = 8081
+	if candidateServicePortsMatch(actual, expected) {
+		t.Fatal("port change accepted")
+	}
+}
