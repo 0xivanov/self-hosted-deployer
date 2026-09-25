@@ -156,24 +156,25 @@ func (c *Controller) deletionServiceAtGate(ctx context.Context, gate ActivationG
 	return service, nil
 }
 
-// CleanupCandidateDeletion drains and removes owned non-candidate resources.
-// Candidate tombstones remain until old writers are drained by deployment
-// qualification; they have zero replicas and consume no compute.
-func (c *Controller) CleanupCandidateDeletion(ctx context.Context, gate ActivationGate, appID string) (bool, error) {
-	if c.services == nil || c.deployments == nil || c.pods == nil || c.ingresses == nil || c.appSecrets == nil || c.networkPolicies == nil {
-		return false, errors.New("candidate deletion resource clients are unavailable")
+// retireLegacyCandidatePredecessor leaves the legacy app Deployment as a
+// zero-replica tombstone and waits for its observed drain. It is shared by
+// deletion and candidate cutover; neither path removes the Deployment here.
+func (c *Controller) retireLegacyCandidatePredecessor(ctx context.Context, gate ActivationGate) (bool, error) {
+	if c.deployments == nil || c.pods == nil {
+		return false, errors.New("legacy predecessor retirement requires Deployment and Pod clients")
 	}
-	_, err := c.deletionServiceAtGate(ctx, gate, appID)
-	if err != nil {
+	legacy, err := c.deployments.Get(ctx, gate.App, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		legacy = nil
+	} else if err != nil {
 		return false, err
 	}
-	legacy, getErr := c.deployments.Get(ctx, gate.App, metav1.GetOptions{})
-	if getErr == nil {
+	if legacy != nil {
 		if err = requireAppResourceOwnership("Deployment", legacy.Name, gate.App, legacy.Labels); err != nil {
 			return false, err
 		}
 		if legacy.UID == "" || legacy.ResourceVersion == "" || legacy.DeletionTimestamp != nil {
-			return false, errors.New("legacy app Deployment lacks stable deletion identity")
+			return false, errors.New("legacy app Deployment lacks stable retirement identity")
 		}
 		if legacy.Annotations == nil {
 			legacy.Annotations = map[string]string{}
@@ -195,8 +196,67 @@ func (c *Controller) CleanupCandidateDeletion(ctx context.Context, gate Activati
 		if legacy.Annotations[legacyDeletionAnnotation] != gate.OperationID || legacy.Generation < 1 || legacy.Status.ObservedGeneration < legacy.Generation || legacy.Spec.Replicas == nil || *legacy.Spec.Replicas != 0 || legacy.Status.Replicas != 0 || legacy.Status.UpdatedReplicas != 0 || legacy.Status.ReadyReplicas != 0 || legacy.Status.AvailableReplicas != 0 || legacy.Status.UnavailableReplicas != 0 {
 			return false, nil
 		}
-	} else if !apierrors.IsNotFound(getErr) {
-		return false, getErr
+	}
+	legacyPods, err := c.pods.List(ctx, metav1.ListOptions{LabelSelector: labels.Set{"app.kubernetes.io/name": gate.App}.AsSelector().String()})
+	if err != nil {
+		return false, err
+	}
+	for i := range legacyPods.Items {
+		pod := &legacyPods.Items[i]
+		if err = requireAppResourceOwnership("Pod", pod.Name, gate.App, pod.Labels); err != nil {
+			return false, err
+		}
+	}
+	return len(legacyPods.Items) == 0, nil
+}
+
+// RetireLegacyCandidatePredecessor drains only the legacy predecessor while
+// the Service selects the active candidate generation. It never touches the
+// selected candidate, routes, secrets, or Service.
+func (c *Controller) RetireLegacyCandidatePredecessor(ctx context.Context, gate ActivationGate) (bool, error) {
+	if c.services == nil || !registryauth.ValidRevision(gate.OperationID) {
+		return false, errors.New("candidate predecessor retirement is unavailable")
+	}
+	service, err := c.serviceAtGate(ctx, gate)
+	if err != nil {
+		return false, err
+	}
+	if service.DeletionTimestamp != nil {
+		return false, ErrActivationSuperseded
+	}
+	expected, err := CandidateSelector(gate.App, gate.OperationID)
+	if err != nil || !maps.Equal(service.Spec.Selector, expected) || service.Annotations[activationOperationAnnotation] != gate.OperationID {
+		return false, ErrActivationSuperseded
+	}
+	if _, deleting := service.Annotations[deletionOperationAnnotation]; deleting {
+		return false, errors.New("candidate predecessor retirement cannot run during deletion")
+	}
+	if _, deleting := service.Annotations[deletingAppIDAnnotation]; deleting {
+		return false, errors.New("candidate predecessor retirement cannot run during deletion")
+	}
+	ready, err := c.retireLegacyCandidatePredecessor(ctx, gate)
+	if err != nil {
+		return false, err
+	}
+	if _, err = c.serviceAtGate(ctx, gate); err != nil {
+		return false, err
+	}
+	return ready, nil
+}
+
+// CleanupCandidateDeletion drains and removes owned non-candidate resources.
+// Candidate tombstones remain until old writers are drained by deployment
+// qualification; they have zero replicas and consume no compute.
+func (c *Controller) CleanupCandidateDeletion(ctx context.Context, gate ActivationGate, appID string) (bool, error) {
+	if c.services == nil || c.deployments == nil || c.pods == nil || c.ingresses == nil || c.appSecrets == nil || c.networkPolicies == nil {
+		return false, errors.New("candidate deletion resource clients are unavailable")
+	}
+	_, err := c.deletionServiceAtGate(ctx, gate, appID)
+	if err != nil {
+		return false, err
+	}
+	if ready, err := c.retireLegacyCandidatePredecessor(ctx, gate); err != nil || !ready {
+		return false, err
 	}
 	pods, listErr := c.pods.List(ctx, metav1.ListOptions{LabelSelector: labels.Set{appOwnershipLabel: gate.App}.AsSelector().String()})
 	if listErr != nil {

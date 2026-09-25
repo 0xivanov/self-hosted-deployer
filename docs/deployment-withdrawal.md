@@ -188,3 +188,29 @@ workloads, other-app preservation and missing-Service retry. Relevant DB,
 server, ingress, CLI and command suites plus vet passed. This remains source-only
 and does not constitute real-cluster qualification. Retirement after successful
 updates, missing-request ambiguity and controlled fleet enablement remain open.
+
+### Capacity reclamation after successful activation
+
+The Kubernetes candidate path now retires older bound generations only after
+its applied request receipt is committed. It verifies the current app config,
+selected generation, Service gate and readiness, and skips stale requests or
+apps with another pending deployment. Every non-selected terminal generation is
+retired; the legacy app Deployment is scaled to a zero-replica tombstone and its
+observed state and legacy-selected Pods must drain. The selected candidate,
+routes, credentials and environment versions remain available. Restoring an old
+release therefore creates a fresh request/generation using the retained inputs.
+
+`AdvanceDeployRequest` now retries this housekeeping for an applied request, as
+does replaying an applied `DeployApp` request. Request lookup remains read-only.
+Cleanup failure does not undo the committed applied outcome: the mutating call
+reports that earlier workload cleanup is pending and should be retried. The
+fleet worker advances applied requests before settling the portal job, including
+after the original activation deadline or a worker restart. This operation does
+not reactivate the release or withdraw an already-applied deployment.
+
+Focused checks cover old-generation retirement, current-generation preservation,
+legacy workload drain, read-only lookup, retry without deployment preparation,
+stale advance requests and a pending recovery window. Fleet checks verify
+retryable cleanup errors after expiry without recovery or another submission.
+Relevant package checks passed. These changes remain source-only; missing-request
+ambiguity and actual Kubernetes rollout qualification still block enablement.

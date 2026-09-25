@@ -78,6 +78,11 @@ func (s AppService) deployCandidateApp(ctx context.Context, cfg appconfig.Config
 		return nil, status.Error(codes.Internal, "read candidate request")
 	}
 	if record.State != "pending" {
+		if record.State == "applied" {
+			if err := s.reclaimCandidateCapacity(ctx, record.AppName, record.RequestID); err != nil {
+				return nil, err
+			}
+		}
 		return decodeCandidateReply(record.ResponseJSON)
 	}
 	if err = s.prepareCandidateRequest(ctx, record, cfg, runtime); err != nil {
@@ -93,6 +98,9 @@ func (s AppService) deployCandidateApp(ctx context.Context, cfg appconfig.Config
 			return nil, status.Error(codes.FailedPrecondition, "candidate outcome remains unconfirmed; inspect request before retrying")
 		}
 		if result != nil {
+			if err := s.reclaimCandidateCapacity(ctx, record.AppName, record.RequestID); err != nil {
+				return nil, err
+			}
 			return result, nil
 		}
 	}

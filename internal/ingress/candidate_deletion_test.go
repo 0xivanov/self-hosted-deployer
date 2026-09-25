@@ -3,6 +3,7 @@ package ingress
 import (
 	"context"
 	"errors"
+	"maps"
 	"reflect"
 	"testing"
 
@@ -248,5 +249,90 @@ func TestCandidateDeletionAllowsMissingServiceOnlyForDeletedAppReplay(t *testing
 	}
 	if _, err := c.BeginCandidateDeletion(context.Background(), cfg, "active-app", false); err == nil {
 		t.Fatal("active app with missing Service was accepted")
+	}
+}
+
+func TestRetireLegacyCandidatePredecessorDrainsOnlyLegacyGeneration(t *testing.T) {
+	cfg := hostingTestConfig(t)
+	requestID := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	client := fake.NewSimpleClientset()
+	c := &Controller{namespace: DefaultNamespace, services: client.CoreV1().Services(DefaultNamespace), pods: client.CoreV1().Pods(DefaultNamespace), deployments: client.AppsV1().Deployments(DefaultNamespace)}
+	service := serviceForApp(cfg, DefaultNamespace)
+	service.UID = "service-cutover"
+	service.ResourceVersion = "1"
+	selector, err := CandidateSelector(cfg.Name, requestID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.Spec.Selector = selector
+	service.Annotations[activationOperationAnnotation] = requestID
+	if _, err := c.services.Create(context.Background(), service, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	replicas := int32(2)
+	legacy, err := deploymentForApp(cfg, DefaultNamespace, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.UID = "legacy-cutover"
+	legacy.ResourceVersion = "1"
+	legacy.Generation = 1
+	legacy.Spec.Replicas = &replicas
+	legacy.Status.Replicas = 2
+	legacy.Status.ObservedGeneration = 1
+	if _, err := c.deployments.Create(context.Background(), legacy, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := CandidateDeploymentForApp(cfg, DefaultNamespace, "", requestID, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate.UID = "candidate-cutover"
+	candidate.ResourceVersion = "1"
+	candidate.Generation = 1
+	candidate.Spec.Replicas = &replicas
+	candidate.Status.ObservedGeneration = 1
+	candidate.Status.Replicas = 2
+	if _, err := c.deployments.Create(context.Background(), candidate, metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	gate, _, err := c.CaptureActivationGate(context.Background(), cfg.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ready, err := c.RetireLegacyCandidatePredecessor(context.Background(), gate)
+	if err != nil || ready {
+		t.Fatalf("running predecessor was treated as drained: ready=%v err=%v", ready, err)
+	}
+	legacy, err = c.deployments.Get(context.Background(), cfg.Name, metav1.GetOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.Status.ObservedGeneration = legacy.Generation
+	legacy.Status.Replicas = 0
+	legacy.Status.UpdatedReplicas = 0
+	legacy.Status.ReadyReplicas = 0
+	legacy.Status.AvailableReplicas = 0
+	if _, err := c.deployments.UpdateStatus(context.Background(), legacy, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	ready, err = c.RetireLegacyCandidatePredecessor(context.Background(), gate)
+	if err != nil || !ready {
+		t.Fatalf("drained predecessor was not retired: ready=%v err=%v", ready, err)
+	}
+	current, err := c.deployments.Get(context.Background(), candidate.Name, metav1.GetOptions{})
+	if err != nil || current.Spec.Replicas == nil || *current.Spec.Replicas != 2 {
+		t.Fatalf("selected candidate was changed: deployment=%+v err=%v", current, err)
+	}
+	service, err = c.services.Get(context.Background(), cfg.Name, metav1.GetOptions{})
+	if err != nil || !maps.Equal(service.Spec.Selector, selector) {
+		t.Fatalf("Service target changed: service=%+v err=%v", service, err)
+	}
+	service.Spec.Selector = map[string]string{appOwnershipLabel: cfg.Name, candidateGenerationLabel: "foreign"}
+	if _, err := c.services.Update(context.Background(), service, metav1.UpdateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.RetireLegacyCandidatePredecessor(context.Background(), gate); !errors.Is(err, ErrActivationSuperseded) {
+		t.Fatalf("stale candidate gate was accepted: %v", err)
 	}
 }

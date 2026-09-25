@@ -80,6 +80,11 @@ func (s AppService) mutateCandidateRequest(ctx context.Context, req *deployerv1.
 		if request.State != outcome {
 			return nil, status.Error(codes.FailedPrecondition, "request already completed with a different outcome")
 		}
+		if !recover {
+			if err := s.reclaimCandidateCapacity(ctx, request.AppName, request.RequestID); err != nil {
+				return nil, err
+			}
+		}
 		return s.GetDeployRequest(ctx, req)
 	}
 	cfg, decodeErr := appconfig.FromJSON(request.RequestedState)
@@ -123,6 +128,11 @@ func (s AppService) mutateCandidateRequest(ctx context.Context, req *deployerv1.
 	_, err = CompleteCandidateOperation(ctx, s.candidateCheckpoints, s.deploymentRequests, s.candidateFinalizer, runtime, request.AppName, request.RequestID, outcome, s.routeTLSEnabled, s.now().UTC())
 	if err != nil {
 		return nil, status.Error(codes.FailedPrecondition, "candidate outcome remains unconfirmed; inspect request before retrying")
+	}
+	if !recover {
+		if err := s.reclaimCandidateCapacity(ctx, request.AppName, request.RequestID); err != nil {
+			return nil, err
+		}
 	}
 	return s.GetDeployRequest(ctx, req)
 }
