@@ -319,3 +319,31 @@ host lock and restores all previously installed release files if installation
 or the restarted service health check fails. A failed release is quarantined
 on that host so the timer does not retry it; a newer release clears the
 quarantine automatically.
+
+### Certificate controller placement and WireGuard-backed workers
+
+For the current VPS/Pi fleet, certificate management is pinned to the VPS using
+`deploy/operations/cert-manager-vps-placement.patch.yaml`, applied as a strategic
+merge patch to the `cert-manager` and `cert-manager-cainjector` Deployments in the
+`cert-manager` namespace. This changes placement only, not controller versions,
+ACME accounts or existing certificates. Adjust the hostname before reusing the
+patch on a different cluster. Remove just the hostname selector to revert it.
+
+On September 25 the issuer was unready because the home Pi could not resolve
+cluster DNS. Moving the controllers restored account registration and the issuer
+became Ready. Investigation found that restarting `wg0` had removed `flannel.1`
+and the remote Pod routes while the node heartbeat still reported Ready. The
+agent logged `external interface not found`; restarting `k3s-agent` after the VPN
+was up restored the interface and routes. Fresh non-root diagnostic Pods then
+resolved both Kubernetes services and the ACME hostname on the repaired worker.
+
+`deploy/systemd/k3s-agent.service.d/wireguard.conf` is installed on both current
+Pi workers. It orders the agent after `wg-quick@wg0`, requires the VPN unit and
+propagates VPN service restart/stop through `PartOf`. Use it only when Flannel
+actually uses wg0. Install under `/etc/systemd/system/k3s-agent.service.d/`, reload
+systemd, and restart the agent if recovering an already-broken interface. To
+revert, remove this drop-in and reload systemd; do not remove the VPN configuration.
+A node Ready condition alone does not prove Pod routing or DNS health. Check a
+fresh Pod's internal and external DNS after a VPN repair. The restart relationship
+has been installed, but a deliberate additional VPN interruption has not been
+performed as part of this repair.

@@ -1,0 +1,7 @@
+# Current VPS/Pi fleet: keep certificate management beside the API server and DNS.
+# Apply this strategic merge patch to cert-manager and cert-manager-cainjector.
+spec:
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: v2202605362241463974
