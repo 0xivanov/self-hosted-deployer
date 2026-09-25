@@ -62,6 +62,20 @@ func (c *Controller) ReconcileCandidateRoute(ctx context.Context, gate Activatio
 		}
 		return nil
 	}
+	// Candidate preparation intentionally does not reconcile the legacy app
+	// resources. Install the fixed routing dependencies before exposing the
+	// Ingress that references them.
+	if err := c.reconcileTrafficResilienceResources(ctx, cfg); err != nil {
+		return err
+	}
+	if c.tls.Enabled() {
+		if err := c.ensureIssuer(ctx); err != nil {
+			return err
+		}
+	}
+	if _, err := c.serviceAtGate(ctx, gate); err != nil {
+		return err
+	}
 	desired := kubernetesIngress(manifest)
 	existing, err := c.ingresses.Get(ctx, desired.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {

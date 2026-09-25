@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -58,12 +60,23 @@ func TestCandidateRealClusterLifecycle(t *testing.T) {
 			t.Errorf("namespace cleanup: %v", err)
 		}
 	})
-	controller, err := ingress.NewController(ingress.ControllerConfig{KubeconfigPath: kubeconfig, Namespace: ns.Name})
+	tls := ingress.TLSConfig{}
+	domain := os.Getenv("DEPLOYER_CANDIDATE_CHECK_DOMAIN")
+	if domain != "" {
+		if !strings.HasPrefix(domain, "launchstead-check-") || !strings.HasSuffix(domain, ".0xivanov.dev") {
+			t.Fatal("qualification domain must be an isolated launchstead-check-*.0xivanov.dev hostname")
+		}
+		tls = ingress.TLSConfig{ACMEEmail: os.Getenv("DEPLOYER_CANDIDATE_CHECK_ACME_EMAIL")}
+		if !tls.Enabled() {
+			t.Fatal("explicit ACME email required for HTTPS check")
+		}
+	}
+	controller, err := ingress.NewController(ingress.ControllerConfig{KubeconfigPath: kubeconfig, Namespace: ns.Name, TLS: tls})
 	if err != nil {
 		t.Fatal(err)
 	}
 	database := openTestDB(t)
-	service := NewAppService(AppServiceConfig{EnableCandidateOperations: true, DeploymentRequests: db.NewDeploymentRequestRepository(database), CandidateBindings: db.NewCandidateBindingRepository(database), CandidateCheckpoints: db.NewRuntimeCheckpointRepository(database), CandidateFinalizer: db.NewCandidateFinalizationRepository(database), Apps: db.NewAppRepository(database), Deployments: db.NewDeploymentRepository(database), Routes: db.NewRouteRepository(database), Runtime: controller})
+	service := NewAppService(AppServiceConfig{EnableCandidateOperations: true, DeploymentRequests: db.NewDeploymentRequestRepository(database), CandidateBindings: db.NewCandidateBindingRepository(database), CandidateCheckpoints: db.NewRuntimeCheckpointRepository(database), CandidateFinalizer: db.NewCandidateFinalizationRepository(database), Apps: db.NewAppRepository(database), Deployments: db.NewDeploymentRepository(database), Routes: db.NewRouteRepository(database), Runtime: controller, RouteTLSEnabled: tls.Enabled()})
 	spec := fmt.Sprintf(`name: candidate-check
 image: %s
 service:
@@ -81,6 +94,9 @@ hosting:
     requests: {cpu: 50m, memory: 64Mi, ephemeralStorage: 64Mi}
     limits: {cpu: 500m, memory: 256Mi, ephemeralStorage: 256Mi}
 `, image)
+	if domain != "" {
+		spec = strings.Replace(spec, "routing: {}", "routing: {domain: "+domain+"}", 1)
+	}
 	request := func(letter string, yaml string) *deployerv1.DeployAppRequest {
 		return &deployerv1.DeployAppRequest{DeployerYaml: yaml, RequestId: strings.Repeat(letter, 64), ReportWithdrawal: true}
 	}
@@ -121,6 +137,32 @@ hosting:
 		}
 		return e
 	})
+	checkHTTPS := func() error {
+		if domain == "" {
+			return nil
+		}
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+domain+"/", nil)
+		if err != nil {
+			return err
+		}
+		httpClient := &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		response, err := httpClient.Do(request)
+		if err != nil {
+			return err
+		}
+		defer response.Body.Close()
+		body, err := io.ReadAll(io.LimitReader(response.Body, 65536))
+		if err != nil {
+			return err
+		}
+		if response.StatusCode != 200 || !strings.Contains(string(body), "Welcome to nginx!") {
+			return fmt.Errorf("unexpected HTTPS response: status %d", response.StatusCode)
+		}
+		return nil
+	}
+	if domain != "" {
+		wait("public HTTPS", checkHTTPS)
+	}
 	pods, err := client.CoreV1().Pods(ns.Name).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -150,6 +192,9 @@ hosting:
 	}
 	if state, err := controller.Status(ctx, "candidate-check"); err != nil || state != ingress.StatusHealthy {
 		t.Fatalf("predecessor health: %s %v", state, err)
+	}
+	if domain != "" {
+		wait("HTTPS after recovery", checkHTTPS)
 	}
 	wait("candidate project deletion", func() error {
 		_, e := service.DeleteApp(ctx, &deployerv1.DeleteAppRequest{Name: "candidate-check"})

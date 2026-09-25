@@ -264,3 +264,30 @@ This is real runtime evidence but does not establish private registry rotation,
 public DNS/HTTPS, portal end-to-end behavior or delayed independent writer
 isolation. Those checks and the coordinated production upgrade remain. No live
 application binaries, feature flags or database schemas were changed.
+
+### Public HTTPS lifecycle (September 25)
+
+The candidate route now creates the proxy retry middleware and transport settings
+referenced by its Ingress/Service, then checks the Service gate again before
+publishing the route. TLS-enabled routes also ensure the configured ACME issuer.
+Previously the candidate path skipped legacy resource reconciliation without
+replacing those routing dependencies, so a healthy workload alone could not
+establish public routing. Focused route checks cover the referenced resources.
+
+The opt-in cluster test additionally accepts an isolated
+`DEPLOYER_CANDIDATE_CHECK_DOMAIN` (`launchstead-check-*.0xivanov.dev`) and explicit
+`DEPLOYER_CANDIDATE_CHECK_ACME_EMAIL`. With these set, it checks a trusted HTTPS
+certificate, HTTP 200 and the expected nginx body before and after update
+recovery. It follows no redirects and does not disable certificate validation.
+The test hostname must be newly reserved for this check; do not use an existing
+customer hostname. Namespace deletion does not remove external DNS, so delete
+only the created DNS record by its saved ID after the run.
+
+The live-cluster check passed in 60.09 seconds using a temporary DNS-only record
+at `launchstead-check-20260925.0xivanov.dev`; an independent request from the Mac
+also confirmed the certificate, response and expected content. The run covered
+initial publication across both Pi workers, recovery with HTTPS still working,
+and project deletion. The temporary namespace and DNS record were cleaned up.
+Private registry credential rotation, portal end-to-end rollout and independent
+delayed-writer checks remain. Candidate binaries are still not installed in the
+production services.

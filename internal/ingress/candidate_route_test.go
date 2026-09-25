@@ -8,7 +8,9 @@ import (
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -136,4 +138,22 @@ func TestReconcileCandidateRouteDeleteUsesUIDAndResourceVersion(t *testing.T) {
 		}
 	}
 	t.Fatal("delete action not recorded")
+}
+
+func TestCandidateRouteCreatesReferencedProxyDependencies(t *testing.T) {
+	cfg := hostingTestConfig(t)
+	cfg.Routing.Domain = "api.example.test"
+	c, gate, target, _ := candidateRouteController(t, cfg, strings.Repeat("f", 64))
+	dynamicClient := dynamicfake.NewSimpleDynamicClient(k8sruntime.NewScheme())
+	c.middlewares = dynamicClient.Resource(retryMiddlewareResource).Namespace(DefaultNamespace)
+	c.serverTransports = dynamicClient.Resource(serversTransportResource).Namespace(DefaultNamespace)
+	if err := c.ReconcileCandidateRoute(context.Background(), gate, target, cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.middlewares.Get(context.Background(), cfg.Name, metav1.GetOptions{}); err != nil {
+		t.Fatal("referenced middleware missing:", err)
+	}
+	if _, err := c.serverTransports.Get(context.Background(), cfg.Name, metav1.GetOptions{}); err != nil {
+		t.Fatal("referenced transport missing:", err)
+	}
 }
