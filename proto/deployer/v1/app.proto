@@ -5,10 +5,27 @@ package deployer.v1;
 option go_package = "github.com/0xivanov/self-hosted-deployer/internal/proto/deployer/v1;deployerv1";
 
 service AppService {
+  // Preserve the deployed v1 shared message contract.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
   rpc DeployApp(DeployAppRequest) returns (DeployAppResponse);
+  // Preserve the deployed v1 shared message contract.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
   rpc GetDeployRequest(GetDeployRequestRequest) returns (DeployRequestMetadata);
+  // Preserve the deployed v1 shared message contract.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
   rpc AdvanceDeployRequest(GetDeployRequestRequest) returns (DeployRequestMetadata);
+  // Preserve the deployed v1 shared message contract.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
   rpc RecoverDeployRequest(GetDeployRequestRequest) returns (DeployRequestMetadata);
+  // Preserve the deployed v1 shared message contract.
+  // buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+  // buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+  // buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
   rpc WithdrawDeployRequest(DeployAppRequest) returns (DeployRequestMetadata);
   rpc PreflightApp(PreflightAppRequest) returns (PreflightAppResponse);
   rpc ListApps(ListAppsRequest) returns (ListAppsResponse);

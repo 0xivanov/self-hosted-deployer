@@ -39,10 +39,27 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AppServiceClient interface {
+	// Preserve the deployed v1 shared message contract.
+	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
 	DeployApp(ctx context.Context, in *DeployAppRequest, opts ...grpc.CallOption) (*DeployAppResponse, error)
+	// Preserve the deployed v1 shared message contract.
+	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
 	GetDeployRequest(ctx context.Context, in *GetDeployRequestRequest, opts ...grpc.CallOption) (*DeployRequestMetadata, error)
+	// Preserve the deployed v1 shared message contract.
+	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+	// buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
 	AdvanceDeployRequest(ctx context.Context, in *GetDeployRequestRequest, opts ...grpc.CallOption) (*DeployRequestMetadata, error)
+	// Preserve the deployed v1 shared message contract.
+	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+	// buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
 	RecoverDeployRequest(ctx context.Context, in *GetDeployRequestRequest, opts ...grpc.CallOption) (*DeployRequestMetadata, error)
+	// Preserve the deployed v1 shared message contract.
+	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+	// buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
 	WithdrawDeployRequest(ctx context.Context, in *DeployAppRequest, opts ...grpc.CallOption) (*DeployRequestMetadata, error)
 	PreflightApp(ctx context.Context, in *PreflightAppRequest, opts ...grpc.CallOption) (*PreflightAppResponse, error)
 	ListApps(ctx context.Context, in *ListAppsRequest, opts ...grpc.CallOption) (*ListAppsResponse, error)
@@ -216,10 +233,27 @@ func (c *appServiceClient) InspectRoute(ctx context.Context, in *InspectRouteReq
 // All implementations must embed UnimplementedAppServiceServer
 // for forward compatibility.
 type AppServiceServer interface {
+	// Preserve the deployed v1 shared message contract.
+	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
 	DeployApp(context.Context, *DeployAppRequest) (*DeployAppResponse, error)
+	// Preserve the deployed v1 shared message contract.
+	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
 	GetDeployRequest(context.Context, *GetDeployRequestRequest) (*DeployRequestMetadata, error)
+	// Preserve the deployed v1 shared message contract.
+	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+	// buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
 	AdvanceDeployRequest(context.Context, *GetDeployRequestRequest) (*DeployRequestMetadata, error)
+	// Preserve the deployed v1 shared message contract.
+	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+	// buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
 	RecoverDeployRequest(context.Context, *GetDeployRequestRequest) (*DeployRequestMetadata, error)
+	// Preserve the deployed v1 shared message contract.
+	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+	// buf:lint:ignore RPC_REQUEST_STANDARD_NAME
+	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
 	WithdrawDeployRequest(context.Context, *DeployAppRequest) (*DeployRequestMetadata, error)
 	PreflightApp(context.Context, *PreflightAppRequest) (*PreflightAppResponse, error)
 	ListApps(context.Context, *ListAppsRequest) (*ListAppsResponse, error)
