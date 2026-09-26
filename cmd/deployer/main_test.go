@@ -583,8 +583,9 @@ func TestAppStatusAndNodeRemoveCommands(t *testing.T) {
 	if code := app.run(args); code != 0 {
 		t.Fatalf("expected app status success, got %d: %s", code, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "pi-kitchen") || !strings.Contains(stdout.String(), "ROUTE HEALTH") ||
-		!strings.Contains(stdout.String(), "healthy") || !strings.Contains(stdout.String(), "DATABASE") ||
+	if !strings.HasPrefix(stdout.String(), "APP\tmy-api\nRUNTIME\tdegraded\n") ||
+		!strings.Contains(stdout.String(), "pi-kitchen") || !strings.Contains(stdout.String(), "ROUTE\tapi.example.com\thealthy") ||
+		!strings.Contains(stdout.String(), "DATABASE") ||
 		!strings.Contains(stdout.String(), "2/3 ready") || !strings.Contains(stdout.String(), "my-api-db-1") ||
 		!strings.Contains(stdout.String(), "WARNING") || !strings.Contains(stdout.String(), "synchronous method") {
 		t.Fatalf("expected app runtime status output, got %q", stdout.String())
