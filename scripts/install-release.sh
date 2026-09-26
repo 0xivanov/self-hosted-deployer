@@ -421,11 +421,11 @@ if command -v systemctl >/dev/null 2>&1; then
   if [ -e /etc/systemd/system/deployer-server.service ] || [ -L /etc/systemd/system/deployer-server.service ]; then server_service_exists="1"; fi
   if [ -e /etc/systemd/system/deployer-agent.service ] || [ -L /etc/systemd/system/deployer-agent.service ]; then agent_service_exists="1"; fi
   case "$ROLE" in
-    server) systemctl is-active --quiet deployer-server.service 2>/dev/null && server_service_active="active" || true ;;
-    agent) systemctl is-active --quiet deployer-agent.service 2>/dev/null && agent_service_active="active" || true ;;
+    server) if systemctl is-active --quiet deployer-server.service 2>/dev/null; then server_service_active="active"; fi ;;
+    agent) if systemctl is-active --quiet deployer-agent.service 2>/dev/null; then agent_service_active="active"; fi ;;
     all)
-      systemctl is-active --quiet deployer-server.service 2>/dev/null && server_service_active="active" || true
-      systemctl is-active --quiet deployer-agent.service 2>/dev/null && agent_service_active="active" || true
+      if systemctl is-active --quiet deployer-server.service 2>/dev/null; then server_service_active="active"; fi
+      if systemctl is-active --quiet deployer-agent.service 2>/dev/null; then agent_service_active="active"; fi
       ;;
   esac
 fi
