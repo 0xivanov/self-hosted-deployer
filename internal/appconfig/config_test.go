@@ -105,6 +105,34 @@ placement: {}
 	}
 }
 
+func TestParseAllowsOptInReadOnlyRootFilesystem(t *testing.T) {
+	cfg, err := Parse([]byte(`
+name: hosted-api
+image: example/hosted-api:1.0.0
+service:
+  port: 8080
+  health:
+    path: /readyz
+routing: {}
+deploy:
+  replicas: 1
+placement: {}
+hosting:
+  version: v1
+  readOnlyRootFilesystem: true
+  maxReplicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 128Mi, ephemeralStorage: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi, ephemeralStorage: 1Gi}
+`))
+	if err != nil {
+		t.Fatalf("parse read-only root filesystem: %v", err)
+	}
+	if cfg.Hosting == nil || !cfg.Hosting.ReadOnlyRootFilesystem {
+		t.Fatalf("readOnlyRootFilesystem was not preserved: %#v", cfg.Hosting)
+	}
+}
+
 func TestParseRejectsUnknownFields(t *testing.T) {
 	_, err := Parse([]byte(validYAML + "\nunexpected: true\n"))
 	if err == nil || !strings.Contains(err.Error(), "field unexpected not found") {

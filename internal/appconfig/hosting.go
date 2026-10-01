@@ -12,10 +12,11 @@ import (
 // HostingConfig opts an application into the managed hosting security and
 // resource profile. A nil profile preserves the legacy rendering contract.
 type HostingConfig struct {
-	Version     string           `json:"version" yaml:"version"`
-	Resources   HostingResources `json:"resources" yaml:"resources"`
-	MaxReplicas int              `json:"maxReplicas" yaml:"maxReplicas"`
-	Network     HostingNetwork   `json:"network" yaml:"network"`
+	Version                string           `json:"version" yaml:"version"`
+	Resources              HostingResources `json:"resources" yaml:"resources"`
+	MaxReplicas            int              `json:"maxReplicas" yaml:"maxReplicas"`
+	Network                HostingNetwork   `json:"network" yaml:"network"`
+	ReadOnlyRootFilesystem bool             `json:"read_only_root_filesystem,omitempty" yaml:"readOnlyRootFilesystem,omitempty"`
 }
 
 type HostingResources struct {

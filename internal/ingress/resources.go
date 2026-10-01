@@ -599,6 +599,10 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 			Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
 			SeccompProfile:           &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 		}
+		if cfg.Hosting.ReadOnlyRootFilesystem {
+			readOnlyRootFilesystem := true
+			deployment.Spec.Template.Spec.Containers[0].SecurityContext.ReadOnlyRootFilesystem = &readOnlyRootFilesystem
+		}
 	}
 	if cfg.Metrics != nil {
 		metricsPort := int32(cfg.Metrics.Port)

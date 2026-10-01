@@ -148,6 +148,7 @@ storage:
 
 hosting:
   version: v1
+  readOnlyRootFilesystem: true
   maxReplicas: 1
   resources:
     requests:

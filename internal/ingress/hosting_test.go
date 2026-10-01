@@ -24,6 +24,7 @@ deploy:
 placement: {}
 hosting:
   version: v1
+  readOnlyRootFilesystem: true
   maxReplicas: 3
   resources:
     requests: {cpu: 100m, memory: 128Mi, ephemeralStorage: 1Gi}
@@ -56,8 +57,23 @@ func TestHostingProfileHardensPodsAndSetsResources(t *testing.T) {
 	if len(security.Capabilities.Drop) != 1 || security.Capabilities.Drop[0] != "ALL" || security.SeccompProfile == nil || security.SeccompProfile.Type != corev1.SeccompProfileTypeRuntimeDefault {
 		t.Fatalf("hosting capability/seccomp policy is incomplete: %#v", security)
 	}
+	if security.ReadOnlyRootFilesystem == nil || !*security.ReadOnlyRootFilesystem {
+		t.Fatalf("hosting read-only root filesystem was not rendered: %#v", security)
+	}
 	if deployment.Spec.Template.Spec.AutomountServiceAccountToken == nil || *deployment.Spec.Template.Spec.AutomountServiceAccountToken {
 		t.Fatalf("service account token automount must be disabled")
+	}
+}
+
+func TestHostingProfileLeavesRootFilesystemWritableUnlessRequested(t *testing.T) {
+	cfg := hostingTestConfig(t)
+	cfg.Hosting.ReadOnlyRootFilesystem = false
+	deployment, err := deploymentForApp(cfg, DefaultNamespace, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := deployment.Spec.Template.Spec.Containers[0].SecurityContext.ReadOnlyRootFilesystem; got != nil {
+		t.Fatalf("readOnlyRootFilesystem = %v, want omitted for compatibility", *got)
 	}
 }
 
