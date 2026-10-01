@@ -6,6 +6,8 @@ The profile requires CPU, memory, and ephemeral-storage requests and limits, plu
 
 Applications that do not need to write into their image filesystem can additionally set `hosting.readOnlyRootFilesystem: true`. The field is opt-in so existing hosted applications keep their current behavior. When enabled, the generated container security context sets Kubernetes `readOnlyRootFilesystem` and writable state must come from an explicit volume such as retained local storage.
 
+Prometheus discovery may point at a dedicated private metrics port or at a path on the application's existing service port. When both ports are equal, the renderer emits discovery annotations without duplicating the container or NetworkPolicy port. Metrics are not added as a separate public Service or Ingress route.
+
 The implementation performs a conservative per-node capacity preflight, including visible nonterminal Pods, system and monitoring Pods, resource requests, resilient host spreading, and a rollout surge reservation. It does not claim equivalence with all Kubernetes scheduler behavior, and it fails closed when node or Pod capacity data is unknown. NetworkPolicy egress is explicit CIDR plus TCP port configuration, with DNS, Traefik ingress, and monitoring paths rendered by default. The installed CNI must still be tested for actual enforcement. Namespace ResourceQuota, LimitRange, and a stronger shared-cluster tenancy boundary remain separate requirements.
 
 Hosted managed PostgreSQL is rejected until its operator, failover, and application traffic paths are separately qualified. External databases must be represented by explicit operator-approved egress CIDRs and ports.

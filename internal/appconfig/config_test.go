@@ -105,6 +105,30 @@ placement: {}
 	}
 }
 
+func TestParseAllowsMetricsOnServicePort(t *testing.T) {
+	cfg, err := Parse([]byte(`
+name: my-api
+image: ivan/my-api:1.0.0
+service:
+  port: 3000
+  health:
+    path: /health
+metrics:
+  port: 3000
+  path: /metrics
+routing: {}
+deploy:
+  replicas: 1
+placement: {}
+`))
+	if err != nil {
+		t.Fatalf("parse same-port metrics config: %v", err)
+	}
+	if cfg.Metrics == nil || cfg.Metrics.Port != cfg.Service.Port || cfg.Metrics.Path != "/metrics" {
+		t.Fatalf("unexpected same-port metrics config: %#v", cfg.Metrics)
+	}
+}
+
 func TestParseAllowsOptInReadOnlyRootFilesystem(t *testing.T) {
 	cfg, err := Parse([]byte(`
 name: hosted-api
@@ -170,11 +194,6 @@ func TestValidateIdentifiesExactFields(t *testing.T) {
 			name: "bad health path",
 			body: strings.Replace(validYAML, "path: /health", "path: health", 1),
 			want: "service.health.path must start with /",
-		},
-		{
-			name: "metrics shares public port",
-			body: validYAML + "\nmetrics:\n  port: 3000\n  path: /metrics\n",
-			want: "metrics.port must differ from service.port",
 		},
 		{
 			name: "bad metrics path",

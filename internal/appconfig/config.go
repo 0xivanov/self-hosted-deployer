@@ -189,9 +189,6 @@ func (c Config) Validate() error {
 		if c.Metrics.Port < 1 || c.Metrics.Port > 65535 {
 			return fmt.Errorf("metrics.port must be between 1 and 65535")
 		}
-		if c.Metrics.Port == c.Service.Port {
-			return fmt.Errorf("metrics.port must differ from service.port")
-		}
 		if c.Metrics.Path == "" {
 			return fmt.Errorf("metrics.path is required")
 		}

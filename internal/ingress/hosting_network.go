@@ -37,7 +37,7 @@ func networkPolicyForHostedApp(cfg appconfig.Config, namespace string) (*network
 		},
 	}
 	monitoringPorts := []networkingv1.NetworkPolicyPort{servicePort}
-	if cfg.Metrics != nil {
+	if cfg.Metrics != nil && cfg.Metrics.Port != cfg.Service.Port {
 		monitoringPorts = append(monitoringPorts, networkingv1.NetworkPolicyPort{Protocol: protocolPtr(corev1.ProtocolTCP), Port: intPort(int32(cfg.Metrics.Port))})
 	}
 	ingress = append(ingress, networkingv1.NetworkPolicyIngressRule{

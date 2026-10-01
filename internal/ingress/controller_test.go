@@ -301,6 +301,27 @@ func TestDeploymentMapsResiliencePolicies(t *testing.T) {
 		}
 	})
 
+	t.Run("metrics may share the annotated service container port", func(t *testing.T) {
+		cfg := testAppConfig()
+		cfg.Metrics = &appconfig.MetricsConfig{Port: cfg.Service.Port, Path: "/metrics"}
+		deployment, err := deploymentForApp(cfg, DefaultNamespace, "")
+		if err != nil {
+			t.Fatalf("render same-port metrics deployment: %v", err)
+		}
+		container := deployment.Spec.Template.Spec.Containers[0]
+		if len(container.Ports) != 1 || container.Ports[0].Name != "http" || container.Ports[0].ContainerPort != int32(cfg.Service.Port) {
+			t.Fatalf("same-port metrics duplicated the container port: %#v", container.Ports)
+		}
+		annotations := deployment.Spec.Template.Annotations
+		if annotations["prometheus.io/scrape"] != "true" || annotations["prometheus.io/path"] != "/metrics" || annotations["prometheus.io/port"] != strconv.Itoa(cfg.Service.Port) {
+			t.Fatalf("unexpected same-port metrics annotations: %#v", annotations)
+		}
+		service := serviceForApp(cfg, DefaultNamespace)
+		if len(service.Spec.Ports) != 1 || service.Spec.Ports[0].Name != "http" {
+			t.Fatalf("same-port metrics changed the app Service: %#v", service.Spec.Ports)
+		}
+	})
+
 	t.Run("any architecture does not constrain multi-architecture images", func(t *testing.T) {
 		cfg := testAppConfig()
 		cfg.Placement.Arch = appconfig.PlacementArchAny

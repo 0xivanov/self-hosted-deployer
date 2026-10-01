@@ -611,10 +611,12 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 			"prometheus.io/path":   cfg.Metrics.Path,
 			"prometheus.io/port":   strconv.Itoa(cfg.Metrics.Port),
 		}
-		deployment.Spec.Template.Spec.Containers[0].Ports = append(
-			deployment.Spec.Template.Spec.Containers[0].Ports,
-			corev1.ContainerPort{Name: "metrics", ContainerPort: metricsPort},
-		)
+		if cfg.Metrics.Port != cfg.Service.Port {
+			deployment.Spec.Template.Spec.Containers[0].Ports = append(
+				deployment.Spec.Template.Spec.Containers[0].Ports,
+				corev1.ContainerPort{Name: "metrics", ContainerPort: metricsPort},
+			)
+		}
 	}
 	if arch := placementArchitecture(cfg.Placement.Arch); arch != "" {
 		deployment.Spec.Template.Spec.NodeSelector = map[string]string{"kubernetes.io/arch": arch}

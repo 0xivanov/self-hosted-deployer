@@ -69,6 +69,19 @@ func TestNetworkPolicyForHostedAppIsScopedAndExplicit(t *testing.T) {
 	}
 }
 
+func TestNetworkPolicyDeduplicatesSameServiceAndMetricsPort(t *testing.T) {
+	cfg := hostingTestConfig(t)
+	cfg.Metrics = &appconfig.MetricsConfig{Port: cfg.Service.Port, Path: "/metrics"}
+	policy, err := networkPolicyForHostedApp(cfg, DefaultNamespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ports := policy.Spec.Ingress[1].Ports
+	if len(ports) != 1 || ports[0].Port.IntValue() != cfg.Service.Port {
+		t.Fatalf("same service/metrics port was not deduplicated: %#v", ports)
+	}
+}
+
 func TestNetworkPolicyOwnershipCollisionAndDelete(t *testing.T) {
 	cfg := hostingTestConfig(t)
 	owned := &networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{Name: cfg.Name, Namespace: DefaultNamespace, Labels: map[string]string{appOwnershipLabel: cfg.Name, managedByLabel: managedByDeployer, hostingProfileLabel: "v1"}}}

@@ -97,9 +97,10 @@ metrics:
   path: /metrics
 ```
 
-The metrics port must differ from `service.port`. The deployer adds it to the
-pod and adds Prometheus discovery annotations, but does not add it to the app
-Service or public Ingress.
+The metrics endpoint may share `service.port`, or use a separate private
+container port. The deployer adds Prometheus discovery annotations and adds a
+separate metrics port to the Pod only when the port differs. It never adds a
+separate metrics port to the app Service or public Ingress.
 
 Install the pinned Prometheus, Alertmanager, Loki, Alloy, Grafana, and
 kube-state-metrics stack on the k3s control-plane node:
