@@ -69,6 +69,12 @@ type NodeDrainRuntime interface {
 	DrainNode(ctx context.Context, nodeName string) error
 }
 
+// NodeRemovalGuard prevents identity and Kubernetes deletion while a retained
+// local-volume workload is pinned to the node.
+type NodeRemovalGuard interface {
+	ValidateNodeRemoval(ctx context.Context, node domain.Node) error
+}
+
 type NodeLabelSyncRuntime interface {
 	SyncNodeLabels(ctx context.Context, node domain.Node) error
 }
@@ -660,6 +666,11 @@ func (s NodeService) RemoveNode(ctx context.Context, req *deployerv1.RemoveNodeR
 		return nil, err
 	}
 	if node.Status != nodeStatusRemoved {
+		if guard, ok := s.runtime.(NodeRemovalGuard); ok {
+			if err := guard.ValidateNodeRemoval(ctx, node); err != nil {
+				return nil, status.Errorf(codes.FailedPrecondition, "node removal blocked: %v", err)
+			}
+		}
 		now := s.now().UTC()
 		if err := s.agentTokens.RevokeByNodeID(ctx, node.ID, now); err != nil {
 			return nil, status.Error(codes.Internal, "revoke node identity")
@@ -714,6 +725,11 @@ func (s NodeService) PurgeNode(ctx context.Context, req *deployerv1.PurgeNodeReq
 	case nodeStatusPending, nodeStatusRemoved:
 	default:
 		return nil, status.Error(codes.FailedPrecondition, "only pending or removed nodes can be purged; drain and remove active Kubernetes nodes first")
+	}
+	if guard, ok := s.runtime.(NodeRemovalGuard); ok {
+		if err := guard.ValidateNodeRemoval(ctx, node); err != nil {
+			return nil, status.Errorf(codes.FailedPrecondition, "node purge blocked: %v", err)
+		}
 	}
 	now := s.now().UTC()
 	if s.agentTokens != nil {

@@ -347,6 +347,7 @@ metrics:
 
 routing:
   domain: api.example.com
+  requireTLS: true
 
 deploy:
   replicas: 2
@@ -381,6 +382,28 @@ database:
 ```
 
 Set `placement.arch` to `any` only when the referenced image is multi-architecture. This removes the architecture node selector and allows a resilient deployment to spread across mixed AMD64 and ARM64 nodes. Managed PostgreSQL still requires a single explicit architecture.
+
+Applications that use an operator-provisioned local PVC declare it explicitly:
+
+```yaml
+deploy:
+  replicas: 1
+placement:
+  prefer:
+    - node-id: node-home
+state:
+  mode: stateful
+resilience:
+  mode: pinned
+storage:
+  existingClaim: my-api-data
+  mountPath: /var/lib/my-api
+```
+
+Retained local storage requires one pinned replica and uses the Kubernetes
+`Recreate` deployment strategy. Launchstead verifies that the existing claim
+is bound and writable, mounts it, and never deletes it. See
+[retained local application storage](docs/retained-local-storage.md).
 
 Deploy:
 

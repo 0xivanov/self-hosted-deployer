@@ -95,6 +95,9 @@ type ServicePort struct {
 
 func ManifestForApp(cfg appconfig.Config, namespace string, tlsConfig TLSConfig) (Manifest, bool, error) {
 	domain := strings.TrimSpace(cfg.Routing.Domain)
+	if cfg.Routing.RequireTLS && domain == "" {
+		return Manifest{}, false, errors.New("routing.requireTLS requires routing.domain")
+	}
 	if domain == "" {
 		return Manifest{}, false, nil
 	}
@@ -109,6 +112,9 @@ func ManifestForApp(cfg appconfig.Config, namespace string, tlsConfig TLSConfig)
 		return Manifest{}, false, errors.New("service port must be between 1 and 65535")
 	}
 	tlsConfig = tlsConfig.WithDefaults()
+	if cfg.Routing.RequireTLS && !tlsConfig.Enabled() {
+		return Manifest{}, false, errors.New("routing.requireTLS cannot be satisfied because application TLS is disabled")
+	}
 	manifest := Manifest{
 		APIVersion: "networking.k8s.io/v1",
 		Kind:       "Ingress",

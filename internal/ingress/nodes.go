@@ -220,12 +220,91 @@ func (c *Controller) RemoveNode(ctx context.Context, nodeName string) error {
 	if c.nodes == nil {
 		return fmt.Errorf("Kubernetes node client is not configured")
 	}
-	err := c.nodes.Delete(ctx, nodeName, metav1.DeleteOptions{})
+	node, err := c.nodes.Get(ctx, nodeName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("get Kubernetes Node %q before deletion: %w", nodeName, err)
+	}
+	if err := c.validateRetainedStorageNodeRemoval(ctx, node.Labels["deployer.io/node-id"], nodeName); err != nil {
+		return err
+	}
+	err = c.nodes.Delete(ctx, nodeName, metav1.DeleteOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("delete Kubernetes Node %q: %w", nodeName, err)
+	}
+	return nil
+}
+
+// ValidateNodeRemoval guards the platform identity before NodeService revokes
+// credentials or removes the Kubernetes Node.
+func (c *Controller) ValidateNodeRemoval(ctx context.Context, node domain.Node) error {
+	return c.validateRetainedStorageNodeRemoval(ctx, node.ID, node.Name)
+}
+
+func (c *Controller) validateRetainedStorageNodeRemoval(ctx context.Context, nodeID, nodeName string) error {
+	if c.deployments == nil && c.persistentVolumes == nil {
+		return fmt.Errorf("Kubernetes Deployment and PersistentVolume clients are not configured")
+	}
+	if c.persistentVolumes != nil {
+		volumes, err := c.persistentVolumes.List(ctx, metav1.ListOptions{})
+		if err != nil {
+			return fmt.Errorf("list PersistentVolumes before removing Kubernetes Node %q: %w", nodeName, err)
+		}
+		for i := range volumes.Items {
+			volume := &volumes.Items[i]
+			isRetainedLocal := volume.Spec.Local != nil &&
+				volume.Spec.PersistentVolumeReclaimPolicy == corev1.PersistentVolumeReclaimRetain
+			if !isRetainedLocal || !persistentVolumePinnedToNodeID(volume, nodeID) {
+				continue
+			}
+			claim := "unbound"
+			if volume.Spec.ClaimRef != nil {
+				claim = volume.Spec.ClaimRef.Namespace + "/" + volume.Spec.ClaimRef.Name
+			}
+			return fmt.Errorf(
+				"Kubernetes Node %q owns retained local PersistentVolume %q for claim %q; "+
+					"relocate or explicitly retire the volume first",
+				nodeName,
+				volume.Name,
+				claim,
+			)
+		}
+	}
+	if c.deployments == nil {
+		return nil
+	}
+	deployments, err := c.deployments.List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("list Deployments before removing Kubernetes Node %q: %w", nodeName, err)
+	}
+	for i := range deployments.Items {
+		deployment := &deployments.Items[i]
+		claimName := strings.TrimSpace(deployment.Annotations[retainedStorageClaimAnnotation])
+		if claimName == "" {
+			continue
+		}
+		pinnedNodeID := strings.TrimSpace(deployment.Spec.Template.Spec.NodeSelector["deployer.io/node-id"])
+		if pinnedNodeID == "" {
+			return fmt.Errorf(
+				"node removal is unsafe because retained-storage Deployment %q has no exact node-id selector",
+				deployment.Name,
+			)
+		}
+		if pinnedNodeID != nodeID {
+			continue
+		}
+		return fmt.Errorf(
+			"Kubernetes Node %q hosts retained-storage Deployment %q using PersistentVolumeClaim %q; "+
+				"delete or relocate the application through its storage runbook first",
+			nodeName,
+			deployment.Name,
+			claimName,
+		)
 	}
 	return nil
 }

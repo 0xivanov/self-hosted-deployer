@@ -33,7 +33,9 @@ func (c *Controller) preflightHostingCapacity(ctx context.Context, cfg appconfig
 	// Reserve the configured ceiling plus one rolling-update surge Pod. This
 	// can over-reject updates, but never treats an unmeasured surge as safe.
 	surge := (cfg.Hosting.MaxReplicas + 3) / 4 // default rolling update rounds 25% up
-	if cfg.Resilience.Mode == appconfig.ResilienceResilient {
+	if cfg.Storage != nil {
+		surge = 0 // retained storage always uses a one-at-a-time Recreate rollout
+	} else if cfg.Resilience.Mode == appconfig.ResilienceResilient {
 		surge = 1
 	}
 	podCount := cfg.Hosting.MaxReplicas + surge

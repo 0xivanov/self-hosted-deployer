@@ -70,3 +70,40 @@ func TestPreflightRejectsDomainConflictWithoutMutation(t *testing.T) {
 		t.Fatalf("preflight mutated state: %v", err)
 	}
 }
+
+func TestPreflightAndDeployRejectRequiredTLSWhenDisabled(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	runtime := &recordingAppRuntime{status: "healthy"}
+	apps := db.NewAppRepository(database)
+	service := NewAppService(AppServiceConfig{
+		Apps:            apps,
+		Deployments:     db.NewDeploymentRepository(database),
+		Routes:          db.NewRouteRepository(database),
+		Runtime:         runtime,
+		RouteTLSEnabled: false,
+	})
+	yaml := strings.Replace(
+		testAppYAML("example/api:v1", 1),
+		"domain: api.example.com",
+		"domain: api.example.com\n  requireTLS: true",
+		1,
+	)
+	_, err := service.PreflightApp(ctx, &deployerv1.PreflightAppRequest{DeployerYaml: yaml})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("required TLS preflight must fail closed: %v", err)
+	}
+	_, err = service.DeployApp(ctx, &deployerv1.DeployAppRequest{DeployerYaml: yaml})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("required TLS deployment must fail closed: %v", err)
+	}
+	stored, err := apps.List(ctx)
+	if err != nil || len(stored) != 0 || len(runtime.reconciled) != 0 {
+		t.Fatalf(
+			"required TLS rejection mutated state: apps=%#v reconciles=%#v err=%v",
+			stored,
+			runtime.reconciled,
+			err,
+		)
+	}
+}

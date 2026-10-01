@@ -27,6 +27,9 @@ func (s AppService) PreflightApp(ctx context.Context, req *deployerv1.PreflightA
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	if err := s.validateRequiredTLS(cfg); err != nil {
+		return nil, err
+	}
 	if err := s.checkCandidateDeletion(ctx, cfg.Name); err != nil {
 		return nil, err
 	}
@@ -65,6 +68,12 @@ func (s AppService) PreflightApp(ctx context.Context, req *deployerv1.PreflightA
 	}
 	if cfg.Hosting == nil {
 		warnings = append(warnings, "hosting profile is not declared; legacy rendering would be used")
+	}
+	if cfg.Storage != nil {
+		warnings = append(
+			warnings,
+			"retained local storage is a single-node, single-copy dependency; PVC retention does not provide backup or failover",
+		)
 	}
 	return &deployerv1.PreflightAppResponse{DesiredState: desiredState, Warnings: warnings}, nil
 }

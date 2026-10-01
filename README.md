@@ -10,6 +10,7 @@ The platform is designed around a stable VPS control plane, WireGuard private ne
 - [Implementation Plan](IMPLEMENTATION_PLAN.md)
 - [VPS + Raspberry Pi end-to-end setup](docs/vps-raspberry-pi-e2e.md)
 - [PostgreSQL high availability](docs/postgres-ha.md)
+- [Retained local application storage](docs/retained-local-storage.md)
 
 ## Local Development
 

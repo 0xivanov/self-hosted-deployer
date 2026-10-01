@@ -92,3 +92,56 @@ func TestUnsupportedHostingRuntimeFailsBeforePersistence(t *testing.T) {
 		t.Fatalf("preflight mutated app state: %v", err)
 	}
 }
+
+func TestTrackedHostedStatefulDeploymentUsesSafeLegacyApply(t *testing.T) {
+	ctx := WithCaller(context.Background(), Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	runtime := &hostingTestRuntime{
+		recordingAppRuntime: recordingAppRuntime{
+			status:            "healthy",
+			desiredReplicas:   1,
+			availableReplicas: 1,
+		},
+	}
+	service := NewAppService(AppServiceConfig{
+		EnableCandidateOperations: true,
+		DeploymentRequests:        db.NewDeploymentRequestRepository(database),
+		Apps:                      db.NewAppRepository(database),
+		Deployments:               db.NewDeploymentRepository(database),
+		Routes:                    db.NewRouteRepository(database),
+		Runtime:                   runtime,
+	})
+	yaml := `name: homephotos
+image: example/homephotos:1.0.0
+service: {port: 8080, health: {path: /health}}
+routing: {}
+deploy: {replicas: 1}
+placement:
+  prefer:
+    - node-id: node-home
+state: {mode: stateful}
+resilience: {mode: pinned}
+storage: {existingClaim: homephotos-data, mountPath: /data}
+hosting:
+  version: v1
+  maxReplicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 128Mi, ephemeralStorage: 1Gi}
+    limits: {cpu: 500m, memory: 512Mi, ephemeralStorage: 2Gi}
+`
+	result, err := service.DeployApp(ctx, &deployerv1.DeployAppRequest{
+		DeployerYaml: yaml,
+		RequestId:    strings.Repeat("a", 64),
+	})
+	if err != nil {
+		t.Fatalf("deploy tracked retained-storage app: %v", err)
+	}
+	usedLegacyApply := len(runtime.reconciled) == 1 && runtime.reconciled[0].Storage != nil
+	if result.GetDeployment().GetStatus() != "healthy" || !usedLegacyApply {
+		t.Fatalf(
+			"tracked retained-storage app did not use legacy Recreate apply: %#v runtime=%#v",
+			result,
+			runtime.reconciled,
+		)
+	}
+}

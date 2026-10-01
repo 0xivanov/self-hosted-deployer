@@ -69,30 +69,31 @@ type ControllerConfig struct {
 }
 
 type Controller struct {
-	namespace        string
-	tls              TLSConfig
-	namespaces       coretyped.NamespaceInterface
-	ingresses        networkingtyped.IngressInterface
-	services         coretyped.ServiceInterface
-	networkPolicies  networkingtyped.NetworkPolicyInterface
-	appSecrets       coretyped.SecretInterface
-	nodes            coretyped.NodeInterface
-	pods             coretyped.PodInterface
-	capacityPods     coretyped.PodInterface
-	serviceAccounts  coretyped.ServiceAccountInterface
-	pvcs             coretyped.PersistentVolumeClaimInterface
-	evictions        policytyped.EvictionInterface
-	pdbs             policytyped.PodDisruptionBudgetInterface
-	deployments      appstyped.DeploymentInterface
-	jobs             batchtyped.JobInterface
-	leases           coordinationtyped.LeaseInterface
-	roles            rbactyped.RoleInterface
-	roleBindings     rbactyped.RoleBindingInterface
-	issuers          dynamic.ResourceInterface
-	databases        dynamic.ResourceInterface
-	quorums          dynamic.ResourceInterface
-	middlewares      dynamic.ResourceInterface
-	serverTransports dynamic.ResourceInterface
+	namespace         string
+	tls               TLSConfig
+	namespaces        coretyped.NamespaceInterface
+	ingresses         networkingtyped.IngressInterface
+	services          coretyped.ServiceInterface
+	networkPolicies   networkingtyped.NetworkPolicyInterface
+	appSecrets        coretyped.SecretInterface
+	nodes             coretyped.NodeInterface
+	pods              coretyped.PodInterface
+	capacityPods      coretyped.PodInterface
+	serviceAccounts   coretyped.ServiceAccountInterface
+	pvcs              coretyped.PersistentVolumeClaimInterface
+	persistentVolumes coretyped.PersistentVolumeInterface
+	evictions         policytyped.EvictionInterface
+	pdbs              policytyped.PodDisruptionBudgetInterface
+	deployments       appstyped.DeploymentInterface
+	jobs              batchtyped.JobInterface
+	leases            coordinationtyped.LeaseInterface
+	roles             rbactyped.RoleInterface
+	roleBindings      rbactyped.RoleBindingInterface
+	issuers           dynamic.ResourceInterface
+	databases         dynamic.ResourceInterface
+	quorums           dynamic.ResourceInterface
+	middlewares       dynamic.ResourceInterface
+	serverTransports  dynamic.ResourceInterface
 }
 
 func NewController(cfg ControllerConfig) (*Controller, error) {
@@ -121,30 +122,31 @@ func NewController(cfg ControllerConfig) (*Controller, error) {
 	}
 
 	return &Controller{
-		namespace:        namespace,
-		tls:              tlsConfig,
-		namespaces:       clientset.CoreV1().Namespaces(),
-		ingresses:        clientset.NetworkingV1().Ingresses(namespace),
-		services:         clientset.CoreV1().Services(namespace),
-		networkPolicies:  clientset.NetworkingV1().NetworkPolicies(namespace),
-		appSecrets:       clientset.CoreV1().Secrets(namespace),
-		nodes:            clientset.CoreV1().Nodes(),
-		pods:             clientset.CoreV1().Pods(namespace),
-		capacityPods:     clientset.CoreV1().Pods(""),
-		serviceAccounts:  clientset.CoreV1().ServiceAccounts(namespace),
-		pvcs:             clientset.CoreV1().PersistentVolumeClaims(namespace),
-		evictions:        clientset.PolicyV1().Evictions(namespace),
-		pdbs:             clientset.PolicyV1().PodDisruptionBudgets(namespace),
-		deployments:      clientset.AppsV1().Deployments(namespace),
-		jobs:             clientset.BatchV1().Jobs(namespace),
-		leases:           clientset.CoordinationV1().Leases(namespace),
-		roles:            clientset.RbacV1().Roles(namespace),
-		roleBindings:     clientset.RbacV1().RoleBindings(namespace),
-		issuers:          issuers,
-		databases:        dynamicClient.Resource(postgresClusterResource).Namespace(namespace),
-		quorums:          dynamicClient.Resource(postgresFailoverQuorumResource).Namespace(namespace),
-		middlewares:      dynamicClient.Resource(retryMiddlewareResource).Namespace(namespace),
-		serverTransports: dynamicClient.Resource(serversTransportResource).Namespace(namespace),
+		namespace:         namespace,
+		tls:               tlsConfig,
+		namespaces:        clientset.CoreV1().Namespaces(),
+		ingresses:         clientset.NetworkingV1().Ingresses(namespace),
+		services:          clientset.CoreV1().Services(namespace),
+		networkPolicies:   clientset.NetworkingV1().NetworkPolicies(namespace),
+		appSecrets:        clientset.CoreV1().Secrets(namespace),
+		nodes:             clientset.CoreV1().Nodes(),
+		pods:              clientset.CoreV1().Pods(namespace),
+		capacityPods:      clientset.CoreV1().Pods(""),
+		serviceAccounts:   clientset.CoreV1().ServiceAccounts(namespace),
+		pvcs:              clientset.CoreV1().PersistentVolumeClaims(namespace),
+		persistentVolumes: clientset.CoreV1().PersistentVolumes(),
+		evictions:         clientset.PolicyV1().Evictions(namespace),
+		pdbs:              clientset.PolicyV1().PodDisruptionBudgets(namespace),
+		deployments:       clientset.AppsV1().Deployments(namespace),
+		jobs:              clientset.BatchV1().Jobs(namespace),
+		leases:            clientset.CoordinationV1().Leases(namespace),
+		roles:             clientset.RbacV1().Roles(namespace),
+		roleBindings:      clientset.RbacV1().RoleBindings(namespace),
+		issuers:           issuers,
+		databases:         dynamicClient.Resource(postgresClusterResource).Namespace(namespace),
+		quorums:           dynamicClient.Resource(postgresFailoverQuorumResource).Namespace(namespace),
+		middlewares:       dynamicClient.Resource(retryMiddlewareResource).Namespace(namespace),
+		serverTransports:  dynamicClient.Resource(serversTransportResource).Namespace(namespace),
 	}, nil
 }
 
@@ -222,19 +224,40 @@ func (c *Controller) ReconcileWithRegistry(ctx context.Context, cfg appconfig.Co
 	return nil
 }
 
-// PreflightHosting verifies capacity for an explicitly opted-in hosting
-// profile without mutating Kubernetes resources.
+// PreflightHosting verifies fail-closed routing, retained storage, and hosted
+// capacity without mutating Kubernetes resources. The method name is retained
+// for compatibility with the existing server runtime interface.
 func (c *Controller) PreflightHosting(ctx context.Context, cfg appconfig.Config) error {
-	if cfg.Hosting == nil {
-		return nil
-	}
+	cfg.Normalize()
 	if err := cfg.Validate(); err != nil {
 		return err
+	}
+	if err := c.validateTLSRequirement(cfg); err != nil {
+		return err
+	}
+	if err := c.preflightRetainedStorage(ctx, cfg); err != nil {
+		return err
+	}
+	if cfg.Hosting == nil {
+		return nil
 	}
 	if err := c.validateHostingRuntime(cfg); err != nil {
 		return err
 	}
 	return c.preflightHostingCapacity(ctx, cfg)
+}
+
+func (c *Controller) validateTLSRequirement(cfg appconfig.Config) error {
+	if !cfg.Routing.RequireTLS {
+		return nil
+	}
+	if strings.TrimSpace(cfg.Routing.Domain) == "" {
+		return errors.New("routing.requireTLS requires routing.domain")
+	}
+	if !c.tls.Enabled() {
+		return errors.New("routing.requireTLS cannot be satisfied because application TLS is disabled")
+	}
+	return nil
 }
 
 func (c *Controller) validateHostingRuntime(cfg appconfig.Config) error {

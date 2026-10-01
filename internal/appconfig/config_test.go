@@ -159,6 +159,11 @@ func TestValidateIdentifiesExactFields(t *testing.T) {
 			want: "deploy.replicas must be at least 1",
 		},
 		{
+			name: "required TLS without domain",
+			body: strings.Replace(validYAML, "domain: api.example.com", "domain: \"\"\n  requireTLS: true", 1),
+			want: "routing.requireTLS requires routing.domain",
+		},
+		{
 			name: "bad state mode",
 			body: strings.Replace(validYAML, "mode: stateless", "mode: durable", 1),
 			want: "state.mode must be one of stateless, stateful, cache",
@@ -185,6 +190,104 @@ func TestValidateIdentifiesExactFields(t *testing.T) {
 		},
 	}
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse([]byte(tt.body))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected %q, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
+func TestParseRetainedStorageConfig(t *testing.T) {
+	base := `
+name: homephotos
+image: ghcr.io/example/homephotos:1.0.0
+service:
+  port: 8080
+  health:
+    path: /health
+routing:
+  domain: photos.example.com
+  requireTLS: true
+deploy:
+  replicas: 1
+placement:
+  prefer:
+    - node-id: node-home
+state:
+  mode: stateful
+resilience:
+  mode: pinned
+storage:
+  existingClaim: homephotos-data
+  mountPath: /var/lib/homephotos
+`
+	cfg, err := Parse([]byte(base))
+	if err != nil {
+		t.Fatalf("parse retained storage config: %v", err)
+	}
+	if cfg.Storage == nil || cfg.Storage.ExistingClaim != "homephotos-data" ||
+		cfg.Storage.MountPath != "/var/lib/homephotos" || cfg.Deploy.Strategy != DeployStrategyRecreate {
+		t.Fatalf("unexpected retained storage config: %#v", cfg)
+	}
+	encoded, err := cfg.JSON()
+	if err != nil {
+		t.Fatalf("encode retained storage config: %v", err)
+	}
+	roundTripped, err := FromJSON(encoded)
+	if err != nil || roundTripped.Storage == nil || roundTripped.Storage.ExistingClaim != "homephotos-data" ||
+		!roundTripped.Routing.RequireTLS {
+		t.Fatalf("retained storage config did not round trip: %#v, %v", roundTripped, err)
+	}
+}
+
+func TestParseRejectsUnsafeRetainedStorageConfig(t *testing.T) {
+	valid := `
+name: homephotos
+image: ghcr.io/example/homephotos:1.0.0
+service: {port: 8080, health: {path: /health}}
+routing: {}
+deploy: {replicas: 1, strategy: recreate}
+placement:
+  prefer:
+    - node-id: node-home
+state: {mode: stateful}
+resilience: {mode: pinned}
+storage: {existingClaim: homephotos-data, mountPath: /data}
+`
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "missing claim",
+			body: strings.Replace(valid, "homephotos-data", `""`, 1),
+			want: "storage.existingClaim is required",
+		},
+		{name: "invalid claim", body: strings.Replace(valid, "homephotos-data", "Home_Photos", 1), want: "DNS-safe"},
+		{name: "relative mount", body: strings.Replace(valid, "/data", "data", 1), want: "clean absolute path"},
+		{name: "root mount", body: strings.Replace(valid, "/data", "/", 1), want: "other than /"},
+		{name: "stateless", body: strings.Replace(valid, "stateful", "stateless", 1), want: "state.mode stateful"},
+		{name: "not pinned", body: strings.Replace(valid, "mode: pinned", "mode: basic", 1), want: "resilience.mode pinned"},
+		{
+			name: "multiple replicas",
+			body: strings.Replace(valid, "replicas: 1", "replicas: 2", 1),
+			want: "deploy.replicas 1",
+		},
+		{
+			name: "rolling update",
+			body: strings.Replace(valid, "strategy: recreate", "strategy: rolling", 1),
+			want: "deploy.strategy recreate",
+		},
+		{
+			name: "broad selector",
+			body: strings.Replace(valid, "node-id: node-home", "location: home", 1),
+			want: "exact node-id selector",
+		},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := Parse([]byte(tt.body))

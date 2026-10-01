@@ -4,23 +4,26 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path"
 	"regexp"
 	"strings"
 
 	"github.com/0xivanov/self-hosted-deployer/internal/registryauth"
 	"gopkg.in/yaml.v3"
+	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 )
 
 const (
-	DefaultPlacementArch  = "linux/arm64"
-	PlacementArchAny      = "any"
-	DefaultDeployStrategy = "rolling"
-	DefaultStateMode      = "stateless"
-	DefaultResilienceMode = "basic"
-	ResilienceBasic       = "basic"
-	ResilienceResilient   = "resilient"
-	ResilienceFallback    = "fallback"
-	ResiliencePinned      = "pinned"
+	DefaultPlacementArch   = "linux/arm64"
+	PlacementArchAny       = "any"
+	DefaultDeployStrategy  = "rolling"
+	DeployStrategyRecreate = "recreate"
+	DefaultStateMode       = "stateless"
+	DefaultResilienceMode  = "basic"
+	ResilienceBasic        = "basic"
+	ResilienceResilient    = "resilient"
+	ResilienceFallback     = "fallback"
+	ResiliencePinned       = "pinned"
 )
 
 var appNamePattern = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`)
@@ -38,6 +41,7 @@ type Config struct {
 	Routing             RoutingConfig    `json:"routing" yaml:"routing"`
 	Deploy              DeployConfig     `json:"deploy" yaml:"deploy"`
 	Placement           PlacementConfig  `json:"placement" yaml:"placement"`
+	Storage             *StorageConfig   `json:"storage,omitempty" yaml:"storage,omitempty"`
 	Secrets             []string         `json:"secrets,omitempty" yaml:"secrets"`
 	State               StateConfig      `json:"state" yaml:"state"`
 	Resilience          ResilienceConfig `json:"resilience" yaml:"resilience"`
@@ -60,7 +64,8 @@ type MetricsConfig struct {
 }
 
 type RoutingConfig struct {
-	Domain string `json:"domain" yaml:"domain"`
+	Domain     string `json:"domain" yaml:"domain"`
+	RequireTLS bool   `json:"require_tls,omitempty" yaml:"requireTLS,omitempty"`
 }
 
 type DeployConfig struct {
@@ -73,6 +78,13 @@ type PlacementConfig struct {
 	Spread   bool                `json:"spread" yaml:"spread"`
 	Prefer   []map[string]string `json:"prefer,omitempty" yaml:"prefer"`
 	Fallback []map[string]string `json:"fallback,omitempty" yaml:"fallback"`
+}
+
+// StorageConfig mounts an operator-provisioned PVC. Launchstead never creates
+// or deletes the referenced claim, so its lifecycle remains explicit.
+type StorageConfig struct {
+	ExistingClaim string `json:"existing_claim" yaml:"existingClaim"`
+	MountPath     string `json:"mount_path" yaml:"mountPath"`
 }
 
 type StateConfig struct {
@@ -113,7 +125,14 @@ func (c *Config) Normalize() {
 	c.Resilience.Mode = strings.TrimSpace(c.Resilience.Mode)
 	c.EnvironmentRevision = strings.TrimSpace(c.EnvironmentRevision)
 
-	if c.Deploy.Strategy == "" {
+	if c.Storage != nil {
+		c.Storage.ExistingClaim = strings.TrimSpace(c.Storage.ExistingClaim)
+		c.Storage.MountPath = strings.TrimSpace(c.Storage.MountPath)
+	}
+
+	if c.Deploy.Strategy == "" && c.Storage != nil {
+		c.Deploy.Strategy = DeployStrategyRecreate
+	} else if c.Deploy.Strategy == "" {
 		c.Deploy.Strategy = DefaultDeployStrategy
 	}
 	if c.Placement.Arch == "" {
@@ -163,6 +182,9 @@ func (c Config) Validate() error {
 	if !strings.HasPrefix(c.Service.Health.Path, "/") {
 		return fmt.Errorf("service.health.path must start with /")
 	}
+	if c.Routing.RequireTLS && c.Routing.Domain == "" {
+		return fmt.Errorf("routing.requireTLS requires routing.domain")
+	}
 	if c.Metrics != nil {
 		if c.Metrics.Port < 1 || c.Metrics.Port > 65535 {
 			return fmt.Errorf("metrics.port must be between 1 and 65535")
@@ -201,6 +223,9 @@ func (c Config) Validate() error {
 	if c.Resilience.Mode == ResiliencePinned && len(c.Placement.Prefer) != 1 {
 		return fmt.Errorf("resilience.mode pinned requires exactly one placement.prefer selector")
 	}
+	if err := c.validateStorage(); err != nil {
+		return err
+	}
 	seenSecrets := map[string]struct{}{}
 	for i, secret := range c.Secrets {
 		if err := ValidateSecretName(secret); err != nil {
@@ -223,6 +248,46 @@ func (c Config) Validate() error {
 	}
 	if c.Hosting != nil && c.Database.Postgres != nil && c.Database.Postgres.ConnectionMode == PostgresConnectionModeManaged {
 		return fmt.Errorf("hosting profile v1 cannot be combined with managed PostgreSQL until NetworkPolicy database paths are qualified")
+	}
+	return nil
+}
+
+func (c Config) validateStorage() error {
+	if c.Storage == nil {
+		return nil
+	}
+	if c.Storage.ExistingClaim == "" {
+		return fmt.Errorf("storage.existingClaim is required")
+	}
+	if problems := k8svalidation.IsDNS1123Subdomain(c.Storage.ExistingClaim); len(problems) > 0 {
+		return fmt.Errorf(
+			"storage.existingClaim must be a DNS-safe PersistentVolumeClaim name: %s",
+			strings.Join(problems, "; "),
+		)
+	}
+	if c.Storage.MountPath == "" {
+		return fmt.Errorf("storage.mountPath is required")
+	}
+	isAbsolute := path.IsAbs(c.Storage.MountPath)
+	isClean := path.Clean(c.Storage.MountPath) == c.Storage.MountPath
+	isRoot := c.Storage.MountPath == "/"
+	if !isAbsolute || !isClean || isRoot {
+		return fmt.Errorf("storage.mountPath must be a clean absolute path other than /")
+	}
+	if c.State.Mode != "stateful" {
+		return fmt.Errorf("storage requires state.mode stateful")
+	}
+	if c.Resilience.Mode != ResiliencePinned {
+		return fmt.Errorf("storage requires resilience.mode pinned")
+	}
+	if c.Deploy.Replicas != 1 {
+		return fmt.Errorf("storage requires deploy.replicas 1")
+	}
+	if c.Deploy.Strategy != DeployStrategyRecreate {
+		return fmt.Errorf("storage requires deploy.strategy recreate")
+	}
+	if len(c.Placement.Prefer) != 1 || strings.TrimSpace(c.Placement.Prefer[0]["node-id"]) == "" {
+		return fmt.Errorf("storage requires placement.prefer with an exact node-id selector")
 	}
 	return nil
 }

@@ -24,6 +24,8 @@ import (
 const (
 	secretHashAnnotation              = "deployer.io/secret-hash"
 	legacyAffinityMigrationAnnotation = "deployer.io/legacy-affinity-migration"
+	retainedStorageClaimAnnotation    = "deployer.io/retained-storage-claim"
+	retainedStorageVolumeName         = "retained-data"
 	legacyAffinityMigrationTimeout    = 5 * time.Minute
 )
 
@@ -507,6 +509,11 @@ func (c *Controller) deleteAppSecret(ctx context.Context, appName string) error 
 
 func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision string) (*appsv1.Deployment, error) {
 	cfg.Normalize()
+	if cfg.Storage != nil {
+		if err := cfg.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid retained storage configuration: %w", err)
+		}
+	}
 	if cfg.Hosting != nil {
 		hostingReplicas := cfg.Deploy.Replicas
 		if cfg.Resilience.Mode == appconfig.ResilienceResilient && hostingReplicas < 2 {
@@ -556,6 +563,26 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 				},
 			},
 		},
+	}
+	if cfg.Storage != nil {
+		deployment.Annotations = map[string]string{
+			retainedStorageClaimAnnotation: cfg.Storage.ExistingClaim,
+		}
+		deployment.Spec.Strategy = appsv1.DeploymentStrategy{
+			Type: appsv1.RecreateDeploymentStrategyType,
+		}
+		deployment.Spec.Template.Spec.Volumes = []corev1.Volume{{
+			Name: retainedStorageVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: cfg.Storage.ExistingClaim,
+				},
+			},
+		}}
+		deployment.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{{
+			Name:      retainedStorageVolumeName,
+			MountPath: cfg.Storage.MountPath,
+		}}
 	}
 	if cfg.Hosting != nil {
 		resources, err := cfg.Hosting.ResourceRequirements()

@@ -65,21 +65,29 @@ type AppRuntime interface {
 	Status(ctx context.Context, appName string) (string, error)
 }
 
-// HostingPreflightRuntime admits an opted-in workload before desired-state writes.
+// HostingPreflightRuntime admits hosted or retained-storage workloads before
+// desired-state writes. The name remains stable for runtime compatibility.
 type HostingPreflightRuntime interface {
 	PreflightHosting(context.Context, appconfig.Config) error
 }
 
 func preflightHosting(ctx context.Context, runtime AppRuntime, cfg appconfig.Config) error {
-	if cfg.Hosting == nil {
+	if cfg.Hosting == nil && cfg.Storage == nil {
 		return nil
 	}
 	preflight, ok := runtime.(HostingPreflightRuntime)
 	if !ok {
-		return status.Error(codes.FailedPrecondition, "hosting profile is unsupported by this runtime")
+		return status.Error(codes.FailedPrecondition, "hosting or retained storage preflight is unsupported by this runtime")
 	}
 	if err := preflight.PreflightHosting(ctx, cfg); err != nil {
-		return status.Errorf(codes.FailedPrecondition, "hosting preflight: %v", err)
+		return status.Errorf(codes.FailedPrecondition, "application runtime preflight: %v", err)
+	}
+	return nil
+}
+
+func (s AppService) validateRequiredTLS(cfg appconfig.Config) error {
+	if cfg.Routing.RequireTLS && !s.routeTLSEnabled {
+		return status.Error(codes.FailedPrecondition, "routing.requireTLS cannot be satisfied because application TLS is disabled")
 	}
 	return nil
 }
@@ -190,6 +198,9 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
+	if err := s.validateRequiredTLS(cfg); err != nil {
+		return nil, err
+	}
 	requestID := strings.TrimSpace(req.GetRequestId())
 	tracked := requestID != ""
 	if tracked && !registryauth.ValidRevision(requestID) {
@@ -214,7 +225,7 @@ func (s AppService) DeployApp(ctx context.Context, req *deployerv1.DeployAppRequ
 	if err != nil {
 		return nil, status.Error(codes.Internal, "encode desired state")
 	}
-	if tracked && s.enableCandidateOperations && cfg.Hosting != nil {
+	if tracked && s.enableCandidateOperations && cfg.Hosting != nil && cfg.Storage == nil {
 		return s.deployCandidateApp(ctx, cfg, req)
 	}
 	if tracked {

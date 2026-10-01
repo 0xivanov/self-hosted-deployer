@@ -662,6 +662,8 @@ type recordingNodeRuntime struct {
 	uncordons   int
 	removals    int
 	labelSyncs  int
+	guardChecks int
+	guardErr    error
 }
 
 func (r *recordingNodeRuntime) NodeReadiness(context.Context, string) (string, string, bool, error) {
@@ -691,9 +693,48 @@ func (r *recordingNodeRuntime) RemoveNode(context.Context, string) error {
 	return nil
 }
 
+func (r *recordingNodeRuntime) ValidateNodeRemoval(context.Context, domain.Node) error {
+	r.guardChecks++
+	return r.guardErr
+}
+
 func (r *recordingNodeRuntime) SyncNodeLabels(context.Context, domain.Node) error {
 	r.labelSyncs++
 	return nil
+}
+
+func TestRemoveNodeChecksRetainedStorageGuardBeforeMutation(t *testing.T) {
+	ctx := context.Background()
+	adminCtx := WithCaller(ctx, Caller{Kind: CallerAdmin})
+	database := openTestDB(t)
+	nodes := db.NewNodeRepository(database)
+	now := time.Now().UTC()
+	node := domain.Node{
+		ID:                 "node-home",
+		Name:               "pi-home",
+		Status:             nodeStatusDrained,
+		Arch:               "linux/arm64",
+		WireGuardIP:        "10.8.0.2",
+		WireGuardPublicKey: validWireGuardPublicKey,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	if err := nodes.Create(ctx, node); err != nil {
+		t.Fatalf("create guarded node: %v", err)
+	}
+	runtime := &recordingNodeRuntime{guardErr: errors.New("retained storage is pinned here")}
+	service := NewNodeService(NodeServiceConfig{Nodes: nodes, Runtime: runtime})
+	_, err := service.RemoveNode(adminCtx, &deployerv1.RemoveNodeRequest{NodeRef: node.Name})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("expected retained storage removal guard, got %v", err)
+	}
+	stored, err := nodes.FindByID(ctx, node.ID)
+	if err != nil || stored.Status != nodeStatusDrained || stored.WireGuardPublicKey != validWireGuardPublicKey {
+		t.Fatalf("guarded removal mutated node: %#v err=%v", stored, err)
+	}
+	if runtime.guardChecks != 1 || runtime.removals != 0 {
+		t.Fatalf("unexpected guarded runtime calls: %#v", runtime)
+	}
 }
 
 type recordingPeerSynchronizer struct {

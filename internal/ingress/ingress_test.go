@@ -76,3 +76,21 @@ func TestManifestForAppIncludesTLSForConfiguredACME(t *testing.T) {
 		t.Fatalf("unexpected TLS configuration: %#v", manifest.Spec.TLS)
 	}
 }
+
+func TestManifestForAppFailsClosedWhenRequiredTLSIsUnavailable(t *testing.T) {
+	cfg := appconfig.Config{
+		Name:    "my-api",
+		Service: appconfig.ServiceConfig{Port: 3000},
+		Routing: appconfig.RoutingConfig{Domain: "api.example.com", RequireTLS: true},
+	}
+	if _, ok, err := ManifestForApp(cfg, DefaultNamespace, TLSConfig{}); err == nil || ok {
+		t.Fatalf("required TLS must reject an HTTP-only ingress: ok=%t err=%v", ok, err)
+	}
+	manifest, ok, err := ManifestForApp(cfg, DefaultNamespace, TLSConfig{ACMEEmail: "ops@example.com"})
+	if err != nil || !ok {
+		t.Fatalf("render required TLS ingress: ok=%t err=%v", ok, err)
+	}
+	if len(manifest.Spec.TLS) != 1 || manifest.Metadata.Annotations["traefik.ingress.kubernetes.io/router.tls"] != "true" {
+		t.Fatalf("required TLS ingress is not TLS-only: %#v", manifest)
+	}
+}
