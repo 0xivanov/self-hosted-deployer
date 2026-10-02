@@ -56,6 +56,9 @@ if [ -n "$hidden_index_entries" ]; then
   echo "build provenance refuses Git index entries marked assume-unchanged or skip-worktree" >&2
   exit 1
 fi
+# The single-quoted program is intentionally expanded by each submodule shell,
+# not by this parent shell.
+# shellcheck disable=SC2016
 if ! git submodule foreach --quiet --recursive '
   index_entries=$(git ls-files -v --) || exit 1
   hidden_index_entries=$(printf "%s\n" "$index_entries" | LC_ALL=C sed -n "/^[a-zS] /p")
