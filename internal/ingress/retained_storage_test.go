@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
@@ -32,6 +33,33 @@ storage: {existingClaim: homephotos-data, mountPath: /var/lib/homephotos}
 `))
 	if err != nil {
 		t.Fatalf("parse retained storage test config: %v", err)
+	}
+	return cfg
+}
+
+func retainedStorageMultiMountTestConfig(t *testing.T) appconfig.Config {
+	t.Helper()
+	cfg, err := appconfig.Parse([]byte(`
+name: homephotos
+image: ghcr.io/example/homephotos:1.0.0
+service: {port: 8080, health: {path: /health}}
+routing: {}
+deploy: {replicas: 1}
+placement:
+  arch: linux/arm64
+  prefer:
+    - node-id: node-home
+state: {mode: stateful}
+resilience: {mode: pinned}
+storage:
+  existingClaim: homephotos-data
+  mountPath: /data
+  additionalMounts:
+    - existingClaim: homephotos-audit-anchor
+      mountPath: /anchor
+`))
+	if err != nil {
+		t.Fatalf("parse multiple retained storage test config: %v", err)
 	}
 	return cfg
 }
@@ -73,6 +101,21 @@ func retainedLocalVolume() *corev1.PersistentVolume {
 	}
 }
 
+func boundAnchorClaim() *corev1.PersistentVolumeClaim {
+	claim := boundRetainedClaim()
+	claim.Name = "homephotos-audit-anchor"
+	claim.Spec.VolumeName = "homephotos-audit-anchor-pv"
+	return claim
+}
+
+func retainedAnchorLocalVolume() *corev1.PersistentVolume {
+	volume := retainedLocalVolume()
+	volume.Name = "homephotos-audit-anchor-pv"
+	volume.Spec.Local.Path = "/var/lib/homephotos-anchor"
+	volume.Spec.ClaimRef.Name = "homephotos-audit-anchor"
+	return volume
+}
+
 func TestDeploymentForAppMountsRetainedClaimWithRecreateStrategy(t *testing.T) {
 	cfg := retainedStorageTestConfig(t)
 	deployment, err := deploymentForApp(cfg, DefaultNamespace, "")
@@ -97,6 +140,65 @@ func TestDeploymentForAppMountsRetainedClaimWithRecreateStrategy(t *testing.T) {
 	mounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
 	if len(mounts) != 1 || mounts[0].Name != retainedStorageVolumeName || mounts[0].MountPath != cfg.Storage.MountPath {
 		t.Fatalf("unexpected retained storage mount: %#v", mounts)
+	}
+}
+
+func TestDeploymentForAppMountsEveryRetainedClaim(t *testing.T) {
+	cfg := retainedStorageMultiMountTestConfig(t)
+	deployment, err := deploymentForApp(cfg, DefaultNamespace, "")
+	if err != nil {
+		t.Fatalf("render multiple retained storage Deployment: %v", err)
+	}
+	if deployment.Annotations[retainedStorageClaimAnnotation] != "homephotos-data" {
+		t.Fatalf("legacy primary claim annotation changed: %#v", deployment.Annotations)
+	}
+	if deployment.Annotations[retainedStorageClaimsAnnotation] != "homephotos-data,homephotos-audit-anchor" {
+		t.Fatalf("missing retained claims annotation: %#v", deployment.Annotations)
+	}
+	volumes := deployment.Spec.Template.Spec.Volumes
+	if len(volumes) != 2 || volumes[0].Name != retainedStorageVolumeName ||
+		volumes[0].PersistentVolumeClaim.ClaimName != "homephotos-data" ||
+		volumes[1].Name != retainedStorageVolumeName+"-2" ||
+		volumes[1].PersistentVolumeClaim.ClaimName != "homephotos-audit-anchor" {
+		t.Fatalf("unexpected retained volumes: %#v", volumes)
+	}
+	mounts := deployment.Spec.Template.Spec.Containers[0].VolumeMounts
+	if len(mounts) != 2 || mounts[0].MountPath != "/data" || mounts[1].MountPath != "/anchor" {
+		t.Fatalf("unexpected retained mounts: %#v", mounts)
+	}
+}
+
+func TestPreflightRetainedStorageChecksEveryClaim(t *testing.T) {
+	cfg := retainedStorageMultiMountTestConfig(t)
+	objects := []runtime.Object{
+		boundRetainedClaim(),
+		retainedLocalVolume(),
+		boundAnchorClaim(),
+		retainedAnchorLocalVolume(),
+	}
+	clientset := fake.NewSimpleClientset(objects...)
+	controller := &Controller{
+		namespace:         DefaultNamespace,
+		pvcs:              clientset.CoreV1().PersistentVolumeClaims(DefaultNamespace),
+		persistentVolumes: clientset.CoreV1().PersistentVolumes(),
+		deployments:       clientset.AppsV1().Deployments(DefaultNamespace),
+		pods:              clientset.CoreV1().Pods(DefaultNamespace),
+	}
+	if err := controller.preflightRetainedStorage(context.Background(), cfg); err != nil {
+		t.Fatalf("preflight multiple retained claims: %v", err)
+	}
+
+	clientset = fake.NewSimpleClientset(boundRetainedClaim(), retainedLocalVolume())
+	controller = &Controller{
+		namespace:         DefaultNamespace,
+		pvcs:              clientset.CoreV1().PersistentVolumeClaims(DefaultNamespace),
+		persistentVolumes: clientset.CoreV1().PersistentVolumes(),
+		deployments:       clientset.AppsV1().Deployments(DefaultNamespace),
+		pods:              clientset.CoreV1().Pods(DefaultNamespace),
+	}
+	err := controller.preflightRetainedStorage(context.Background(), cfg)
+	if err == nil || !strings.Contains(err.Error(), `"homephotos-audit-anchor" does not exist`) {
+		t.Fatalf("expected missing additional claim rejection, got %v", err)
 	}
 }
 
@@ -300,5 +402,19 @@ func TestNodeRemovalGuardBlocksRetainedStorageNode(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("unrelated node removal was blocked: %v", err)
+	}
+}
+
+func TestNodeRemovalGuardReportsEveryRetainedClaim(t *testing.T) {
+	cfg := retainedStorageMultiMountTestConfig(t)
+	deployment, err := deploymentForApp(cfg, DefaultNamespace, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientset := fake.NewSimpleClientset(deployment)
+	controller := &Controller{deployments: clientset.AppsV1().Deployments(DefaultNamespace)}
+	err = controller.ValidateNodeRemoval(context.Background(), domain.Node{ID: "node-home", Name: "pi-home"})
+	if err == nil || !strings.Contains(err.Error(), "homephotos-data, homephotos-audit-anchor") {
+		t.Fatalf("expected every retained claim in node removal guard, got %v", err)
 	}
 }

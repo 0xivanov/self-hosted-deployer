@@ -34,16 +34,29 @@ func (c *Controller) preflightRetainedStorage(ctx context.Context, cfg appconfig
 	if err := c.validateRetainedStorageRuntime(cfg); err != nil {
 		return err
 	}
-	claim, err := c.pvcs.Get(ctx, cfg.Storage.ExistingClaim, metav1.GetOptions{})
+	for _, mount := range cfg.Storage.Mounts() {
+		if err := c.preflightRetainedStorageMount(ctx, cfg, mount); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) preflightRetainedStorageMount(
+	ctx context.Context,
+	cfg appconfig.Config,
+	mount appconfig.StorageMount,
+) error {
+	claim, err := c.pvcs.Get(ctx, mount.ExistingClaim, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		return fmt.Errorf(
 			"retained PersistentVolumeClaim %q does not exist in namespace %q",
-			cfg.Storage.ExistingClaim,
+			mount.ExistingClaim,
 			c.namespace,
 		)
 	}
 	if err != nil {
-		return fmt.Errorf("get retained PersistentVolumeClaim %q: %w", cfg.Storage.ExistingClaim, err)
+		return fmt.Errorf("get retained PersistentVolumeClaim %q: %w", mount.ExistingClaim, err)
 	}
 	if claim.DeletionTimestamp != nil {
 		return fmt.Errorf("retained PersistentVolumeClaim %q is being deleted", claim.Name)

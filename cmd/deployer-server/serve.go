@@ -20,7 +20,8 @@ import (
 
 func serve() int {
 	logger := logging.New("deployer-server", os.Getenv("DEPLOYER_LOG_LEVEL"))
-	logger.Info("server starting", "version", version.Version, "commit", version.Commit)
+	current := version.Current()
+	logger.Info("server starting", "version", current.Version, "commit", current.Commit)
 
 	cfg := config.LoadServer()
 	if err := validateServeConfig(cfg); err != nil {

@@ -43,6 +43,14 @@ make build-arm64
 make release
 ```
 
+Operational and release builds require a clean Git checkout or dedicated
+worktree with no extra ignored source files. Commit the reviewed source first,
+then optionally set `EXPECTED_COMMIT` to the complete object ID as an
+assertion. Build metadata is derived from Git and cannot be replaced with a
+caller-provided `COMMIT` value. Ordinary `make build` remains available during
+development, but a dirty build reports `<HEAD>-dirty` and cannot satisfy an
+exact release identity check.
+
 - [Operations guide](docs/operations.md)
 - [PostgreSQL high availability](docs/postgres-ha.md)
 - [VPS + Raspberry Pi end-to-end setup](docs/vps-raspberry-pi-e2e.md)

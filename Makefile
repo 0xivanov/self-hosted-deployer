@@ -6,14 +6,26 @@ BIN_DIR := bin
 DIST_DIR := dist
 INSTALL_DIR ?= $(HOME)/.local/bin
 VERSION ?= dev
-# Release verification binds both the operator CLI and the live server to an
-# exact reviewed source revision. Keep the complete object ID in binaries.
-COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
+EXPECTED_COMMIT ?=
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS := -X github.com/0xivanov/self-hosted-deployer/internal/version.Version=$(VERSION) -X github.com/0xivanov/self-hosted-deployer/internal/version.Commit=$(COMMIT) -X github.com/0xivanov/self-hosted-deployer/internal/version.BuildDate=$(BUILD_DATE)
+VERSION_LDFLAGS := -X github.com/0xivanov/self-hosted-deployer/internal/version.Version=$(VERSION) -X github.com/0xivanov/self-hosted-deployer/internal/version.BuildDate=$(BUILD_DATE)
 BUILD_ENV := CGO_ENABLED=0
+PROVENANCE_SCRIPT := ./scripts/build-provenance.sh
 
-.PHONY: fmt test build build-arm64 build-release install-cli package release vet lint proto proto-lint proto-check clean
+# The embedded commit is always derived from Git. COMMIT used to be a caller
+# override, which allowed a dirty build to claim the clean HEAD object ID.
+ifneq ($(origin COMMIT), undefined)
+$(error COMMIT cannot be overridden; use EXPECTED_COMMIT to assert the checked-out revision)
+endif
+
+export EXPECTED_COMMIT
+
+define build_binary
+	@commit="$$($(PROVENANCE_SCRIPT) resolve)" && \
+	$(1) $(BUILD_ENV) $(GO) build -buildvcs=true -ldflags "$(VERSION_LDFLAGS) -X github.com/0xivanov/self-hosted-deployer/internal/version.Commit=$$commit" -o $(2) $(3)
+endef
+
+.PHONY: fmt test provenance-test verify-clean-source build build-arm64 build-release install-cli package release vet lint proto proto-lint proto-check clean
 
 fmt:
 	$(GO) fmt ./...
@@ -21,31 +33,39 @@ fmt:
 test:
 	$(GO) test ./...
 
+provenance-test:
+	sh tests/build-provenance-test.sh
+
+verify-clean-source:
+	@$(PROVENANCE_SCRIPT) require-clean >/dev/null
+
 build:
 	mkdir -p $(BIN_DIR)
-	$(BUILD_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/deployer ./cmd/deployer
-	$(BUILD_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/deployer-server ./cmd/deployer-server
-	$(BUILD_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/deployer-agent ./cmd/deployer-agent
+	$(call build_binary,,$(BIN_DIR)/deployer,./cmd/deployer)
+	$(call build_binary,,$(BIN_DIR)/deployer-server,./cmd/deployer-server)
+	$(call build_binary,,$(BIN_DIR)/deployer-agent,./cmd/deployer-agent)
 
-build-arm64:
+build-arm64: verify-clean-source
 	mkdir -p $(BIN_DIR)/darwin-arm64 $(BIN_DIR)/linux-arm64
-	GOOS=darwin GOARCH=arm64 $(BUILD_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/darwin-arm64/deployer ./cmd/deployer
-	GOOS=linux GOARCH=arm64 $(BUILD_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/linux-arm64/deployer ./cmd/deployer
-	GOOS=linux GOARCH=arm64 $(BUILD_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/linux-arm64/deployer-server ./cmd/deployer-server
-	GOOS=linux GOARCH=arm64 $(BUILD_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/linux-arm64/deployer-agent ./cmd/deployer-agent
+	$(call build_binary,GOOS=darwin GOARCH=arm64,$(BIN_DIR)/darwin-arm64/deployer,./cmd/deployer)
+	$(call build_binary,GOOS=linux GOARCH=arm64,$(BIN_DIR)/linux-arm64/deployer,./cmd/deployer)
+	$(call build_binary,GOOS=linux GOARCH=arm64,$(BIN_DIR)/linux-arm64/deployer-server,./cmd/deployer-server)
+	$(call build_binary,GOOS=linux GOARCH=arm64,$(BIN_DIR)/linux-arm64/deployer-agent,./cmd/deployer-agent)
+	@$(PROVENANCE_SCRIPT) require-clean >/dev/null
 
-build-release: build-arm64
+build-release: verify-clean-source build-arm64
 	mkdir -p $(BIN_DIR)/linux-amd64
-	GOOS=linux GOARCH=amd64 $(BUILD_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/linux-amd64/deployer ./cmd/deployer
-	GOOS=linux GOARCH=amd64 $(BUILD_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/linux-amd64/deployer-server ./cmd/deployer-server
-	GOOS=linux GOARCH=amd64 $(BUILD_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/linux-amd64/deployer-agent ./cmd/deployer-agent
+	$(call build_binary,GOOS=linux GOARCH=amd64,$(BIN_DIR)/linux-amd64/deployer,./cmd/deployer)
+	$(call build_binary,GOOS=linux GOARCH=amd64,$(BIN_DIR)/linux-amd64/deployer-server,./cmd/deployer-server)
+	$(call build_binary,GOOS=linux GOARCH=amd64,$(BIN_DIR)/linux-amd64/deployer-agent,./cmd/deployer-agent)
+	@$(PROVENANCE_SCRIPT) require-clean >/dev/null
 
 install-cli:
 	mkdir -p $(INSTALL_DIR)
-	$(BUILD_ENV) $(GO) build -ldflags "$(LDFLAGS)" -o $(INSTALL_DIR)/deployer ./cmd/deployer
+	$(call build_binary,,$(INSTALL_DIR)/deployer,./cmd/deployer)
 	@case ":$$PATH:" in *":$(INSTALL_DIR):"*) echo "deployer installed to $(INSTALL_DIR)/deployer" ;; *) echo "deployer installed to $(INSTALL_DIR)/deployer"; echo "Add $(INSTALL_DIR) to PATH to run deployer directly." ;; esac
 
-package: build-release
+package: verify-clean-source build-release
 	rm -rf $(DIST_DIR)
 	mkdir -p $(DIST_DIR)/packages/deployer-darwin-arm64 $(DIST_DIR)/packages/deployer-linux-arm64 $(DIST_DIR)/packages/deployer-linux-amd64
 	cp $(BIN_DIR)/darwin-arm64/deployer README.md $(DIST_DIR)/packages/deployer-darwin-arm64/
@@ -58,8 +78,9 @@ package: build-release
 	cd $(DIST_DIR)/packages && tar -czf ../deployer-linux-amd64.tar.gz deployer-linux-amd64
 	cp scripts/install-release.sh scripts/install-cnpg.sh scripts/install-monitoring.sh $(DIST_DIR)/
 	cd $(DIST_DIR) && shasum -a 256 *.tar.gz install-release.sh install-cnpg.sh install-monitoring.sh > checksums.txt
+	@$(PROVENANCE_SCRIPT) require-clean >/dev/null
 
-release: package
+release: verify-clean-source package
 
 vet:
 	$(GO) vet ./...

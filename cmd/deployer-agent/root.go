@@ -53,7 +53,8 @@ func run(args []string) int {
 	}
 
 	logger := logging.New("deployer-agent", os.Getenv("DEPLOYER_LOG_LEVEL"))
-	logger.Info("agent starting", "version", version.Version, "commit", version.Commit)
+	current := version.Current()
+	logger.Info("agent starting", "version", current.Version, "commit", current.Commit)
 	usage()
 	return 0
 }

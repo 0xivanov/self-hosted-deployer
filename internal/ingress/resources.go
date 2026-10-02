@@ -25,6 +25,7 @@ const (
 	secretHashAnnotation              = "deployer.io/secret-hash"
 	legacyAffinityMigrationAnnotation = "deployer.io/legacy-affinity-migration"
 	retainedStorageClaimAnnotation    = "deployer.io/retained-storage-claim"
+	retainedStorageClaimsAnnotation   = "deployer.io/retained-storage-claims"
 	retainedStorageVolumeName         = "retained-data"
 	legacyAffinityMigrationTimeout    = 5 * time.Minute
 )
@@ -565,24 +566,35 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 		},
 	}
 	if cfg.Storage != nil {
+		mounts := cfg.Storage.Mounts()
+		claimNames := make([]string, 0, len(mounts))
+		volumes := make([]corev1.Volume, 0, len(mounts))
+		volumeMounts := make([]corev1.VolumeMount, 0, len(mounts))
+		for index, mount := range mounts {
+			volumeName := retainedStorageVolumeNameForIndex(index)
+			claimNames = append(claimNames, mount.ExistingClaim)
+			volumes = append(volumes, corev1.Volume{
+				Name: volumeName,
+				VolumeSource: corev1.VolumeSource{
+					PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+						ClaimName: mount.ExistingClaim,
+					},
+				},
+			})
+			volumeMounts = append(volumeMounts, corev1.VolumeMount{
+				Name:      volumeName,
+				MountPath: mount.MountPath,
+			})
+		}
 		deployment.Annotations = map[string]string{
-			retainedStorageClaimAnnotation: cfg.Storage.ExistingClaim,
+			retainedStorageClaimAnnotation:  cfg.Storage.ExistingClaim,
+			retainedStorageClaimsAnnotation: strings.Join(claimNames, ","),
 		}
 		deployment.Spec.Strategy = appsv1.DeploymentStrategy{
 			Type: appsv1.RecreateDeploymentStrategyType,
 		}
-		deployment.Spec.Template.Spec.Volumes = []corev1.Volume{{
-			Name: retainedStorageVolumeName,
-			VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: cfg.Storage.ExistingClaim,
-				},
-			},
-		}}
-		deployment.Spec.Template.Spec.Containers[0].VolumeMounts = []corev1.VolumeMount{{
-			Name:      retainedStorageVolumeName,
-			MountPath: cfg.Storage.MountPath,
-		}}
+		deployment.Spec.Template.Spec.Volumes = volumes
+		deployment.Spec.Template.Spec.Containers[0].VolumeMounts = volumeMounts
 	}
 	if cfg.Hosting != nil {
 		resources, err := cfg.Hosting.ResourceRequirements()
@@ -722,6 +734,13 @@ func deploymentForApp(cfg appconfig.Config, namespace string, secretRevision str
 		)
 	}
 	return deployment, nil
+}
+
+func retainedStorageVolumeNameForIndex(index int) string {
+	if index == 0 {
+		return retainedStorageVolumeName
+	}
+	return retainedStorageVolumeName + "-" + strconv.Itoa(index+1)
 }
 
 func boolPtr(value bool) *bool { return &value }

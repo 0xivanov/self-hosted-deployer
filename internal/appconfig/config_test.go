@@ -312,6 +312,46 @@ storage:
 	}
 }
 
+func TestParseMultipleRetainedStorageMounts(t *testing.T) {
+	cfg, err := Parse([]byte(`
+name: homephotos
+image: ghcr.io/example/homephotos:1.0.0
+service: {port: 8080, health: {path: /health}}
+routing: {}
+deploy: {replicas: 1, strategy: recreate}
+placement:
+  prefer:
+    - node-id: node-home
+state: {mode: stateful}
+resilience: {mode: pinned}
+storage:
+  existingClaim: homephotos-data
+  mountPath: /data
+  additionalMounts:
+    - existingClaim: homephotos-audit-anchor
+      mountPath: /anchor
+`))
+	if err != nil {
+		t.Fatalf("parse multiple retained storage mounts: %v", err)
+	}
+	mounts := cfg.Storage.Mounts()
+	if len(mounts) != 2 || mounts[0].ExistingClaim != "homephotos-data" ||
+		mounts[1].ExistingClaim != "homephotos-audit-anchor" || mounts[1].MountPath != "/anchor" {
+		t.Fatalf("unexpected retained mounts: %#v", mounts)
+	}
+	encoded, err := cfg.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTripped, err := FromJSON(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := roundTripped.Storage.Mounts(); len(got) != 2 || got[1] != mounts[1] {
+		t.Fatalf("additional retained mount did not round trip: %#v", got)
+	}
+}
+
 func TestParseRejectsUnsafeRetainedStorageConfig(t *testing.T) {
 	valid := `
 name: homephotos
@@ -355,6 +395,36 @@ storage: {existingClaim: homephotos-data, mountPath: /data}
 			name: "broad selector",
 			body: strings.Replace(valid, "node-id: node-home", "location: home", 1),
 			want: "exact node-id selector",
+		},
+		{
+			name: "duplicate additional claim",
+			body: strings.Replace(
+				valid,
+				"storage: {existingClaim: homephotos-data, mountPath: /data}",
+				"storage: {existingClaim: homephotos-data, mountPath: /data, additionalMounts: [{existingClaim: homephotos-data, mountPath: /anchor}]}",
+				1,
+			),
+			want: "duplicates retained claim",
+		},
+		{
+			name: "nested additional mount",
+			body: strings.Replace(
+				valid,
+				"storage: {existingClaim: homephotos-data, mountPath: /data}",
+				"storage: {existingClaim: homephotos-audit-anchor, mountPath: /data, additionalMounts: [{existingClaim: homephotos-data, mountPath: /data/catalog}]}",
+				1,
+			),
+			want: "overlaps retained mount path",
+		},
+		{
+			name: "invalid additional claim",
+			body: strings.Replace(
+				valid,
+				"storage: {existingClaim: homephotos-data, mountPath: /data}",
+				"storage: {existingClaim: homephotos-data, mountPath: /data, additionalMounts: [{existingClaim: BAD_CLAIM, mountPath: /anchor}]}",
+				1,
+			),
+			want: "storage.additionalMounts[0].existingClaim",
 		},
 	}
 	for _, tt := range tests {

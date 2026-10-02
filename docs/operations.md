@@ -283,6 +283,29 @@ metadata, and verifies checksums. It uploads all assets to a draft and only
 then publishes the release. Existing releases are immutable and never
 overwritten.
 
+### Build provenance
+
+Build the operational binaries and release packages only from a clean checkout
+or a dedicated clean worktree at the reviewed commit. `make build-arm64` and
+`make release` reject tracked changes, untracked files, dirty submodules, and
+ignored files outside the generated `bin` and `dist` directories. They also
+check the worktree again after compilation or packaging.
+
+The embedded commit is derived from Git and cannot be supplied through the old
+`COMMIT` override. `EXPECTED_COMMIT` is an assertion, not an override. It must
+contain the complete object ID of the checked-out commit:
+
+```bash
+EXPECTED_COMMIT=$(git rev-parse HEAD) make build-arm64
+```
+
+Detached tagged checkouts are supported. An ordinary development `make build`
+may run with local changes, but its reported commit ends in `-dirty`. At
+runtime, every binary compares its embedded identity with Go's VCS build
+settings. Missing, dirty, or mismatched provenance is reported with an
+`-unverified`, `-dirty`, or `-mismatch` suffix. Exact CLI and server commit
+checks therefore reject those binaries.
+
 - `deployer-darwin-arm64.tar.gz`
 - `deployer-linux-amd64.tar.gz`
 - `deployer-linux-arm64.tar.gz`

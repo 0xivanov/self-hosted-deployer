@@ -88,8 +88,23 @@ type PlacementConfig struct {
 // StorageConfig mounts an operator-provisioned PVC. Launchstead never creates
 // or deletes the referenced claim, so its lifecycle remains explicit.
 type StorageConfig struct {
+	ExistingClaim    string         `json:"existing_claim" yaml:"existingClaim"`
+	MountPath        string         `json:"mount_path" yaml:"mountPath"`
+	AdditionalMounts []StorageMount `json:"additional_mounts,omitempty" yaml:"additionalMounts,omitempty"`
+}
+
+type StorageMount struct {
 	ExistingClaim string `json:"existing_claim" yaml:"existingClaim"`
 	MountPath     string `json:"mount_path" yaml:"mountPath"`
+}
+
+// Mounts returns the primary retained mount followed by any additional
+// retained mounts in declared order.
+func (s StorageConfig) Mounts() []StorageMount {
+	mounts := make([]StorageMount, 0, 1+len(s.AdditionalMounts))
+	mounts = append(mounts, StorageMount{ExistingClaim: s.ExistingClaim, MountPath: s.MountPath})
+	mounts = append(mounts, s.AdditionalMounts...)
+	return mounts
 }
 
 type StateConfig struct {
@@ -133,6 +148,13 @@ func (c *Config) Normalize() {
 	if c.Storage != nil {
 		c.Storage.ExistingClaim = strings.TrimSpace(c.Storage.ExistingClaim)
 		c.Storage.MountPath = strings.TrimSpace(c.Storage.MountPath)
+		if c.Storage.AdditionalMounts == nil {
+			c.Storage.AdditionalMounts = []StorageMount{}
+		}
+		for index := range c.Storage.AdditionalMounts {
+			c.Storage.AdditionalMounts[index].ExistingClaim = strings.TrimSpace(c.Storage.AdditionalMounts[index].ExistingClaim)
+			c.Storage.AdditionalMounts[index].MountPath = strings.TrimSpace(c.Storage.AdditionalMounts[index].MountPath)
+		}
 	}
 
 	if c.Deploy.Strategy == "" && c.Storage != nil {
@@ -258,23 +280,28 @@ func (c Config) validateStorage() error {
 	if c.Storage == nil {
 		return nil
 	}
-	if c.Storage.ExistingClaim == "" {
-		return fmt.Errorf("storage.existingClaim is required")
+	if len(c.Storage.AdditionalMounts) > 7 {
+		return fmt.Errorf("storage supports at most 8 retained mounts")
 	}
-	if problems := k8svalidation.IsDNS1123Subdomain(c.Storage.ExistingClaim); len(problems) > 0 {
-		return fmt.Errorf(
-			"storage.existingClaim must be a DNS-safe PersistentVolumeClaim name: %s",
-			strings.Join(problems, "; "),
-		)
-	}
-	if c.Storage.MountPath == "" {
-		return fmt.Errorf("storage.mountPath is required")
-	}
-	isAbsolute := path.IsAbs(c.Storage.MountPath)
-	isClean := path.Clean(c.Storage.MountPath) == c.Storage.MountPath
-	isRoot := c.Storage.MountPath == "/"
-	if !isAbsolute || !isClean || isRoot {
-		return fmt.Errorf("storage.mountPath must be a clean absolute path other than /")
+	seenClaims := map[string]struct{}{}
+	mounts := c.Storage.Mounts()
+	for index, mount := range mounts {
+		label := "storage"
+		if index > 0 {
+			label = fmt.Sprintf("storage.additionalMounts[%d]", index-1)
+		}
+		if err := validateStorageMount(label, mount); err != nil {
+			return err
+		}
+		if _, exists := seenClaims[mount.ExistingClaim]; exists {
+			return fmt.Errorf("%s.existingClaim duplicates retained claim %q", label, mount.ExistingClaim)
+		}
+		seenClaims[mount.ExistingClaim] = struct{}{}
+		for previousIndex := 0; previousIndex < index; previousIndex++ {
+			if mountPathsOverlap(mount.MountPath, mounts[previousIndex].MountPath) {
+				return fmt.Errorf("%s.mountPath overlaps retained mount path %q", label, mounts[previousIndex].MountPath)
+			}
+		}
 	}
 	if c.State.Mode != "stateful" {
 		return fmt.Errorf("storage requires state.mode stateful")
@@ -292,6 +319,33 @@ func (c Config) validateStorage() error {
 		return fmt.Errorf("storage requires placement.prefer with an exact node-id selector")
 	}
 	return nil
+}
+
+func validateStorageMount(label string, mount StorageMount) error {
+	if mount.ExistingClaim == "" {
+		return fmt.Errorf("%s.existingClaim is required", label)
+	}
+	if problems := k8svalidation.IsDNS1123Subdomain(mount.ExistingClaim); len(problems) > 0 {
+		return fmt.Errorf(
+			"%s.existingClaim must be a DNS-safe PersistentVolumeClaim name: %s",
+			label,
+			strings.Join(problems, "; "),
+		)
+	}
+	if mount.MountPath == "" {
+		return fmt.Errorf("%s.mountPath is required", label)
+	}
+	isAbsolute := path.IsAbs(mount.MountPath)
+	isClean := path.Clean(mount.MountPath) == mount.MountPath
+	isRoot := mount.MountPath == "/"
+	if !isAbsolute || !isClean || isRoot {
+		return fmt.Errorf("%s.mountPath must be a clean absolute path other than /", label)
+	}
+	return nil
+}
+
+func mountPathsOverlap(left, right string) bool {
+	return left == right || strings.HasPrefix(left, right+"/") || strings.HasPrefix(right, left+"/")
 }
 
 func ValidateSecretName(name string) error {

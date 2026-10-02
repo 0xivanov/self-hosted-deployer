@@ -10,6 +10,7 @@ import (
 
 	"github.com/0xivanov/self-hosted-deployer/internal/appconfig"
 	"github.com/0xivanov/self-hosted-deployer/internal/domain"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -284,8 +285,8 @@ func (c *Controller) validateRetainedStorageNodeRemoval(ctx context.Context, nod
 	}
 	for i := range deployments.Items {
 		deployment := &deployments.Items[i]
-		claimName := strings.TrimSpace(deployment.Annotations[retainedStorageClaimAnnotation])
-		if claimName == "" {
+		claimNames := retainedStorageClaimsForDeployment(deployment)
+		if len(claimNames) == 0 {
 			continue
 		}
 		pinnedNodeID := strings.TrimSpace(deployment.Spec.Template.Spec.NodeSelector["deployer.io/node-id"])
@@ -299,14 +300,38 @@ func (c *Controller) validateRetainedStorageNodeRemoval(ctx context.Context, nod
 			continue
 		}
 		return fmt.Errorf(
-			"Kubernetes Node %q hosts retained-storage Deployment %q using PersistentVolumeClaim %q; "+
+			"Kubernetes Node %q hosts retained-storage Deployment %q using PersistentVolumeClaims %q; "+
 				"delete or relocate the application through its storage runbook first",
 			nodeName,
 			deployment.Name,
-			claimName,
+			strings.Join(claimNames, ", "),
 		)
 	}
 	return nil
+}
+
+func retainedStorageClaimsForDeployment(deployment *appsv1.Deployment) []string {
+	raw := strings.TrimSpace(deployment.Annotations[retainedStorageClaimsAnnotation])
+	if raw == "" {
+		raw = strings.TrimSpace(deployment.Annotations[retainedStorageClaimAnnotation])
+	}
+	if raw == "" {
+		return nil
+	}
+	claims := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, part := range strings.Split(raw, ",") {
+		claim := strings.TrimSpace(part)
+		if claim == "" {
+			continue
+		}
+		if _, exists := seen[claim]; exists {
+			continue
+		}
+		seen[claim] = struct{}{}
+		claims = append(claims, claim)
+	}
+	return claims
 }
 
 func (c *Controller) RuntimeStatus(ctx context.Context, appName string) (string, int32, int32, []string, error) {

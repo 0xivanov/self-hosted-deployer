@@ -35,6 +35,8 @@ jobs:
         run: shellcheck scripts/*.sh tests/*.sh
       - name: Release policy tests
         run: sh tests/release-controls-test.sh
+      - name: Build provenance tests
+        run: sh tests/build-provenance-test.sh
       - name: Namespace budget tests
         run: bash tests/hosting-namespace-test.sh
       - name: Installer rollback tests (disposable container)
