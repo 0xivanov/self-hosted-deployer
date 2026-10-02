@@ -57,6 +57,24 @@ func TestManifestForAppSkipsEmptyDomain(t *testing.T) {
 	}
 }
 
+func TestManifestForAppCanDisableProxyRetries(t *testing.T) {
+	enabled := false
+	manifest, ok, err := ManifestForApp(appconfig.Config{
+		Name:    "stateful-api",
+		Service: appconfig.ServiceConfig{Port: 8080},
+		Routing: appconfig.RoutingConfig{
+			Domain:             "stateful.example.com",
+			EnableProxyRetries: &enabled,
+		},
+	}, DefaultNamespace, TLSConfig{})
+	if err != nil || !ok {
+		t.Fatalf("generate ingress without retries: ok=%t err=%v", ok, err)
+	}
+	if _, exists := manifest.Metadata.Annotations[traefikRetryMiddlewareAnnotation]; exists {
+		t.Fatalf("retry middleware remained on disabled route: %#v", manifest.Metadata.Annotations)
+	}
+}
+
 func TestManifestForAppIncludesTLSForConfiguredACME(t *testing.T) {
 	manifest, ok, err := ManifestForApp(appconfig.Config{
 		Name:    "my-api",

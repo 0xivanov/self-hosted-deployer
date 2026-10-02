@@ -64,8 +64,13 @@ type MetricsConfig struct {
 }
 
 type RoutingConfig struct {
-	Domain     string `json:"domain" yaml:"domain"`
-	RequireTLS bool   `json:"require_tls,omitempty" yaml:"requireTLS,omitempty"`
+	Domain             string `json:"domain" yaml:"domain"`
+	RequireTLS         bool   `json:"require_tls,omitempty" yaml:"requireTLS,omitempty"`
+	EnableProxyRetries *bool  `json:"enable_proxy_retries,omitempty" yaml:"enableProxyRetries,omitempty"`
+}
+
+func (c RoutingConfig) ProxyRetriesEnabled() bool {
+	return c.EnableProxyRetries == nil || *c.EnableProxyRetries
 }
 
 type DeployConfig struct {

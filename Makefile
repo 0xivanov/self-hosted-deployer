@@ -6,7 +6,9 @@ BIN_DIR := bin
 DIST_DIR := dist
 INSTALL_DIR ?= $(HOME)/.local/bin
 VERSION ?= dev
-COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+# Release verification binds both the operator CLI and the live server to an
+# exact reviewed source revision. Keep the complete object ID in binaries.
+COMMIT ?= $(shell git rev-parse HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -X github.com/0xivanov/self-hosted-deployer/internal/version.Version=$(VERSION) -X github.com/0xivanov/self-hosted-deployer/internal/version.Commit=$(COMMIT) -X github.com/0xivanov/self-hosted-deployer/internal/version.BuildDate=$(BUILD_DATE)
 BUILD_ENV := CGO_ENABLED=0

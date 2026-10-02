@@ -55,30 +55,82 @@ func TestNetworkPolicyForHostedAppIsScopedAndExplicit(t *testing.T) {
 	if policy.Labels[hostingProfileLabel] != "v1" || policy.Labels[appOwnershipLabel] != cfg.Name {
 		t.Fatalf("missing ownership/profile labels: %#v", policy.Labels)
 	}
-	if len(policy.Spec.Ingress) != 2 || len(policy.Spec.Egress) != 2 {
+	if len(policy.Spec.Ingress) != 3 || len(policy.Spec.Egress) != 2 {
 		t.Fatalf("unexpected policy rules: ingress=%d egress=%d", len(policy.Spec.Ingress), len(policy.Spec.Egress))
 	}
 	if got := policy.Spec.Ingress[0].From[0].PodSelector.MatchLabels["app.kubernetes.io/name"]; got != "traefik" {
 		t.Fatalf("unexpected Traefik selector: %q", got)
 	}
-	if got := policy.Spec.Ingress[1].Ports; len(got) != 2 || got[0].Port.IntValue() != 8080 || got[1].Port.IntValue() != 9090 {
-		t.Fatalf("monitoring was not limited to service/metrics ports: %#v", got)
+	serviceMonitor := policy.Spec.Ingress[1]
+	if serviceMonitor.From[0].NamespaceSelector != nil || serviceMonitor.From[0].PodSelector == nil || serviceMonitor.From[0].PodSelector.MatchLabels[serviceMonitorForLabel] != cfg.Name {
+		t.Fatalf("service monitor was not scoped to an explicitly labelled same-namespace pod: %#v", serviceMonitor.From)
+	}
+	if got := serviceMonitor.Ports; len(got) != 1 || got[0].Port.IntValue() != 8080 {
+		t.Fatalf("service monitor was not limited to the service port: %#v", got)
+	}
+	prometheus := policy.Spec.Ingress[2]
+	if prometheus.From[0].NamespaceSelector == nil || prometheus.From[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"] != "deployer-monitoring" {
+		t.Fatalf("unexpected Prometheus namespace selector: %#v", prometheus.From)
+	}
+	if got := prometheus.Ports; len(got) != 1 || got[0].Port.IntValue() != 9090 {
+		t.Fatalf("Prometheus was not limited to the dedicated metrics port: %#v", got)
 	}
 	if got := policy.Spec.Egress[1].To[0].IPBlock.CIDR; got != "203.0.113.0/24" {
 		t.Fatalf("unexpected explicit egress CIDR: %q", got)
 	}
 }
 
-func TestNetworkPolicyDeduplicatesSameServiceAndMetricsPort(t *testing.T) {
+func TestNetworkPolicyAllowsPrometheusOnSharedMetricsPort(t *testing.T) {
 	cfg := hostingTestConfig(t)
 	cfg.Metrics = &appconfig.MetricsConfig{Port: cfg.Service.Port, Path: "/metrics"}
 	policy, err := networkPolicyForHostedApp(cfg, DefaultNamespace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ports := policy.Spec.Ingress[1].Ports
+	ports := policy.Spec.Ingress[2].Ports
 	if len(ports) != 1 || ports[0].Port.IntValue() != cfg.Service.Port {
-		t.Fatalf("same service/metrics port was not deduplicated: %#v", ports)
+		t.Fatalf("shared metrics port was not rendered exactly once: %#v", ports)
+	}
+}
+
+func TestNetworkPolicyOmitsPrometheusIngressWithoutMetrics(t *testing.T) {
+	cfg := hostingTestConfig(t)
+	policy, err := networkPolicyForHostedApp(cfg, DefaultNamespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(policy.Spec.Ingress) != 2 {
+		t.Fatalf("undeclared metrics endpoint received monitoring ingress: %#v", policy.Spec.Ingress)
+	}
+	for _, rule := range policy.Spec.Ingress {
+		for _, peer := range rule.From {
+			if peer.NamespaceSelector != nil && peer.NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"] == "deployer-monitoring" {
+				t.Fatal("deployer-monitoring ingress rendered without a declared metrics endpoint")
+			}
+		}
+	}
+}
+
+func TestNetworkPolicyCanDisableClusterDNSWithoutRemovingExplicitEgress(t *testing.T) {
+	cfg := hostingTestConfig(t)
+	allowDNS := false
+	cfg.Hosting.Network.AllowDNS = &allowDNS
+	cfg.Hosting.Network.Egress = []appconfig.HostingEgressRule{{CIDR: "203.0.113.0/24", Ports: []int{443}}}
+	policy, err := networkPolicyForHostedApp(cfg, DefaultNamespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(policy.Spec.Egress) != 1 {
+		t.Fatalf("expected only explicit egress with DNS disabled, got %#v", policy.Spec.Egress)
+	}
+	rule := policy.Spec.Egress[0]
+	if len(rule.To) != 1 || rule.To[0].IPBlock == nil || rule.To[0].IPBlock.CIDR != "203.0.113.0/24" {
+		t.Fatalf("unexpected explicit egress rule: %#v", rule)
+	}
+	for _, port := range rule.Ports {
+		if port.Port != nil && port.Port.IntValue() == 53 {
+			t.Fatalf("DNS port remained in explicit-only egress: %#v", rule.Ports)
+		}
 	}
 }
 

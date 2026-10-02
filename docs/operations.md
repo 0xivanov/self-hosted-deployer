@@ -102,6 +102,30 @@ container port. The deployer adds Prometheus discovery annotations and adds a
 separate metrics port to the Pod only when the port differs. It never adds a
 separate metrics port to the app Service or public Ingress.
 
+A health monitor running in the same application namespace may access only the
+service port when its Pod has the label
+`deployer.io/service-monitor-for: <app-name>`. Prometheus Pods in the
+`deployer-monitoring` namespace may access only the declared `metrics.port`.
+If no metrics endpoint is declared, that namespace receives no application
+ingress permission.
+
+Hosted applications receive cluster DNS egress by default. Set
+`hosting.network.allowDNS: false` only when every allowed dependency is
+addressed by numeric CIDR and port. The renderer then omits both UDP and TCP
+port 53 from the policy; explicit `hosting.network.egress` rules remain.
+
+Traefik retries are enabled by default for compatibility. A stateful API with
+non-idempotent mutation routes must set `routing.enableProxyRetries: false`.
+The renderer then omits the retry middleware annotation and removes any
+previously owned retry Middleware while retaining the bounded backend
+transport settings.
+
+Release builds embed the complete Git commit object ID in the CLI, server, and
+agent. A security-sensitive application should verify both the local
+`deployer --output json version` result and the authenticated
+`deployer --output json server status` result against the same reviewed commit
+before accepting a dry run, preflight, rollout, or rollback.
+
 Install the pinned Prometheus, Alertmanager, Loki, Alloy, Grafana, and
 kube-state-metrics stack on the k3s control-plane node:
 

@@ -68,6 +68,30 @@ func TestControllerReconcilesTrafficResilienceResources(t *testing.T) {
 	}
 }
 
+func TestControllerRemovesRetryMiddlewareWhenDisabled(t *testing.T) {
+	dynamicClient := dynamicfake.NewSimpleDynamicClient(k8sruntime.NewScheme())
+	controller := &Controller{
+		namespace:        DefaultNamespace,
+		middlewares:      dynamicClient.Resource(retryMiddlewareResource).Namespace(DefaultNamespace),
+		serverTransports: dynamicClient.Resource(serversTransportResource).Namespace(DefaultNamespace),
+	}
+	cfg := testAppConfig()
+	if err := controller.reconcileTrafficResilienceResources(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	disabled := false
+	cfg.Routing.EnableProxyRetries = &disabled
+	if err := controller.reconcileTrafficResilienceResources(context.Background(), cfg); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := controller.middlewares.Get(context.Background(), cfg.Name, metav1.GetOptions{}); err == nil {
+		t.Fatal("retry middleware remained after retries were disabled")
+	}
+	if _, err := controller.serverTransports.Get(context.Background(), cfg.Name, metav1.GetOptions{}); err != nil {
+		t.Fatalf("servers transport was removed with retry middleware: %v", err)
+	}
+}
+
 func TestControllerOrdersRouteDependenciesWithoutBreakingTraffic(t *testing.T) {
 	clientset := fake.NewSimpleClientset(testReadyWorker())
 	dynamicClient := dynamicfake.NewSimpleDynamicClient(k8sruntime.NewScheme())

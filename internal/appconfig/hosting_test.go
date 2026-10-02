@@ -50,6 +50,36 @@ func TestHostingConfigValidatesAndRoundTrips(t *testing.T) {
 	}
 }
 
+func TestHostingNetworkDNSDefaultAndExplicitDisableRoundTrip(t *testing.T) {
+	cfg, err := Parse([]byte(validHostingYAML()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Hosting.Network.DNSAllowed() {
+		t.Fatal("omitted allowDNS must preserve cluster DNS")
+	}
+
+	withDisabledDNS := strings.Replace(validHostingYAML(), "  resources:\n", "  network:\n    allowDNS: false\n  resources:\n", 1)
+	cfg, err = Parse([]byte(withDisabledDNS))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Hosting.Network.DNSAllowed() || cfg.Hosting.Network.AllowDNS == nil {
+		t.Fatalf("explicit DNS disable was not retained: %#v", cfg.Hosting.Network)
+	}
+	encoded, err := cfg.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTripped, err := FromJSON(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roundTripped.Hosting.Network.DNSAllowed() || roundTripped.Hosting.Network.AllowDNS == nil {
+		t.Fatalf("explicit DNS disable did not round trip: %#v", roundTripped.Hosting.Network)
+	}
+}
+
 func TestHostingConfigRejectsInvalidResourceProfiles(t *testing.T) {
 	tests := []struct {
 		name   string

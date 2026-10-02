@@ -20,12 +20,16 @@ func (c *Controller) reconcileTrafficResilienceResources(ctx context.Context, cf
 	if strings.TrimSpace(cfg.Routing.Domain) == "" {
 		return c.deleteTrafficResilienceResources(ctx, cfg.Name)
 	}
-	if err := reconcileDynamicAppResource(
-		ctx,
-		c.middlewares,
-		retryMiddlewareForApp(cfg, c.namespace),
-		"Middleware",
-	); err != nil {
+	if cfg.Routing.ProxyRetriesEnabled() {
+		if err := reconcileDynamicAppResource(
+			ctx,
+			c.middlewares,
+			retryMiddlewareForApp(cfg, c.namespace),
+			"Middleware",
+		); err != nil {
+			return err
+		}
+	} else if err := deleteDynamicAppResource(ctx, c.middlewares, cfg.Name, "Middleware"); err != nil {
 		return err
 	}
 	return reconcileDynamicAppResource(

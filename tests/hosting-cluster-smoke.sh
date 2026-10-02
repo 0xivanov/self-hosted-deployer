@@ -39,6 +39,7 @@ func TestEmitSmokeNetworkPolicy(t *testing.T) {
         Name: "hosted-api",
         Image: "busybox:1.36",
         Service: appconfig.ServiceConfig{Port: 8080, Health: appconfig.HealthConfig{Path: "/"}},
+        Metrics: &appconfig.MetricsConfig{Port: 9090, Path: "/metrics"},
         Deploy: appconfig.DeployConfig{Replicas: 1},
         Placement: appconfig.PlacementConfig{Arch: appconfig.PlacementArchAny},
         Hosting: &appconfig.HostingConfig{
@@ -90,6 +91,10 @@ metadata: {name: default, namespace: hosted}
 ---
 apiVersion: v1
 kind: ServiceAccount
+metadata: {name: default, namespace: kube-system}
+---
+apiVersion: v1
+kind: ServiceAccount
 metadata: {name: default, namespace: deployer-monitoring}
 ---
 apiVersion: v1
@@ -112,7 +117,7 @@ spec:
   containers:
   - name: app
     image: busybox:1.36
-    command: ["sh", "-c", "httpd -f -p 8080 -h /www & httpd -f -p 8081 -h /www & sleep 3600"]
+    command: ["sh", "-c", "httpd -f -p 8080 -h /www & httpd -f -p 8081 -h /www & httpd -f -p 9090 -h /www & sleep 3600"]
     volumeMounts: [{name: content, mountPath: /www}]
   volumes: [{name: content, configMap: {name: hosted-content}}]
 ---
@@ -137,6 +142,15 @@ spec:
 ---
 apiVersion: v1
 kind: Pod
+metadata:
+  name: service-monitor-probe
+  namespace: hosted
+  labels: {deployer.io/service-monitor-for: hosted-api}
+spec:
+  containers: [{name: probe, image: busybox:1.36, command: ["sleep", "3600"]}]
+---
+apiVersion: v1
+kind: Pod
 metadata: {name: other-probe, namespace: other}
 spec:
   containers:
@@ -146,7 +160,7 @@ spec:
 EOF
 docker cp "$WORK/policy.yaml" "$NAME:/tmp/policy.yaml"
 docker exec "$NAME" kubectl apply -f /tmp/smoke.yaml >/dev/null
-for pair in hosted/hosted-api other/other-probe kube-system/traefik-probe deployer-monitoring/monitor-probe; do
+for pair in hosted/hosted-api hosted/service-monitor-probe other/other-probe kube-system/traefik-probe deployer-monitoring/monitor-probe; do
   docker exec "$NAME" kubectl wait --for=condition=Ready pod/"${pair#*/}" -n "${pair%/*}" --timeout=120s >/dev/null
 done
 hosted_ip=$(docker exec "$NAME" kubectl get pod -n hosted hosted-api -o jsonpath='{.status.podIP}')
@@ -180,12 +194,15 @@ docker exec "$NAME" kubectl apply -f /tmp/policy.yaml >/dev/null
 # k3s network policy reconciliation is asynchronous.
 sleep 5
 assert_200 kube-system traefik-probe "$hosted_ip" 8080
-assert_200 deployer-monitoring monitor-probe "$hosted_ip" 8080
+assert_200 hosted service-monitor-probe "$hosted_ip" 8080
+assert_200 deployer-monitoring monitor-probe "$hosted_ip" 9090
 assert_200 hosted hosted-api "$other_ip" 8080
 docker exec "$NAME" kubectl exec -n hosted hosted-api -- nslookup kubernetes.default.svc.cluster.local >/dev/null
 assert_denied other other-probe "$hosted_ip" 8080
 assert_denied other other-probe "$hosted_ip" 8081
 assert_denied kube-system traefik-probe "$hosted_ip" 8081
+assert_denied hosted service-monitor-probe "$hosted_ip" 9090
+assert_denied deployer-monitoring monitor-probe "$hosted_ip" 8080
 assert_denied hosted hosted-api "$other_ip" 8081
 docker exec "$NAME" kubectl delete -f /tmp/policy.yaml >/dev/null
 sleep 5

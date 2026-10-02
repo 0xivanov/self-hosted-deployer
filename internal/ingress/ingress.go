@@ -126,9 +126,7 @@ func ManifestForApp(cfg appconfig.Config, namespace string, tlsConfig TLSConfig)
 				managedByLabel:           managedByDeployer,
 				"deployer.io/app":        cfg.Name,
 			},
-			Annotations: map[string]string{
-				traefikRetryMiddlewareAnnotation: traefikResourceReference(namespace, cfg.Name),
-			},
+			Annotations: map[string]string{},
 		},
 		Spec: Spec{
 			IngressClassName: "traefik",
@@ -148,6 +146,9 @@ func ManifestForApp(cfg appconfig.Config, namespace string, tlsConfig TLSConfig)
 				},
 			}},
 		},
+	}
+	if cfg.Routing.ProxyRetriesEnabled() {
+		manifest.Metadata.Annotations[traefikRetryMiddlewareAnnotation] = traefikResourceReference(namespace, cfg.Name)
 	}
 	if tlsConfig.Enabled() {
 		manifest.Metadata.Annotations["cert-manager.io/cluster-issuer"] = tlsConfig.ClusterIssuer

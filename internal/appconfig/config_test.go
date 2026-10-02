@@ -60,6 +60,28 @@ placement:
 	}
 }
 
+func TestRoutingProxyRetriesCanBeExplicitlyDisabled(t *testing.T) {
+	body := strings.Replace(validYAML, "routing:\n", "routing:\n  enableProxyRetries: false\n", 1)
+	cfg, err := Parse([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Routing.ProxyRetriesEnabled() || cfg.Routing.EnableProxyRetries == nil {
+		t.Fatalf("explicit retry disable was not retained: %#v", cfg.Routing)
+	}
+	encoded, err := cfg.JSON()
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTripped, err := FromJSON(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if roundTripped.Routing.ProxyRetriesEnabled() || roundTripped.Routing.EnableProxyRetries == nil {
+		t.Fatalf("explicit retry disable did not round trip: %#v", roundTripped.Routing)
+	}
+}
+
 func TestParseAllowsAppWithoutRoutingDomain(t *testing.T) {
 	cfg, err := Parse([]byte(`
 name: worker

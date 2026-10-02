@@ -13,7 +13,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-const hostingProfileLabel = "deployer.io/hosting-profile"
+const (
+	hostingProfileLabel    = "deployer.io/hosting-profile"
+	serviceMonitorForLabel = "deployer.io/service-monitor-for"
+)
 
 func networkPolicyForHostedApp(cfg appconfig.Config, namespace string) (*networkingv1.NetworkPolicy, error) {
 	if cfg.Hosting == nil {
@@ -35,18 +38,24 @@ func networkPolicyForHostedApp(cfg appconfig.Config, namespace string) (*network
 			}},
 			Ports: []networkingv1.NetworkPolicyPort{servicePort},
 		},
-	}
-	monitoringPorts := []networkingv1.NetworkPolicyPort{servicePort}
-	if cfg.Metrics != nil && cfg.Metrics.Port != cfg.Service.Port {
-		monitoringPorts = append(monitoringPorts, networkingv1.NetworkPolicyPort{Protocol: protocolPtr(corev1.ProtocolTCP), Port: intPort(int32(cfg.Metrics.Port))})
-	}
-	ingress = append(ingress, networkingv1.NetworkPolicyIngressRule{
-		From:  []networkingv1.NetworkPolicyPeer{{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "deployer-monitoring"}}}},
-		Ports: monitoringPorts,
-	})
-
-	egress := []networkingv1.NetworkPolicyEgressRule{
 		{
+			From: []networkingv1.NetworkPolicyPeer{{
+				PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{serviceMonitorForLabel: cfg.Name}},
+			}},
+			Ports: []networkingv1.NetworkPolicyPort{servicePort},
+		},
+	}
+	if cfg.Metrics != nil {
+		metricsPort := networkingv1.NetworkPolicyPort{Protocol: protocolPtr(corev1.ProtocolTCP), Port: intPort(int32(cfg.Metrics.Port))}
+		ingress = append(ingress, networkingv1.NetworkPolicyIngressRule{
+			From:  []networkingv1.NetworkPolicyPeer{{NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "deployer-monitoring"}}}},
+			Ports: []networkingv1.NetworkPolicyPort{metricsPort},
+		})
+	}
+
+	egress := []networkingv1.NetworkPolicyEgressRule{}
+	if cfg.Hosting.Network.DNSAllowed() {
+		egress = append(egress, networkingv1.NetworkPolicyEgressRule{
 			To: []networkingv1.NetworkPolicyPeer{{
 				NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "kube-system"}},
 				PodSelector:       &metav1.LabelSelector{MatchLabels: map[string]string{"k8s-app": "kube-dns"}},
@@ -55,7 +64,7 @@ func networkPolicyForHostedApp(cfg appconfig.Config, namespace string) (*network
 				{Protocol: protocolPtr(corev1.ProtocolUDP), Port: intPort(53)},
 				{Protocol: protocolPtr(corev1.ProtocolTCP), Port: intPort(53)},
 			},
-		},
+		})
 	}
 	for _, rule := range cfg.Hosting.Network.Egress {
 		ports := make([]networkingv1.NetworkPolicyPort, 0, len(rule.Ports))

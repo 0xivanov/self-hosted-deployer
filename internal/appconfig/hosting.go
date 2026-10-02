@@ -31,12 +31,20 @@ type ResourceQuantities struct {
 }
 
 type HostingNetwork struct {
-	Egress []HostingEgressRule `json:"egress,omitempty" yaml:"egress,omitempty"`
+	// AllowDNS defaults to true when omitted so existing hosted applications
+	// preserve their cluster-DNS contract. Security-sensitive workloads that
+	// use only numeric egress destinations can set it explicitly to false.
+	AllowDNS *bool               `json:"allow_dns,omitempty" yaml:"allowDNS,omitempty"`
+	Egress   []HostingEgressRule `json:"egress,omitempty" yaml:"egress,omitempty"`
 }
 
 type HostingEgressRule struct {
 	CIDR  string `json:"cidr" yaml:"cidr"`
 	Ports []int  `json:"ports" yaml:"ports"`
+}
+
+func (n HostingNetwork) DNSAllowed() bool {
+	return n.AllowDNS == nil || *n.AllowDNS
 }
 
 func (c *HostingConfig) Validate(replicas int) error {
